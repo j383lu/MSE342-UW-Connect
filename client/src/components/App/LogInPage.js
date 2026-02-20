@@ -6,9 +6,10 @@
 // which will redirect them to a registration page.
 
 import * as React from 'react';
+import Registration from './Registration';
 import { Typography, Button, TextField, Box, Container, Link } from '@mui/material';
 
-const LogIn = () => { 
+const LogInPage = ({ onSwitchPage }) => { 
 
     return (
        <Container maxWidth="xs">
@@ -52,7 +53,11 @@ const LogIn = () => {
                         Log In
                     </Button>
 
-                    <Link href="#" variant="body2">
+                    <Link 
+                        component="button" 
+                        variant="body2" 
+                        onClick={onSwitchPage}
+                    >
                         {"Don't have an account? Create an account"}
                     </Link>
                 </Box>
@@ -61,4 +66,4 @@ const LogIn = () => {
     );
 }
 
-export default LogIn;
+export default LogInPage;
