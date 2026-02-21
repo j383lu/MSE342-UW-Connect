@@ -1,18 +1,18 @@
-import * as React from 'react';
-import Review from './Review';
-
+import * as React from "react";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import Layout from "./Layout";
+import Profile from "./Profile";
 
 const App = () => {
-
-
   return (
-    <div>
-        <h1>MSci 245 - D1 template </h1>
-      {/* Render <Review /> child component */}
-
-
-    </div>
+    <Router>
+      <Layout>
+        <Routes>
+          <Route path="/profile" element={<Profile />} />
+        </Routes>
+      </Layout>
+    </Router>
   );
-}
+};
 
 export default App;

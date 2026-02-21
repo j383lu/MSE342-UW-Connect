@@ -1,8 +1,12 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import {AppBar, Toolbar, Typography, Button, Grid
 } from "@mui/material";
 
 function Navbar() {
+  
+  const navigate = useNavigate();
+
   return (
     <AppBar position="static">
       <Toolbar>
@@ -27,7 +31,7 @@ function Navbar() {
               </Button>
             </Grid>
             <Grid item>
-              <Button color="inherit">
+              <Button color="inherit" onClick={() => navigate("/profile")}>
                 Profile
               </Button>
             </Grid>
