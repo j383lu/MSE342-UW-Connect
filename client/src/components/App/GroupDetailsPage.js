@@ -52,10 +52,10 @@ export default function GroupDetailsPage() {
     // fake member list
     const base = [
       { name: "Van Nguyen", role: isOwner ? "Owner" : "Member" },
-      { name: "Jasmine Mao", role: "Member" },
-      { name: "Cindy Kuang", role: "Member" },
-      { name: "Adhya Sharma", role: "Member" },
-      { name: "Yolanda Jian", role: "Member" },
+      { name: "Member 1", role: "Member" },
+      { name: "Member 2", role: "Member" },
+      { name: "Member 3", role: "Member" },
+      { name: "Member 4", role: "Member" },
     ];
     return base.slice(0, 4);
   }, [isOwner]);
