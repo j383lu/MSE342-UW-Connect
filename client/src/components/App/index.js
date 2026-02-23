@@ -10,7 +10,6 @@ export default function App() {
     <BrowserRouter>
       <Layout>
         <Routes>
-          <Route path="/" element={<Navigate to="/events" replace />} />
           <Route path="/events" element={<EventsPage />} />
           <Route path="/events/new" element={<CreateEventForm />} />
         </Routes>
