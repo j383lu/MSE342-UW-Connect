@@ -7,17 +7,32 @@ import {
   TextField,
   Button,
   Grid,
-  Typography
+  Typography,
+  Autocomplete
 } from "@mui/material";
 
 
 function CreatePostForm({ open, onClose, onSubmit }) {
+  const predefined_Tags = [
+    "FreeFood",
+    "Events",
+    "StudyGroups",
+    "Housing",
+    "Jobs",
+    "Sports",
+    "Clubs",
+    "Intramurals",
+    "Tutoring"
+  ];
+  const max_tags = 5;
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [tags, setTags] = useState("");
+  const [selectedTags, setTags] = useState([]);
   const [error, setError] = useState({
     title: "",
     description: "",
+    tags: ""
   });
 
   const handleSubmit = () => {
@@ -54,8 +69,7 @@ function CreatePostForm({ open, onClose, onSubmit }) {
       description: ""
     });
 
-    const tagArray = tags.split(",").map(tag => tag.trim());
-
+    const tagArray = selectedTags;
     onSubmit({
       title,
       description,
@@ -64,8 +78,17 @@ function CreatePostForm({ open, onClose, onSubmit }) {
     
     setTitle("");
     setDescription("");
-    setTags("");
+    setTags([]);
   };
+
+  const handleTagChange = (event, newValue) => {
+    if (newValue.length > max_tags) {
+      setError(prev => ({ ...prev, tags: `You can select up to ${max_tags} tags` }));
+      return;
+    }
+    setTags(newValue);
+    setError(prev => ({ ...prev, tags: "" }));
+  }
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
@@ -109,11 +132,20 @@ function CreatePostForm({ open, onClose, onSubmit }) {
           </Grid>
 
           <Grid item xs={12}>
-            <TextField
-              fullWidth
-              label="Tags (comma separated)"
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
+            <Autocomplete
+              multiple
+              options={predefined_Tags}
+              value={selectedTags}
+              onChange={handleTagChange}
+              filterSelectedOptions
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Tags"
+                  error={Boolean(error.tags)}
+                  helperText={error.tags}
+                />
+              )}
             />
           </Grid>
 
