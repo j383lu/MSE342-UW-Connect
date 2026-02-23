@@ -7,8 +7,44 @@
 
 import * as React from 'react';
 import { Typography, Button, TextField, Box, Container, Link, Card, CardContent } from '@mui/material';
+import { InputAdornment, IconButton } from '@mui/material';
+import Visibility from '@mui/icons-material/Visibility';
+import VisibilityOff from '@mui/icons-material/VisibilityOff';
+import { useState } from 'react';
 
 const LogInPage = ({ onSwitchPage }) => { 
+
+    const [formData, setFormData] = React.useState({ username: '', password: '' });
+    const [errors, setErrors] = React.useState({});
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData({ ...formData, [name]: value });
+        // Clear error when user types
+        if (errors[name]) setErrors({ ...errors, [name]: '' });
+    };
+
+    const handleSubmit = (event) => {
+        event.preventDefault();
+        let newErrors = {};
+
+        // This creates the "This field is required." messages your test looks for
+        if (!formData.username) newErrors.username = 'This field is required.';
+        if (!formData.password) newErrors.password = 'This field is required.';
+
+        setErrors(newErrors);
+
+        if (Object.keys(newErrors).length === 0) {
+            console.log('Logging in...', formData);
+        }
+    };
+
+    // To change whether or not the password is masked or not
+    const [showPassword, setShowPassword] = useState(false);
+    // Toggle Function
+    const handleClickShowPassword = () => {
+        setShowPassword(!showPassword);
+    };
 
     return (
         <Box
@@ -24,7 +60,7 @@ const LogInPage = ({ onSwitchPage }) => {
             <Container maxWidth="xs">
                 <Box 
                     sx={{ 
-                        marginTop: 8, 
+                        marginTop: 2, 
                         display: 'flex', 
                         flexDirection: 'column', 
                         alignItems: 'center' 
@@ -44,7 +80,7 @@ const LogInPage = ({ onSwitchPage }) => {
                                 Sign In
                             </Typography>
 
-                            <Box component="form" noValidate sx={{ mt: 1 }}>
+                            <Box component="form" onSubmit={handleSubmit} noValidate sx={{ mt: 1 }}>
                                 <TextField
                                     margin="normal"
                                     required
@@ -53,6 +89,12 @@ const LogInPage = ({ onSwitchPage }) => {
                                     label="Username"
                                     name="username"
                                     autoFocus
+                                    value={formData.username}
+                                    onChange={handleChange}
+                                    error={!!errors.username}
+                                    helperText={errors.username}
+                                    // for Test: AC 2 & 3
+                                    inputProps={{ "data-testid": "username-input" }}
                                 />
                                 <TextField
                                     margin="normal"
@@ -60,14 +102,35 @@ const LogInPage = ({ onSwitchPage }) => {
                                     fullWidth
                                     name="password"
                                     label="Password"
-                                    type="password"
+                                    type={showPassword ? 'text' : 'password'}
                                     id="password"
+                                    value={formData.password}
+                                    onChange={handleChange}
+                                    error={!!errors.password}
+                                    helperText={errors.password}
+                                    inputProps={{ "data-testid": "password-input" }}
+                                    InputProps={{
+                                        endAdornment: (
+                                            <InputAdornment position="end">
+                                                <IconButton
+                                                    aria-label="toggle password visibility"
+                                                    onClick={handleClickShowPassword}
+                                                    edge="end"
+                                                    data-testid="eye-icon"
+                                                >
+                                                    {/* Switch icon based on state */}
+                                                    {showPassword ? <VisibilityOff /> : <Visibility />}
+                                                </IconButton>
+                                            </InputAdornment>
+                                        )
+                                    }}
                                 />
                                 <Button
                                     type="submit"
                                     fullWidth
                                     variant="contained"
                                     sx={{ mt: 3, mb: 2 }}
+                                    data-testid="login-btn"
                                 >
                                     Log In
                                 </Button>

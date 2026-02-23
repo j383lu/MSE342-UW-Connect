@@ -5,6 +5,7 @@ import * as React from 'react';
 import { useState } from 'react';
 import { Typography, Button, TextField, Box, Container, Link, Card, CardContent } from '@mui/material';
 
+
 const Registration = ({ onSwitchPage }) => { 
 
     const [formData, setFormData] = useState({
@@ -57,6 +58,13 @@ const Registration = ({ onSwitchPage }) => {
             console.log('Form Submitted successfully', formData);
         }
     };
+
+    // To change whether or not the password is masked or not
+    // const [showPassword, setShowPassword] = useState(false);
+    // // Toggle Function
+    // const handleClickShowPassword = () => {
+    //     setShowPassword(!showPassword);
+    // };
 
     return (
         <Box
@@ -184,7 +192,7 @@ const Registration = ({ onSwitchPage }) => {
                                     sx={{ mt: 3, mb: 2 }}
                                     data-testid="signup-btn"
                                 >
-                                    Registration
+                                    Register
                                 </Button>
 
                                 <Link 
