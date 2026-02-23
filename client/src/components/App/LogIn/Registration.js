@@ -4,6 +4,9 @@
 import * as React from 'react';
 import { useState } from 'react';
 import { Typography, Button, TextField, Box, Container, Link, Card, CardContent } from '@mui/material';
+import { InputAdornment, IconButton } from '@mui/material';
+import Visibility from '@mui/icons-material/Visibility';
+import VisibilityOff from '@mui/icons-material/VisibilityOff';
 
 
 const Registration = ({ onSwitchPage }) => { 
@@ -21,17 +24,38 @@ const Registration = ({ onSwitchPage }) => {
 
     const handleChange = (e) => {
         const { name, value } = e.target;
-        
-        // Max 40 character logic for names
-        if ((name === 'firstname' || name === 'lastname') && value.length > 40) {
-            return; 
-        }
 
         setFormData({ ...formData, [name]: value });
-        // Clear error when user starts typing
-        if (errors[name]) {
-            setErrors({ ...errors, [name]: '' });
+
+        let errorMsg = '';
+        
+        // Max 40 character logic for names
+        if (name === 'firstname' || name === 'lastname') {
+            const nameRegex = /^[a-zA-Z\s]*$/;
+            if (!nameRegex.test(value)) {
+                errorMsg = 'Only letters and spaces are allowed.';
+            } else if (value.length > 40) {
+                errorMsg = 'Name cannot exceed 40 characters.';
+            }
         }
+
+        if (name === 'username') {
+            const usernameRegex = /^[a-zA-Z0-9_]*$/;
+            if (!usernameRegex.test(value)) {
+                errorMsg = 'Only letters, numbers, and underscores are allowed.';
+            } else if (value.length > 30) {
+                errorMsg = 'Username cannot exceed 30 characters.';
+            }
+        }   
+
+        setErrors(prev => ({ ...prev, [name]: errorMsg }));
+    };
+
+    // To change whether or not the password is masked or not
+    const [showPassword, setShowPassword] = useState(false);
+    // Toggle Function
+    const handleClickShowPassword = () => {
+        setShowPassword(!showPassword);
     };
 
     const handleSubmit = (event) => {
@@ -163,13 +187,28 @@ const Registration = ({ onSwitchPage }) => {
                                     fullWidth
                                     name="password"
                                     label="Password"
-                                    type="password"
+                                    type={showPassword ? 'text' : 'password'}
                                     id="password"
                                     inputProps={{ "data-testid": "password-input" }}
                                     value={formData.password}
                                     onChange={handleChange}
                                     error={!!errors.password}
                                     helperText={errors.password}
+                                    InputProps={{
+                                        endAdornment: (
+                                            <InputAdornment position="end">
+                                                <IconButton
+                                                    aria-label="toggle password visibility"
+                                                    onClick={handleClickShowPassword}
+                                                    edge="end"
+                                                    data-testid="eye-icon"
+                                                >
+                                                    {/* Switch icon based on state */}
+                                                    {showPassword ? <VisibilityOff /> : <Visibility />}
+                                                </IconButton>
+                                            </InputAdornment>
+                                        )
+                                    }}
                                 />
                                 <TextField
                                     margin="normal"
@@ -177,13 +216,28 @@ const Registration = ({ onSwitchPage }) => {
                                     fullWidth
                                     name="confirmpassword"
                                     label="Confirm Password"
-                                    type="password"
+                                    type={showPassword ? 'text' : 'password'}
                                     id="confirmpassword"
                                     inputProps={{ "data-testid": "confirm-password-input" }}
                                     value={formData.confirmpassword}
                                     onChange={handleChange}
                                     error={!!errors.confirmpassword}
                                     helperText={errors.confirmpassword}
+                                    InputProps={{
+                                        endAdornment: (
+                                            <InputAdornment position="end">
+                                                <IconButton
+                                                    aria-label="toggle password visibility"
+                                                    onClick={handleClickShowPassword}
+                                                    edge="end"
+                                                    data-testid="eye-icon"
+                                                >
+                                                    {/* Switch icon based on state */}
+                                                    {showPassword ? <VisibilityOff /> : <Visibility />}
+                                                </IconButton>
+                                            </InputAdornment>
+                                        )
+                                    }}
                                 />
                                 <Button
                                     type="submit"

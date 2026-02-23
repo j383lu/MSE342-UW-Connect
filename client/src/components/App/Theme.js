@@ -1,3 +1,6 @@
+// Author: Lauren Jung
+// Web application's colour theme and font theme
+
 import { createTheme } from '@mui/material/styles';
 
 const theme = createTheme({

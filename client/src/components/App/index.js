@@ -8,7 +8,7 @@ import Registration from './LogIn/Registration';
 
 const App = () => {
 
-  // isLogin starts as true.
+  // isLogin starts as true 
   const [isLogin, setIsLogin] = useState(true);
   // This function flips the boolean (true -> false / false -> true)
   const handlePageSwitch = () => {
@@ -19,6 +19,7 @@ const App = () => {
   return (
     <div>
       <ThemeProvider theme={theme}>
+        {/* To flip between Log in and registration pages when signing in/up */}
         {isLogin ? (
           <LogInPage onSwitchPage={handlePageSwitch} />
         ) : (

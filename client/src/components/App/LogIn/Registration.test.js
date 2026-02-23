@@ -1,3 +1,5 @@
+// Author: Lauren Jung
+
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, useNavigate } from 'react-router-dom';
 import Registration from './Registration'; 
@@ -5,7 +7,7 @@ import Registration from './Registration';
 
 describe('Signup Component', () => {
 
-  // Acceptance Criteria 1: Happy path
+  // Acceptance Criteria 1: Happy path - must wait until a later sprint
   // test('shows success message with valid UWaterloo email', () => {
   //   render(<Signup />);
     
@@ -27,7 +29,7 @@ describe('Signup Component', () => {
     expect(errors.length).toBeGreaterThan(0);
   });
 
-  // Acceptance Criteria 3: Existing email
+  // Acceptance Criteria 3: Existing email - must wait until a later sprint
   // test('shows error when email already exists', () => {
   //   render(<Signup initialEmails={['l2jung@uwaterloo.ca']} />);
     
@@ -51,7 +53,7 @@ describe('Signup Component', () => {
 
     // Acceptance Criteria 6: Account verification (Must wait until later sprint)
 
-    // Acceptance Criteria 7: User refresh
+    // Acceptance Criteria 7: User refresh - must wait for a later sprint
     // test('preserves user state after simulation of page leave', () => {
     //     render(<Signup />);
     

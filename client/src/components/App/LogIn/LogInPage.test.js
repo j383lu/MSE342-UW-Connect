@@ -1,9 +1,11 @@
+// Author: Lauren Jung
+
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import Login from './LogInPage';
 
 describe('Login Component', () => {
 
-    // Acceptance Criteria 1: Log in speed
+    // Acceptance Criteria 1: Log in speed - must wait until a later sprint
 
     // Acceptance Criteria 2 & 3: Incorrect log in information/empty submission
     test('shows Required message for incorrect or empty fields', () => {
@@ -40,7 +42,7 @@ describe('Login Component', () => {
         expect(passwordInput.type).toBe('password');
     });
 
-    // Acceptance Criteria 5: Account locking
+    // Acceptance Criteria 5: Account locking - Must wait until a later sprint
     // test('locks account after 5 failed attempts', () => {
     //     render(<Login />);
         
@@ -54,7 +56,7 @@ describe('Login Component', () => {
     //     expect(screen.getByTestId('lockout-message')).toHaveTextContent(/locked for 15 minutes/i);
     // });
 
-    // Acceptance Criteria 6: Log in preservation
+    // Acceptance Criteria 6: Log in preservation - must wait until a later sprint
     // test('preserves login session on refresh', () => {
     //     render(<Login />);
         
