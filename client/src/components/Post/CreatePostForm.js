@@ -15,11 +15,41 @@ function CreatePostForm({ open, onClose, onSubmit }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
+  const [error, setError] = useState({
+    title: "",
+    description: "",
+  });
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+  const handleSubmit = () => {
 
-    // Convert comma-separated string into array
+    if (!title.trim()) {
+      setError(prev => ({ ...prev, title: "Title is a required field" }));
+      return;
+    }
+
+    if (!description.trim()) {
+      setError(prev => ({ ...prev, description: "Description is a required field" }));
+      return;
+    }
+
+    if (description.length > 500) {
+      setError(prev => ({ ...prev, description: "You have exceeded the character limit of 500 characters" }));
+      return;
+    }
+
+    if (!description.trim()) {
+      setError(prev => ({ ...prev, description: "Description is a required field" }));
+      return;
+    }
+
+    if (description.length > 500) {
+      setError(prev => ({ ...prev, description: "You have exceeded the character limit of 500 characters" }));
+      return;
+    }
+
+    setError({});
+
+
     const tagArray = tags.split(",").map(tag => tag.trim());
 
     onSubmit({
@@ -27,6 +57,10 @@ function CreatePostForm({ open, onClose, onSubmit }) {
       description,
       tags: tagArray
     });
+    
+    setTitle("");
+    setDescription("");
+    setTags("");
   };
 
   return (
@@ -39,6 +73,11 @@ function CreatePostForm({ open, onClose, onSubmit }) {
 
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
+          {error && (
+            <Typography color="error" sx={{ mt: 2 }}>
+              {error}
+            </Typography>
+          )}
 
           <Grid item xs={12}>
             <TextField
