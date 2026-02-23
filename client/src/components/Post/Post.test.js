@@ -105,4 +105,86 @@ describe("Create Text Post", () => {
     expect(screen.getByText("intramurals")).toBeInTheDocument();
   });
 
+  test("7. Shows error when title is too long", () => {
+    render(<Post />);
+    
+    fireEvent.click(screen.getByText(/create post/i));
+
+    fireEvent.change(screen.getByLabelText(/title/i), {
+      target: { value: "Hi" }
+    });
+
+    fireEvent.change(screen.getByLabelText(/description/i), {
+      target: { value: "Valid description" }
+    });
+
+    fireEvent.click(screen.getByText(/submit/i));
+
+    expect(
+      screen.getByText(/title must be at least 3 characters/i)
+    ).toBeInTheDocument();
+  });
+
+  test("8. Shows error when title exceeds maximum length", () => {
+  render(<Post />);
+
+  fireEvent.click(screen.getByText(/create post/i));
+
+  const longTitle = "a".repeat(101);
+
+  fireEvent.change(screen.getByLabelText(/title/i), {
+    target: { value: longTitle }
+  });
+
+  fireEvent.change(screen.getByLabelText(/description/i), {
+    target: { value: "Valid description" }
+  });
+
+  fireEvent.click(screen.getByText(/submit/i));
+
+  expect(
+    screen.getByText(/title exceeds maximum length/i)
+  ).toBeInTheDocument();
+});
+
+test("9. Shows error when title contains only spaces", () => {
+  render(<Post />);
+
+  fireEvent.click(screen.getByText(/create post/i));
+
+  fireEvent.change(screen.getByLabelText(/title/i), {
+    target: { value: "   " }
+  });
+
+  fireEvent.change(screen.getByLabelText(/description/i), {
+    target: { value: "Valid description" }
+  });
+
+  fireEvent.click(screen.getByText(/submit/i));
+
+  expect(
+    screen.getByText(/title is a required field/i)
+  ).toBeInTheDocument();
+});
+
+test("Allows special characters in title", () => {
+  render(<Post />);
+
+  fireEvent.click(screen.getByText(/create post/i));
+
+  fireEvent.change(screen.getByLabelText(/title/i), {
+    target: { value: "Hello!!! @#$%" }
+  });
+
+  fireEvent.change(screen.getByLabelText(/description/i), {
+    target: { value: "Valid description" }
+  });
+
+  fireEvent.click(screen.getByText(/submit/i));
+
+  expect(
+    screen.getByText(/hello!!! @#\$%/i)
+  ).toBeInTheDocument();
+});
+
 });
