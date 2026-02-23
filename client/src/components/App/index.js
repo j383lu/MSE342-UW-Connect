@@ -1,18 +1,20 @@
-import * as React from 'react';
-import Review from './Review';
+import * as React from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
+import Layout from "./Layout";
+import EventsPage from "./EventsPage";
+import CreateEventForm from "./CreateEventForm";
 
-const App = () => {
-
-
+export default function App() {
   return (
-    <div>
-        <h1>MSci 245 - D1 template </h1>
-      {/* Render <Review /> child component */}
-
-
-    </div>
+    <BrowserRouter>
+      <Layout>
+        <Routes>
+          <Route path="/" element={<Navigate to="/events" replace />} />
+          <Route path="/events" element={<EventsPage />} />
+          <Route path="/events/new" element={<CreateEventForm />} />
+        </Routes>
+      </Layout>
+    </BrowserRouter>
   );
 }
-
-export default App;
