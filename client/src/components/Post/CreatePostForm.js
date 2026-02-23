@@ -27,6 +27,18 @@ function CreatePostForm({ open, onClose, onSubmit }) {
       return;
     }
 
+    
+    if (title.length > 100) {
+      setError(prev => ({ ...prev, title: "Title exceeds maximum length" }));
+      return;
+    }
+
+    
+    if (title.length < 3) {
+      setError(prev => ({ ...prev, title: "Title must be at least 3 characters" }));
+      return;
+    }
+
     if (!description.trim()) {
       setError(prev => ({ ...prev, description: "Description is a required field" }));
       return;
@@ -37,18 +49,10 @@ function CreatePostForm({ open, onClose, onSubmit }) {
       return;
     }
 
-    if (!description.trim()) {
-      setError(prev => ({ ...prev, description: "Description is a required field" }));
-      return;
-    }
-
-    if (description.length > 500) {
-      setError(prev => ({ ...prev, description: "You have exceeded the character limit of 500 characters" }));
-      return;
-    }
-
-    setError({});
-
+    setError({
+      title: "",
+      description: ""
+    });
 
     const tagArray = tags.split(",").map(tag => tag.trim());
 
@@ -73,18 +77,18 @@ function CreatePostForm({ open, onClose, onSubmit }) {
 
       <DialogContent>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          {error && (
-            <Typography color="error" sx={{ mt: 2 }}>
-              {error}
-            </Typography>
-          )}
 
           <Grid item xs={12}>
             <TextField
               fullWidth
               label="Title"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                setError(prev => ({ ...prev, title: "" }));
+              }}
+              error={Boolean(error.title)}
+              helperText={error.title}
             />
           </Grid>
 
@@ -95,7 +99,12 @@ function CreatePostForm({ open, onClose, onSubmit }) {
               rows={4}
               label="Description"
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => {
+                setDescription(e.target.value);
+                setError(prev => ({ ...prev, description: "" }));
+              }}
+              error={Boolean(error.description)} 
+              helperText={error.description}
             />
           </Grid>
 
