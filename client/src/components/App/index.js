@@ -1,4 +1,6 @@
 import * as React from 'react';
+import { ThemeProvider } from '@mui/material/styles';
+import theme from './Theme'
 import { useState } from 'react';
 import LogInPage from './LogIn/LogInPage';
 import Registration from './LogIn/Registration';
@@ -16,13 +18,13 @@ const App = () => {
 
   return (
     <div>
-      <>
+      <ThemeProvider theme={theme}>
         {isLogin ? (
           <LogInPage onSwitchPage={handlePageSwitch} />
         ) : (
           <Registration onSwitchPage={handlePageSwitch} />
         )}
-      </>
+      </ThemeProvider>
     </div>
   );
 }
