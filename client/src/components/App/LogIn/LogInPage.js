@@ -6,7 +6,6 @@
 // which will redirect them to a registration page.
 
 import * as React from 'react';
-import Registration from './Registration';
 import { Typography, Button, TextField, Box, Container, Link } from '@mui/material';
 
 const LogInPage = ({ onSwitchPage }) => { 

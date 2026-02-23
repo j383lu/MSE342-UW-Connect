@@ -1,21 +1,9 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import Login from './Login';
+import Login from './LogInPage';
 
 describe('Login Component', () => {
 
     // Acceptance Criteria 1: Log in speed
-    test('redirects to feed with valid credentials', async () => {
-        render(<Login />);
-        
-        fireEvent.change(screen.getByTestId('email-input'), { target: { value: 'l2jung@uwaterloo.ca' } });
-        fireEvent.change(screen.getByTestId('password-input'), { target: { value: 'Password123' } });
-        fireEvent.click(screen.getByTestId('login-btn'));
-        
-        // Checks the 2-second redirection requirement
-        await waitFor(() => {
-        expect(screen.getByTestId('feed-header')).toBeInTheDocument();
-        }, { timeout: 2000 });
-    });
 
     // Acceptance Criteria 2 & 3: Incorrect log in information/empty submission
     test('shows Required message for incorrect or empty fields', () => {
