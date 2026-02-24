@@ -17,17 +17,17 @@ function Navbar() {
           {/* Right side - Navigation Buttons */}
           <Grid item xs={6} container justifyContent="flex-end" spacing={2}>
             <Grid item>
-              <Button color="inherit">
+              <Button color="inherit" component={RouterLink} to="/home">
                 Home
               </Button>
             </Grid>
             <Grid item>
-              <Button color="inherit">
+              <Button color="inherit" component={RouterLink} to="/groups">
                 Groups
               </Button>
             </Grid>
             <Grid item>
-              <Button color="inherit">
+              <Button color="inherit" component={RouterLink} to="/profile">
                 Profile
               </Button>
             </Grid>
