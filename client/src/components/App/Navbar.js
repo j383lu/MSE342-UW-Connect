@@ -1,6 +1,6 @@
 import React from "react";
-import {AppBar, Toolbar, Typography, Button, Grid
-} from "@mui/material";
+import {AppBar, Toolbar, Typography, Button, Grid} from "@mui/material";
+import { Link as RouterLink } from "react-router-dom"
 
 function Navbar() {
   return (
@@ -32,7 +32,7 @@ function Navbar() {
               </Button>
             </Grid>
             <Grid item>
-              <Button color="inherit">
+              <Button color="inherit" component={RouterLink} to="/events">
                 Events
               </Button>
             </Grid>
