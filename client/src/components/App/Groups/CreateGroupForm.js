@@ -1,4 +1,4 @@
-// client/src/components/App/CreateGroupForm.js
+// client/src/components/App/Groups/CreateGroupForm.js
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";

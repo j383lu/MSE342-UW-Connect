@@ -48,10 +48,11 @@ import * as React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import Layout from "./Layout";
-import GroupsPage from "./GroupsPage";
-import CreateGroupForm from "./CreateGroupForm";
-import GroupDetailsPage from "./GroupDetailsPage";
-import EditGroupForm from "./EditGroupForm";
+
+import GroupsPage from "./Groups/GroupsPage";
+import CreateGroupForm from "./Groups/CreateGroupForm";
+import GroupDetailsPage from "./Groups/GroupDetailsPage";
+import EditGroupForm from "./Groups/EditGroupForm";
 
 // placeholders (optional)
 const HomePage = () => <div>Home</div>;
@@ -63,8 +64,8 @@ export default function App() {
     <BrowserRouter>
       <Layout>
         <Routes>
-          <Route path="/" element={<Navigate to="/home" replace />} />
-          <Route path="/home" element={<HomePage />} />
+          {/* <Route path="/" element={<Navigate to="/home" replace />} />
+          <Route path="/home" element={<HomePage />} /> */}
 
           {/* ✅ Groups routes */}
           <Route path="/groups" element={<GroupsPage />} />

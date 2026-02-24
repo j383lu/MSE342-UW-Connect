@@ -1,4 +1,4 @@
-// client/src/components/App/GroupDetailsPage.js
+// client/src/components/App/Groups/GroupDetailsPage.js
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
