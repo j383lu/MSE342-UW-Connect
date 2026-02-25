@@ -20,6 +20,7 @@ export default function CreateEventForm() {
     setMessage("");
 
     // basic required fields validation
+    // If there are any fields not entered, throws an error message
     if (!title || !description || !eventDate || !eventTime || !location || !capacity) {
       setError("Please fill in all fields.");
       return;
@@ -33,7 +34,6 @@ export default function CreateEventForm() {
     }
 
     try {
-      // ✅ proxy version: call same-origin API (client/package.json proxy -> localhost:5000)
       const res = await fetch("/api/events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

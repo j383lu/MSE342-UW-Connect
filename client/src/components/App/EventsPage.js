@@ -13,7 +13,7 @@ export default function EventsPage() {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState("");
 
-  // Fix the time bug
+  // Fix the time bug in the event main page
   const formatDate = (v) => {
     if (!v) return "";
     // if it's already "YYYY-MM-DD"
@@ -32,7 +32,7 @@ export default function EventsPage() {
     return String(v);
   };
 
-  // Connect to backend and load event posts
+  // Connect to backend and load event posts, throw error if fail
   const loadEvents = async () => {
     try {
       setLoading(true);
@@ -56,7 +56,7 @@ export default function EventsPage() {
     }
   };
 
-  // Connect to backend and load event attendees
+  // Connect to backend and load event attendees, throw error if fail
   const loadAttendees = async (eventId) => {
     try {
       setDetailsLoading(true);
@@ -124,7 +124,6 @@ export default function EventsPage() {
 
   useEffect(() => {
     loadEvents();
-    // eslint-disable-next-line
   }, []);
 
   return (
