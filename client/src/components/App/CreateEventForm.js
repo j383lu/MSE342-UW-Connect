@@ -14,18 +14,18 @@ export default function CreateEventForm() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  const API_BASE = "http://localhost:3001";
-
   const handleCreate = async (e) => {
     e.preventDefault();
     setError("");
     setMessage("");
 
+    // basic required fields validation
     if (!title || !description || !eventDate || !eventTime || !location || !capacity) {
       setError("Please fill in all fields.");
       return;
     }
 
+    // capacity validation
     const capNum = Number(capacity);
     if (!Number.isInteger(capNum) || capNum <= 0) {
       setError("Capacity must be a positive integer.");
@@ -33,7 +33,8 @@ export default function CreateEventForm() {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/api/events`, {
+      // ✅ proxy version: call same-origin API (client/package.json proxy -> localhost:5000)
+      const res = await fetch("/api/events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -55,7 +56,7 @@ export default function CreateEventForm() {
 
       setMessage("Event created!");
 
-      // go back to events list
+      // back to events list
       setTimeout(() => {
         navigate("/events");
       }, 600);
@@ -74,7 +75,7 @@ export default function CreateEventForm() {
           </p>
         </div>
 
-        <button style={styles.outlineButton} onClick={() => navigate("/events")}>
+        <button type="button" style={styles.outlineButton} onClick={() => navigate("/events")}>
           Back
         </button>
       </div>

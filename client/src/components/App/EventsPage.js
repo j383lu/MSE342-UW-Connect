@@ -8,14 +8,12 @@ export default function EventsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const API_BASE = "http://localhost:3001";
-
   const loadEvents = async () => {
     try {
       setLoading(true);
       setError("");
 
-      const res = await fetch(`${API_BASE}/api/events`);
+      const res = await fetch("/api/events");
       const data = await res.json();
 
       if (!res.ok) {
