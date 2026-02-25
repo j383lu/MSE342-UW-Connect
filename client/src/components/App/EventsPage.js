@@ -13,6 +13,26 @@ export default function EventsPage() {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState("");
 
+  // Fix the time bug
+  const formatDate = (v) => {
+    if (!v) return "";
+    // if it's already "YYYY-MM-DD"
+    if (typeof v === "string" && v.includes("T")) return v.split("T")[0];
+    // if backend returned a Date object serialized differently
+    try {
+      const d = new Date(v);
+      if (!Number.isNaN(d.getTime())) return d.toISOString().split("T")[0];
+    } catch (e) {}
+    return String(v);
+  };
+
+  const formatTime = (v) => {
+    if (!v) return "";
+    if (typeof v === "string" && v.length >= 5) return v.slice(0, 5);
+    return String(v);
+  };
+
+  // Connect to backend and load event posts
   const loadEvents = async () => {
     try {
       setLoading(true);
@@ -36,6 +56,7 @@ export default function EventsPage() {
     }
   };
 
+  // Connect to backend and load event attendees
   const loadAttendees = async (eventId) => {
     try {
       setDetailsLoading(true);
@@ -60,13 +81,11 @@ export default function EventsPage() {
 
   const handleToggleAttendees = async (eventId) => {
     if (openDetailsId === eventId) {
-      // close dropdown
       setOpenDetailsId(null);
       setAttendees([]);
       setDetailsError("");
       return;
     }
-    // open dropdown
     setOpenDetailsId(eventId);
     await loadAttendees(eventId);
   };
@@ -89,14 +108,12 @@ export default function EventsPage() {
         return;
       }
 
-      // update count locally
       setEvents((prev) =>
         prev.map((x) =>
           x.id === ev.id ? { ...x, current_count: data.current_count } : x
         )
       );
 
-      // if dropdown is open, reload attendees
       if (openDetailsId === ev.id) {
         await loadAttendees(ev.id);
       }
@@ -149,11 +166,11 @@ export default function EventsPage() {
                       <div style={styles.metaBlock}>
                         <div style={styles.metaLine}>
                           <span style={styles.metaLabel}>Date</span>
-                          <span style={styles.metaValue}>{ev.event_date}</span>
+                          <span style={styles.metaValue}>{formatDate(ev.event_date)}</span>
                         </div>
                         <div style={styles.metaLine}>
                           <span style={styles.metaLabel}>Time</span>
-                          <span style={styles.metaValue}>{ev.event_time}</span>
+                          <span style={styles.metaValue}>{formatTime(ev.event_time)}</span>
                         </div>
                         <div style={styles.metaLine}>
                           <span style={styles.metaLabel}>Location</span>
@@ -166,9 +183,7 @@ export default function EventsPage() {
                       <div style={styles.capacity}>
                         {current}/{max}
                       </div>
-                      <div style={styles.capacityHint}>
-                        {isFull ? "Full" : "Spots"}
-                      </div>
+                      <div style={styles.capacityHint}>{isFull ? "Full" : "Spots"}</div>
                     </div>
                   </div>
 
@@ -194,7 +209,6 @@ export default function EventsPage() {
                     </button>
                   </div>
 
-                  {/* Dropdown area */}
                   <div
                     style={{
                       ...styles.dropdown,
