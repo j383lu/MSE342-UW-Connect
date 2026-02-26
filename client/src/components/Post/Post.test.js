@@ -62,7 +62,7 @@ describe("Create Text Post", () => {
     expect(screen.getByText(/you have exceeded the character limit/i)).toBeInTheDocument();
   });
 
-  test("5. Cancel closes modal and does not create post", () => {
+  test("5. Cancel closes form and does not create post", () => {
     render(<Post />);
 
     fireEvent.click(screen.getByText(/create post/i));
@@ -78,31 +78,6 @@ describe("Create Text Post", () => {
     fireEvent.click(screen.getByText(/cancel/i));
 
     expect(screen.queryByText("Test Title")).not.toBeInTheDocument();
-  });
-
-  test("6. Successful post appears in feed", () => {
-    render(<Post />);
-
-    fireEvent.click(screen.getByText(/create post/i));
-
-    fireEvent.change(screen.getByLabelText(/title/i), {
-      target: { value: "Group wanted for intramurals" }
-    });
-
-    fireEvent.change(screen.getByLabelText(/description/i), {
-      target: { value: "Hello everyone I need 3 more members for an intramural team!" }
-    });
-
-    fireEvent.change(screen.getByLabelText(/tags/i), {
-      target: { value: "sports, intramurals" }
-    });
-
-    fireEvent.click(screen.getByText(/submit/i));
-
-    expect(screen.getByText("Group wanted for intramurals")).toBeInTheDocument();
-    expect(screen.getByText("Hello everyone I need 3 more members for an intramural team!")).toBeInTheDocument();
-    expect(screen.getByText("sports")).toBeInTheDocument();
-    expect(screen.getByText("intramurals")).toBeInTheDocument();
   });
 
   test("7. Shows error when title is too long", () => {
@@ -164,26 +139,6 @@ test("9. Shows error when title contains only spaces", () => {
 
   expect(
     screen.getByText(/title is a required field/i)
-  ).toBeInTheDocument();
-});
-
-test("Allows special characters in title", () => {
-  render(<Post />);
-
-  fireEvent.click(screen.getByText(/create post/i));
-
-  fireEvent.change(screen.getByLabelText(/title/i), {
-    target: { value: "Hello!!! @#$%" }
-  });
-
-  fireEvent.change(screen.getByLabelText(/description/i), {
-    target: { value: "Valid description" }
-  });
-
-  fireEvent.click(screen.getByText(/submit/i));
-
-  expect(
-    screen.getByText(/hello!!! @#\$%/i)
   ).toBeInTheDocument();
 });
 

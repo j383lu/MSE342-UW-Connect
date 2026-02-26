@@ -105,6 +105,7 @@ function CreatePostForm({ open, onClose, onSubmit }) {
             <TextField
               fullWidth
               label="Title"
+              name="title"
               value={title}
               onChange={(e) => {
                 setTitle(e.target.value);
@@ -121,6 +122,7 @@ function CreatePostForm({ open, onClose, onSubmit }) {
               multiline
               rows={4}
               label="Description"
+              name="description"
               value={description}
               onChange={(e) => {
                 setDescription(e.target.value);
