@@ -28,7 +28,7 @@ const LogInPage = ({ onSwitchPage }) => {
         event.preventDefault();
         let newErrors = {};
 
-        // This creates the "This field is required." messages your test looks for
+        // this creates the "This field is required." messages your test looks for
         if (!formData.username) newErrors.username = 'This field is required.';
         if (!formData.password) newErrors.password = 'This field is required.';
 
@@ -39,9 +39,9 @@ const LogInPage = ({ onSwitchPage }) => {
         }
     };
 
-    // To change whether or not the password is masked or not
+    // to change whether or not the password is masked or not
     const [showPassword, setShowPassword] = useState(false);
-    // Toggle Function
+    // toggle Function
     const handleClickShowPassword = () => {
         setShowPassword(!showPassword);
     };
@@ -93,8 +93,6 @@ const LogInPage = ({ onSwitchPage }) => {
                                     onChange={handleChange}
                                     error={!!errors.username}
                                     helperText={errors.username}
-                                    // for Test: AC 2 & 3
-                                    inputProps={{ "data-testid": "username-input" }}
                                 />
                                 <TextField
                                     margin="normal"
@@ -108,7 +106,6 @@ const LogInPage = ({ onSwitchPage }) => {
                                     onChange={handleChange}
                                     error={!!errors.password}
                                     helperText={errors.password}
-                                    inputProps={{ "data-testid": "password-input" }}
                                     InputProps={{
                                         endAdornment: (
                                             <InputAdornment position="end">
@@ -116,9 +113,8 @@ const LogInPage = ({ onSwitchPage }) => {
                                                     aria-label="toggle password visibility"
                                                     onClick={handleClickShowPassword}
                                                     edge="end"
-                                                    data-testid="eye-icon"
                                                 >
-                                                    {/* Switch icon based on state */}
+                                                    {/* switch icon based on state */}
                                                     {showPassword ? <VisibilityOff /> : <Visibility />}
                                                 </IconButton>
                                             </InputAdornment>
@@ -130,7 +126,6 @@ const LogInPage = ({ onSwitchPage }) => {
                                     fullWidth
                                     variant="contained"
                                     sx={{ mt: 3, mb: 2 }}
-                                    data-testid="login-btn"
                                 >
                                     Log In
                                 </Button>

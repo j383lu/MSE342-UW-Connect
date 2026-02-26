@@ -29,11 +29,11 @@ const Registration = ({ onSwitchPage }) => {
 
         let errorMsg = '';
         
-        // Max 40 character logic for names
+        // max 40 character logic for names
         if (name === 'firstname' || name === 'lastname') {
-            const nameRegex = /^[a-zA-Z\s]*$/;
+            const nameRegex = /^[a-zA-Z]*$/;
             if (!nameRegex.test(value)) {
-                errorMsg = 'Only letters and spaces are allowed.';
+                errorMsg = 'Only letters are allowed.';
             } else if (value.length > 40) {
                 errorMsg = 'Name cannot exceed 40 characters.';
             }
@@ -51,7 +51,7 @@ const Registration = ({ onSwitchPage }) => {
         setErrors(prev => ({ ...prev, [name]: errorMsg }));
     };
 
-    // To change whether or not the password is masked or not
+    // to change whether or not the password is masked or not
     const [showPassword, setShowPassword] = useState(false);
     // Toggle Function
     const handleClickShowPassword = () => {
@@ -82,13 +82,6 @@ const Registration = ({ onSwitchPage }) => {
             console.log('Form Submitted successfully', formData);
         }
     };
-
-    // To change whether or not the password is masked or not
-    // const [showPassword, setShowPassword] = useState(false);
-    // // Toggle Function
-    // const handleClickShowPassword = () => {
-    //     setShowPassword(!showPassword);
-    // };
 
     return (
         <Box
@@ -134,7 +127,6 @@ const Registration = ({ onSwitchPage }) => {
                                     label="First Name"
                                     name="firstname"
                                     autoFocus
-                                    inputProps={{ "data-testid": "firstname-input" }}
                                     value={formData.firstname}
                                     onChange={handleChange}
                                     error={!!errors.firstname}
@@ -148,13 +140,12 @@ const Registration = ({ onSwitchPage }) => {
                                     label="Last Name"
                                     name="lastname"
                                     autoFocus
-                                    inputProps={{ "data-testid": "lastname-input" }}
                                     value={formData.lastname}
                                     onChange={handleChange}
                                     error={!!errors.lastname}
                                     helperText={errors.lastname}
                                 />
-                                {/* Need to wait for a later sprint to do the authentication */}
+                                {/* need to wait for a later sprint to do the authentication */}
                                 <TextField
                                     margin="normal"
                                     required
@@ -162,7 +153,6 @@ const Registration = ({ onSwitchPage }) => {
                                     name="email"
                                     label="Email"
                                     id="email"
-                                    inputProps={{ "data-testid": "email-input" }}
                                     value={formData.email}
                                     onChange={handleChange}
                                     error={!!errors.email}
@@ -175,7 +165,6 @@ const Registration = ({ onSwitchPage }) => {
                                     name="username"
                                     label="Username"
                                     id="username"
-                                    inputProps={{ "data-testid": "username-input" }}
                                     value={formData.username}
                                     onChange={handleChange}
                                     error={!!errors.username}
@@ -189,7 +178,6 @@ const Registration = ({ onSwitchPage }) => {
                                     label="Password"
                                     type={showPassword ? 'text' : 'password'}
                                     id="password"
-                                    inputProps={{ "data-testid": "password-input" }}
                                     value={formData.password}
                                     onChange={handleChange}
                                     error={!!errors.password}
@@ -201,9 +189,8 @@ const Registration = ({ onSwitchPage }) => {
                                                     aria-label="toggle password visibility"
                                                     onClick={handleClickShowPassword}
                                                     edge="end"
-                                                    data-testid="eye-icon"
                                                 >
-                                                    {/* Switch icon based on state */}
+                                                    {/* switch icon based on state */}
                                                     {showPassword ? <VisibilityOff /> : <Visibility />}
                                                 </IconButton>
                                             </InputAdornment>
@@ -218,7 +205,6 @@ const Registration = ({ onSwitchPage }) => {
                                     label="Confirm Password"
                                     type={showPassword ? 'text' : 'password'}
                                     id="confirmpassword"
-                                    inputProps={{ "data-testid": "confirm-password-input" }}
                                     value={formData.confirmpassword}
                                     onChange={handleChange}
                                     error={!!errors.confirmpassword}
@@ -230,7 +216,6 @@ const Registration = ({ onSwitchPage }) => {
                                                     aria-label="toggle password visibility"
                                                     onClick={handleClickShowPassword}
                                                     edge="end"
-                                                    data-testid="eye-icon"
                                                 >
                                                     {/* Switch icon based on state */}
                                                     {showPassword ? <VisibilityOff /> : <Visibility />}
@@ -244,7 +229,6 @@ const Registration = ({ onSwitchPage }) => {
                                     fullWidth
                                     variant="contained"
                                     sx={{ mt: 3, mb: 2 }}
-                                    data-testid="signup-btn"
                                 >
                                     Register
                                 </Button>

@@ -1,31 +1,26 @@
 import * as React from 'react';
 import { ThemeProvider } from '@mui/material/styles';
 import theme from './Theme'
-import { useState } from 'react';
-import LogInPage from './LogIn/LogInPage';
-import Registration from './LogIn/Registration';
+import LogInAndRegister from './LogIn/LogInAndRegister';
+import {BrowserRouter, Routes, Route} from 'react-router-dom';
+import Navbar from './Navbar';
 
 
 const App = () => {
 
-  // isLogin starts as true 
-  const [isLogin, setIsLogin] = useState(true);
-  // This function flips the boolean (true -> false / false -> true)
-  const handlePageSwitch = () => {
-      setIsLogin(!isLogin); 
-      console.log("Page flipped! isLogin is now:", !isLogin);
-  };
-
   return (
     <div>
-      <ThemeProvider theme={theme}>
-        {/* To flip between Log in and registration pages when signing in/up */}
-        {isLogin ? (
-          <LogInPage onSwitchPage={handlePageSwitch} />
-        ) : (
-          <Registration onSwitchPage={handlePageSwitch} />
-        )}
-      </ThemeProvider>
+      <BrowserRouter>
+        <ThemeProvider theme={theme}>
+          <Navbar /> 
+          
+          {/* Note: Login/Registration is not set up to handle authentication because of lecture timing;
+            therefore, we have chosen to render the logIn page using the NavBar for now. */}
+          <Routes>
+            <Route path="/login" element={<LogInAndRegister />} />
+          </Routes>
+        </ThemeProvider>
+    </BrowserRouter>
     </div>
   );
 }

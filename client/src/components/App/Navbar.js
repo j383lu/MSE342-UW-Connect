@@ -1,6 +1,6 @@
 import React from "react";
-import {AppBar, Toolbar, Typography, Button, Grid
-} from "@mui/material";
+import {AppBar, Toolbar, Typography, Button, Grid} from "@mui/material";
+import { Link } from "react-router-dom";
 
 function Navbar() {
   return (
@@ -16,6 +16,15 @@ function Navbar() {
 
           {/* Right side - Navigation Buttons */}
           <Grid item xs={6} container justifyContent="flex-end" spacing={2}>
+            <Grid item>
+              <Button 
+                color="inherit"
+                component={Link}
+                to='./LogIn'
+                >
+                Log In
+              </Button>
+            </Grid>
             <Grid item>
               <Button color="inherit">
                 Home
