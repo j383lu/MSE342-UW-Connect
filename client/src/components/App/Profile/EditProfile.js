@@ -11,90 +11,93 @@ import {
   Divider,
   Snackbar,
   Alert,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
-
-// Frontend-only placeholder list.
-// Real version should be backend validation/moderation.
-const RESTRICTED_WORDS = ["slur1", "slur2", "badword1"];
 
 function validateDisplayName(rawName) {
   const trimmed = rawName.trim();
 
   if (!trimmed) return "Name cannot be empty.";
-
-  // Only letters, numbers, spaces
-  if (!/^[a-zA-Z0-9 ]+$/.test(trimmed)) {
+  if (!/^[a-zA-Z0-9 ]+$/.test(trimmed))
     return "Only alphanumeric characters and spaces are allowed.";
-  }
-
-  // If you choose truncation with maxLength, this won't trigger.
-  // Kept here for safety in case maxLength is removed later.
-  if (trimmed.length > 30) {
+  if (trimmed.length > 30)
     return "Name must be 30 characters or fewer.";
-  }
-
-  const lower = trimmed.toLowerCase();
-  if (RESTRICTED_WORDS.some((w) => lower.includes(w))) {
-    return "Please choose a different name.";
-  }
 
   return "";
 }
+
 function EditProfile() {
   const navigate = useNavigate();
 
   const [draft, setDraft] = useState(null);
-  const [original, setOriginal] = useState(null);
-
+  const [programOptions, setProgramOptions] = useState([]);
   const [newCourse, setNewCourse] = useState("");
 
   const [nameError, setNameError] = useState("");
   const [successOpen, setSuccessOpen] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
+  // Load profile
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        // 🔮 Future backend call
-        // const res = await fetch("/api/profile");
-        // if (!res.ok) throw new Error("Failed to fetch profile");
-        // const data = await res.json();
+        const res = await fetch("/api/profile");
+        if (!res.ok) throw new Error("Failed to fetch profile");
+        const data = await res.json();
 
-        // Temporary placeholder until backend is ready
-        const data = {
-          name: "Ben Stewart",
-          program: "Management Engineering",
-          bio: "Looking for study partners for MSE courses.",
-          courses: ["MSE 342"],
-        };
-
-        setDraft(data);
-        setOriginal(data); // used to ensure Cancel keeps original value
+        setDraft({
+          name: data.name || "",
+          bio: data.bio || "",
+          program_id: data.program_id ?? "",
+          courses: Array.isArray(data.courses) ? data.courses : [],
+        });
       } catch (err) {
-        console.error("Failed to load profile", err);
+        console.error(err);
+        setSaveError("Could not load profile.");
       }
     };
 
     fetchProfile();
   }, []);
 
-  if (!draft) return null;
+  // Load programs for dropdown
+  useEffect(() => {
+    const fetchPrograms = async () => {
+      try {
+        const res = await fetch("/api/profile/programs");
+        if (!res.ok) throw new Error("Failed to fetch programs");
+        const data = await res.json();
+        setProgramOptions(data);
+      } catch (err) {
+        console.error(err);
+        setSaveError("Could not load programs.");
+      }
+    };
 
-  const handleCancel = () => {
-    // Discard edits by navigating away without saving.
-    // Original stays unchanged because we never wrote anywhere.
-    navigate("/profile");
-  };
+    fetchPrograms();
+  }, []);
+
+  if (!draft) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Typography>Loading...</Typography>
+      </Box>
+    );
+  }
+
+  const handleCancel = () => navigate("/profile");
 
   const handleAddCourse = () => {
     const trimmed = newCourse.trim();
     if (!trimmed) return;
 
-    // Simple duplicate prevention (case-sensitive). You can remove if you want.
     if (!draft.courses.includes(trimmed)) {
       setDraft({ ...draft, courses: [...draft.courses, trimmed] });
     }
-
     setNewCourse("");
   };
 
@@ -106,39 +109,42 @@ function EditProfile() {
   };
 
   const handleSave = async () => {
-    // Validate display name acceptance criteria
+    setSaveError("");
+
     const err = validateDisplayName(draft.name);
     if (err) {
       setNameError(err);
       return;
     }
 
-    // Trim leading/trailing spaces before saving
-    const payload = { ...draft, name: draft.name.trim() };
+    const payload = {
+      name: draft.name.trim(),
+      bio: draft.bio,
+      program_id:
+        draft.program_id === "" ? null : Number(draft.program_id),
+    };
 
     try {
-      // 🔮 Future backend call
-      // const res = await fetch("/api/profile", {
-      //   method: "PUT",
-      //   headers: { "Content-Type": "application/json" },
-      //   body: JSON.stringify(payload),
-      // });
-      // if (!res.ok) throw new Error("Failed to save profile");
+      const res = await fetch("/api/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-      // If backend succeeds, show success notification
+      if (!res.ok) {
+        let msg = "Failed to save profile.";
+        try {
+          const body = await res.json();
+          if (body?.error) msg = body.error;
+        } catch (_) {}
+        throw new Error(msg);
+      }
+
       setSuccessOpen(true);
-
-      // Update local "original" snapshot (nice for future UX if you stay on page)
-      setOriginal(payload);
-      setDraft(payload);
-
-      // Navigate back after a short delay so user can see the message
-      setTimeout(() => {
-        navigate("/profile");
-      }, 1500);
+      setTimeout(() => navigate("/profile"), 1500);
     } catch (err2) {
-      console.error("Failed to save profile", err2);
-      // (Optional later) show error snackbar here
+      console.error(err2);
+      setSaveError(err2.message || "Failed to save profile.");
     }
   };
 
@@ -148,10 +154,6 @@ function EditProfile() {
         <CardContent>
           <Typography variant="h5" sx={{ fontWeight: 700 }}>
             Edit Profile
-          </Typography>
-
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            Backend-ready setup: validation runs now; saving will call the API later.
           </Typography>
 
           <Divider sx={{ my: 3 }} />
@@ -167,45 +169,82 @@ function EditProfile() {
               }}
               fullWidth
               error={!!nameError}
-              helperText={nameError || "Only letters, numbers, and spaces. Max 30 characters."}
+              helperText={
+                nameError ||
+                "Only letters, numbers, and spaces. Max 30 characters."
+              }
               inputProps={{
-                maxLength: 30, // ✅ truncates at 30 to satisfy AC
+                maxLength: 30,
                 "data-testid": "display-name-input",
               }}
             />
 
-            {/* Program (placeholder until dropdown/autocomplete) */}
-            <TextField
-              label="Program"
-              value={draft.program}
-              onChange={(e) => setDraft({ ...draft, program: e.target.value })}
-              fullWidth
-              inputProps={{ "data-testid": "program-input" }}
-            />
+            {/* Program Dropdown */}
+            <FormControl fullWidth>
+              <InputLabel id="program-select-label">
+                Program
+              </InputLabel>
+              <Select
+                labelId="program-select-label"
+                id="program-select"
+                value={draft.program_id}
+                label="Program"
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    program_id: e.target.value,
+                  })
+                }
+                inputProps={{ "data-testid": "program-input" }}
+              >
+                <MenuItem value="">
+                  <em>None</em>
+                </MenuItem>
+                {programOptions.map((program) => (
+                  <MenuItem
+                    key={program.program_id}
+                    value={program.program_id}
+                  >
+                    {program.program_name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
             {/* Bio */}
             <TextField
               label="Bio"
               value={draft.bio}
-              onChange={(e) => setDraft({ ...draft, bio: e.target.value })}
+              onChange={(e) =>
+                setDraft({ ...draft, bio: e.target.value })
+              }
               multiline
               minRows={3}
               fullWidth
               inputProps={{ "data-testid": "bio-input" }}
             />
 
-            {/* Courses (placeholder until multi-select dropdown/autocomplete) */}
+            {/* Courses */}
             <Box>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+              <Typography
+                variant="subtitle1"
+                sx={{ fontWeight: 600 }}
+              >
                 Courses
               </Typography>
 
-              <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: "wrap" }}>
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{ mt: 1, flexWrap: "wrap" }}
+              >
                 {(draft.courses || []).map((course, idx) => (
                   <Chip
                     key={`${course}-${idx}`}
                     label={course}
-                    onDelete={() => handleRemoveCourse(course)}
+                    onDelete={() =>
+                      handleRemoveCourse(course)
+                    }
                   />
                 ))}
               </Stack>
@@ -214,22 +253,38 @@ function EditProfile() {
                 <TextField
                   label="Add course"
                   value={newCourse}
-                  onChange={(e) => setNewCourse(e.target.value)}
+                  onChange={(e) =>
+                    setNewCourse(e.target.value)
+                  }
                   fullWidth
-                  inputProps={{ "data-testid": "add-course-input" }}
                 />
-                <Button variant="contained" onClick={handleAddCourse} data-testid="add-course-btn">
+                <Button
+                  variant="contained"
+                  onClick={handleAddCourse}
+                >
                   Add
                 </Button>
               </Stack>
             </Box>
 
-            {/* Actions */}
-            <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 1 }}>
-              <Button variant="text" onClick={handleCancel} data-testid="cancel-btn">
+            {saveError && (
+              <Alert severity="error" variant="outlined">
+                {saveError}
+              </Alert>
+            )}
+
+            <Stack
+              direction="row"
+              justifyContent="flex-end"
+              spacing={1}
+            >
+              <Button variant="text" onClick={handleCancel}>
                 Cancel
               </Button>
-              <Button variant="contained" onClick={handleSave} data-testid="save-btn">
+              <Button
+                variant="contained"
+                onClick={handleSave}
+              >
                 Save
               </Button>
             </Stack>
@@ -237,11 +292,13 @@ function EditProfile() {
         </CardContent>
       </Card>
 
-      {/* Success Snackbar */}
       <Snackbar
         open={successOpen}
         autoHideDuration={1500}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+        anchorOrigin={{
+          vertical: "bottom",
+          horizontal: "center",
+        }}
       >
         <Alert severity="success" variant="filled">
           Profile successfully updated
