@@ -229,20 +229,23 @@ app.get("/api/users/:userId/groups/owned", (req, res) => {
 app.get("/api/users/:userId/groups/member", (req, res) => {
   const userId = req.params.userId;
   
+  console.log(`GET /api/users/${userId}/groups/member - Fetching user's groups`);
+  
   const sql = `
     SELECT sg.*, 
     (SELECT COUNT(*) FROM Group_Members gm2 WHERE gm2.group_id = sg.group_id) as member_count
     FROM Social_Group sg
     INNER JOIN Group_Members gm ON sg.group_id = gm.group_id
-    WHERE gm.user_id = ? AND sg.creator_id != ?
+    WHERE gm.user_id = ?
     ORDER BY sg.group_id DESC
   `;
   
-  db.query(sql, [userId, userId], (err, rows) => {
+  db.query(sql, [userId], (err, rows) => {
     if (err) {
       console.error("GET /api/users/:userId/groups/member error:", err);
       return res.status(500).json({ error: "Failed to fetch member groups" });
     }
+    console.log(`Found ${rows.length} groups for user ${userId}:`, rows);
     return res.json(rows);
   });
 });
@@ -422,7 +425,56 @@ app.delete("/api/groups/:groupId", (req, res) => {
 });
 
 
-//
+// GET GROUP MEMBERS with user details
+app.get("/api/groups/:groupId/members", (req, res) => {
+  const groupId = req.params.groupId;
+  
+  console.log(`GET /api/groups/${groupId}/members - Fetching group members`);
+  
+  const sql = `
+    SELECT gm.user_id, gm.role, gm.joined_at, up.display_name, up.avatar_url
+    FROM Group_Members gm
+    LEFT JOIN User_Profiles up ON gm.user_id = up.user_id
+    WHERE gm.group_id = ?
+    ORDER BY 
+      CASE WHEN gm.user_id = ? THEN 0 ELSE 1 END, -- Put owner first (you'll need to pass creator_id)
+      gm.joined_at ASC
+  `;
+  
+  // We need the creator_id to identify the owner
+  // First get the creator_id
+  const creatorSql = "SELECT creator_id FROM Social_Group WHERE group_id = ?";
+  
+  db.query(creatorSql, [groupId], (err, creatorResult) => {
+    if (err) {
+      console.error("Error fetching group creator:", err);
+      return res.status(500).json({ error: "Failed to fetch group creator" });
+    }
+    
+    if (creatorResult.length === 0) {
+      return res.status(404).json({ error: "Group not found" });
+    }
+    
+    const creatorId = creatorResult[0].creator_id;
+    
+    // Now fetch members with the creator_id for ordering
+    db.query(sql, [groupId, creatorId], (err, rows) => {
+      if (err) {
+        console.error("Error fetching group members:", err);
+        return res.status(500).json({ error: "Failed to fetch members" });
+      }
+      
+      // Add role information (owner vs member)
+      const membersWithRole = rows.map(member => ({
+        ...member,
+        role: member.user_id === creatorId ? 'owner' : 'member'
+      }));
+      
+      console.log(`Found ${membersWithRole.length} members for group ${groupId}`);
+      return res.json(membersWithRole);
+    });
+  });
+});
 
 
 

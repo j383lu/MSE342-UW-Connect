@@ -12,22 +12,18 @@ export default function GroupDetailsPage() {
   const [error, setError] = useState("");
   const [isMember, setIsMember] = useState(false);
   const [membersCount, setMembersCount] = useState(0);
+  const [members, setMembers] = useState([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [checkingMembership, setCheckingMembership] = useState(true);
   
   // Add a ref to track if we've manually updated the state
   const manuallyUpdated = useRef(false);
-  const membershipCheckId = useRef(0); // ✅ add this
 
   // Hardcoded user ID for now (should come from auth context later)
   const CURRENT_USER_ID = 1;
 
   useEffect(() => {
-    // ✅ reset when group changes (prevents “default Leave” from previous group)
-    setIsMember(false);
-    setCheckingMembership(true);
-    manuallyUpdated.current = false;
-
     loadGroup();
   }, [groupId]);
 
@@ -35,11 +31,12 @@ export default function GroupDetailsPage() {
   useEffect(() => {
     if (group && !manuallyUpdated.current) {
       checkMembership();
+      loadGroupMembers();
     } else {
       // Reset the flag after checking
       manuallyUpdated.current = false;
     }
-  }, [group]); // Keep group in dependencies
+  }, [group]);
 
   async function loadGroup() {
     try {
@@ -68,47 +65,83 @@ export default function GroupDetailsPage() {
     }
   }
 
-  async function checkMembership() {
-    const myCheck = ++membershipCheckId.current; // ✅ unique id for this run
-
+  // Function to load actual group members with names
+  async function loadGroupMembers() {
+    if (!groupId) return;
+    
     try {
-      setCheckingMembership(true);
-
-      if (!group) return;
-
-      // owner is always a member
-      if (Number(group.creator_id) === Number(CURRENT_USER_ID)) {
-        if (membershipCheckId.current !== myCheck) return;
-        setIsMember(true);
-        return;
-      }
-
-      const res = await fetch(`/api/users/${CURRENT_USER_ID}/groups/member`);
-
-      if (membershipCheckId.current !== myCheck) return; // ✅ ignore late response
-
+      setLoadingMembers(true);
+      const res = await fetch(`/api/groups/${groupId}/members`);
       if (res.ok) {
-        const userGroups = await res.json();
-
-        const isMemberOfThisGroup = userGroups.some((g) => {
-          const gid = g.group_id ?? g.groupId ?? g.id; // ✅ handle different shapes
-          return Number(gid) === Number(groupId);
-        });
-
-        setIsMember(isMemberOfThisGroup);
+        const data = await res.json();
+        console.log("Group members with details:", data);
+        setMembers(data);
       } else {
-        setIsMember(false);
+        console.error("Failed to load members:", res.status);
       }
     } catch (err) {
-      if (membershipCheckId.current !== myCheck) return;
-      setIsMember(false);
+      console.error("Error loading group members:", err);
     } finally {
-      if (membershipCheckId.current === myCheck) {
-        setCheckingMembership(false);
-      }
+      setLoadingMembers(false);
     }
   }
 
+  async function checkMembership() {
+    try {
+      setCheckingMembership(true);
+      console.log(`Checking membership for user ${CURRENT_USER_ID} in group ${groupId}`);
+      
+      if (!group) {
+        console.log("No group data yet");
+        setCheckingMembership(false);
+        return;
+      }
+      
+      // First check if user is the owner
+      if (group.creator_id === CURRENT_USER_ID) {
+        console.log("User is the owner");
+        // Check if owner is also a member (from Group_Members)
+        const res = await fetch(`/api/users/${CURRENT_USER_ID}/groups/member`);
+        
+        if (res.ok) {
+          const userGroups = await res.json();
+          const isMemberOfThisGroup = userGroups.some(g => 
+            Number(g.group_id) === Number(groupId)
+          );
+          console.log("Owner is member?", isMemberOfThisGroup);
+          setIsMember(isMemberOfThisGroup);
+        } else {
+          setIsMember(false);
+        }
+        setCheckingMembership(false);
+        return;
+      }
+      
+      // For non-owners, check memberships
+      console.log("User is not the owner, checking memberships...");
+      const res = await fetch(`/api/users/${CURRENT_USER_ID}/groups/member`);
+      
+      if (res.ok) {
+        const userGroups = await res.json();
+        console.log("User's groups from API:", userGroups);
+        
+        const isMemberOfThisGroup = userGroups.some(g => 
+          Number(g.group_id) === Number(groupId)
+        );
+        
+        console.log(`Is group ${groupId} in user's groups?`, isMemberOfThisGroup);
+        setIsMember(isMemberOfThisGroup);
+      } else {
+        console.log("Failed to fetch user memberships, assuming not a member");
+        setIsMember(false);
+      }
+    } catch (err) {
+      console.error("Error checking membership:", err);
+      setIsMember(false);
+    } finally {
+      setCheckingMembership(false);
+    }
+  }
 
   async function handleJoin() {
     if (!group || group.is_private) return;
@@ -127,7 +160,6 @@ export default function GroupDetailsPage() {
       console.log("Join response:", responseData);
 
       if (!res.ok) {
-        // If already a member, just update the state
         if (responseData.error === 'Already a member of this group') {
           console.log("Already a member, updating state");
           manuallyUpdated.current = true;
@@ -137,6 +169,7 @@ export default function GroupDetailsPage() {
             ...prev,
             member_count: (prev.member_count || 0) + 1
           }));
+          loadGroupMembers(); // Reload members
           return;
         }
         
@@ -145,7 +178,6 @@ export default function GroupDetailsPage() {
 
       console.log("Successfully joined group");
       
-      // Update local state immediately and set flag
       manuallyUpdated.current = true;
       setIsMember(true);
       setMembersCount(prev => prev + 1);
@@ -153,6 +185,7 @@ export default function GroupDetailsPage() {
         ...prev,
         member_count: (prev.member_count || 0) + 1
       }));
+      loadGroupMembers(); // Reload members
       
     } catch (err) {
       console.error("Error joining group:", err);
@@ -174,7 +207,6 @@ export default function GroupDetailsPage() {
       console.log("Leave response:", responseData);
 
       if (!res.ok) {
-        // If not a member, just update the state
         if (responseData.error === 'Not a member of this group') {
           console.log("Not a member, updating state");
           manuallyUpdated.current = true;
@@ -184,6 +216,7 @@ export default function GroupDetailsPage() {
             ...prev,
             member_count: Math.max(0, (prev.member_count || 1) - 1)
           }));
+          loadGroupMembers(); // Reload members
           return;
         }
         
@@ -192,7 +225,6 @@ export default function GroupDetailsPage() {
 
       console.log("Successfully left group");
       
-      // Update local state immediately and set flag
       manuallyUpdated.current = true;
       setIsMember(false);
       setMembersCount(prev => Math.max(0, prev - 1));
@@ -200,6 +232,7 @@ export default function GroupDetailsPage() {
         ...prev,
         member_count: Math.max(0, (prev.member_count || 1) - 1)
       }));
+      loadGroupMembers(); // Reload members
       
     } catch (err) {
       console.error("Error leaving group:", err);
@@ -213,7 +246,7 @@ export default function GroupDetailsPage() {
     return group && group.creator_id === CURRENT_USER_ID;
   }, [group]);
 
-  // Mock data for posts and members
+  // Mock data for posts (keeping as is)
   const posts = useMemo(() => [
     {
       id: 1,
@@ -232,13 +265,6 @@ export default function GroupDetailsPage() {
       comments: 1
     }
   ], []);
-
-  const membersPreview = useMemo(() => [
-    { name: "Van Nguyen", role: isOwner ? "Owner" : "Member" },
-    { name: "Alex Chen", role: "Member" },
-    { name: "Sam Taylor", role: "Member" },
-    { name: "Jordan Lee", role: "Member" }
-  ], [isOwner]);
 
   if (loading) {
     return (
@@ -296,7 +322,7 @@ export default function GroupDetailsPage() {
               </button>
             ) : null}
 
-            {!checkingMembership && (
+            {!checkingMembership ? (
               isMember ? (
                 <button 
                   style={btn("danger")} 
@@ -315,6 +341,10 @@ export default function GroupDetailsPage() {
                   {isJoining ? 'Joining...' : 'Join Group'}
                 </button>
               )
+            ) : (
+              <button style={btn("secondary")} disabled>
+                Loading...
+              </button>
             )}
           </div>
         </div>
@@ -377,37 +407,45 @@ export default function GroupDetailsPage() {
             <p style={description}>{group.description}</p>
           </div>
 
-          {/* Tags */}
+          {/* Category */}
           <div style={section}>
-            <h3 style={sectionTitle}>Tags</h3>
-            <div style={tagsList}>
-              <span style={tagPill}>{group.category.toLowerCase()}</span>
-              <span style={tagPill}>students</span>
-              <span style={tagPill}>campus</span>
+            <h3 style={sectionTitle}>Category</h3>
+            <div style={categoryDisplay}>
+              <span style={categoryPill}>{group.category}</span>
             </div>
           </div>
 
-          {/* Members Preview */}
+          {/* Members List - Now showing actual members with names and roles */}
           <div style={section}>
             <h3 style={sectionTitle}>
               Members ({membersCount})
             </h3>
 
-            <div style={membersGrid}>
-              {membersPreview.map((m, index) => (
-                <div key={index} style={memberCard}>
-                  <div style={memberAvatar}>{initials(m.name)}</div>
-                  <div>
-                    <div style={memberName}>{m.name}</div>
-                    <div style={memberRole}>{m.role}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {membersCount > 4 && (
-              <div style={{ marginTop: 10, color: "#666", fontSize: 13 }}>
-                and {membersCount - 4} more members...
+            {loadingMembers ? (
+              <p>Loading members...</p>
+            ) : (
+              <div style={membersGrid}>
+                {members.length > 0 ? (
+                  members.map((member, index) => (
+                    <div key={index} style={memberCard}>
+                      <div style={memberAvatar}>
+                        {member.display_name ? initials(member.display_name) : "👤"}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={memberName}>
+                          {member.display_name || `User ${member.user_id}`}
+                          {member.user_id === CURRENT_USER_ID && " (You)"}
+                        </div>
+                        <div style={memberRole}>
+                          {member.role === 'owner' ? 'Owner' : 'Member'}
+                          {member.role === 'owner' && member.user_id === CURRENT_USER_ID && " (You)"}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p style={{ color: "#666", fontStyle: "italic" }}>No members yet</p>
+                )}
               </div>
             )}
           </div>
@@ -485,6 +523,7 @@ function PostCard({ author, time, content, likes, comments }) {
 }
 
 function initials(name) {
+  if (!name) return "👤";
   const parts = name.trim().split(/\s+/);
   const a = parts[0]?.[0] || "";
   const b = parts.length > 1 ? parts[parts.length - 1][0] : "";
@@ -645,14 +684,20 @@ const section = { marginBottom: 30 };
 const sectionTitle = { fontSize: 18, fontWeight: 900, color: "#111", marginBottom: 15 };
 const description = { color: "#555", lineHeight: 1.6 };
 
-const tagsList = { display: "flex", flexWrap: "wrap", gap: 10 };
-const tagPill = {
-  backgroundColor: "#f5f5f5",
-  color: "#666",
-  padding: "6px 16px",
-  borderRadius: 20,
-  fontSize: 13,
-  border: "1px solid #eee",
+const categoryDisplay = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 10,
+};
+
+const categoryPill = {
+  backgroundColor: "#f0f0f0",
+  color: "#111",
+  padding: "8px 20px",
+  borderRadius: 30,
+  fontSize: 14,
+  fontWeight: 600,
+  border: "1px solid #ddd",
 };
 
 const membersGrid = {

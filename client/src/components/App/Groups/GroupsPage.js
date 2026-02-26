@@ -41,7 +41,7 @@ export default function GroupsPage() {
     // Load fresh data whenever the component mounts or gains focus
     loadAllGroups();
 
-    // Optional: Also refresh when the page is shown (user navigates back)
+    // Also refresh when the page is shown (user navigates back)
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         console.log("Page became visible, refreshing groups data");
@@ -81,7 +81,7 @@ export default function GroupsPage() {
     }
   }
 
-  // New function to fetch fresh data without multiple refreshes
+  // Function to fetch fresh data
   async function fetchFreshData() {
     try {
       // Fetch fresh groups
@@ -93,25 +93,18 @@ export default function GroupsPage() {
       console.log("Fresh groups data:", freshGroups);
       setGroups(freshGroups);
       
-      // Fetch fresh memberships
+      // Fetch fresh memberships - ONLY from Group_Members table
       const membershipsRes = await fetch(`/api/users/${CURRENT_USER_ID}/groups/member`);
       let memberIds = [];
       
       if (membershipsRes.ok) {
         const membershipsData = await membershipsRes.json();
-        console.log("Fresh memberships data:", membershipsData);
+        console.log("Fresh memberships data from Group_Members:", membershipsData);
         memberIds = membershipsData.map(g => Number(g.group_id));
       }
       
-      // Add owned groups
-      const ownedIds = freshGroups
-        .filter(g => Number(g.creator_id) === CURRENT_USER_ID)
-        .map(g => Number(g.group_id));
-      
-      // Combine and set
-      const allMemberIds = [...new Set([...memberIds, ...ownedIds])];
-      console.log("Final member IDs:", allMemberIds);
-      setMemberships(allMemberIds);
+      console.log("Final member IDs (from Group_Members only):", memberIds);
+      setMemberships(memberIds);
       
     } catch (err) {
       console.error("Error fetching fresh data:", err);
@@ -129,40 +122,6 @@ export default function GroupsPage() {
       setError("Failed to load groups");
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function loadUserMemberships() {
-    try {
-      console.log("Loading memberships for user:", CURRENT_USER_ID);
-      const res = await fetch(`/api/users/${CURRENT_USER_ID}/groups/member`);
-      
-      let memberIds = [];
-      
-      if (res.ok) {
-        const data = await res.json();
-        console.log("Raw memberships data from API:", data);
-        
-        // Extract just the group IDs and ensure they're numbers
-        memberIds = data.map(g => Number(g.group_id));
-      } else {
-        console.error("Failed to load memberships. Status:", res.status);
-      }
-      
-      // Also add owned groups to memberships (since owner is automatically a member)
-      const ownedIds = groups
-        .filter(g => Number(g.creator_id) === CURRENT_USER_ID)
-        .map(g => Number(g.group_id));
-      
-      console.log("Owned group IDs:", ownedIds);
-      
-      // Combine both sets of IDs (remove duplicates)
-      const allMemberIds = [...new Set([...memberIds, ...ownedIds])];
-      console.log("All member IDs (including owned):", allMemberIds);
-      
-      setMemberships(allMemberIds);
-    } catch (err) {
-      console.error("Error loading memberships:", err);
     }
   }
 
@@ -189,8 +148,6 @@ export default function GroupsPage() {
       if (!res.ok) {
         if (responseData.error === 'Already a member of this group') {
           console.log("Already a member, refreshing data...");
-          // Clear memberships first to force UI update
-          setMemberships([]);
           await fetchFreshData();
           return;
         }
@@ -199,15 +156,12 @@ export default function GroupsPage() {
 
       console.log("Successfully joined group, refreshing data...");
       
-      // Clear memberships first to force UI update
-      setMemberships([]);
       await fetchFreshData();
       
     } catch (err) {
       console.error("Error in handleJoin:", err);
       alert(err.message);
     } finally {
-      // Reset the flag after a delay
       setTimeout(() => {
         isJoining.current = false;
       }, 1000);
@@ -235,45 +189,22 @@ export default function GroupsPage() {
         // If the server says we're not a member, update UI to reflect that
         if (responseData.error === 'Not a member of this group') {
           console.log("Server says not a member, updating UI to match");
-          
-          // Remove from memberships
-          setMemberships(prev => prev.filter(id => Number(id) !== Number(groupId)));
-          
-          // Update member count in groups (decrease by 1)
-          setGroups(prev => prev.map(g => {
-            if (Number(g.group_id) === Number(groupId)) {
-              return { ...g, member_count: Math.max(0, (g.member_count || 1) - 1) };
-            }
-            return g;
-          }));
-          
-          // Don't show alert for this expected case
+          await fetchFreshData();
           return;
         }
         
-        // For other errors, show alert
         alert(responseData.error || 'Failed to leave group');
         return;
       }
 
       console.log("✅ Successfully left group");
       
-      // Update local state immediately - remove from memberships
-      setMemberships(prev => prev.filter(id => Number(id) !== Number(groupId)));
-      
-      // Update member count in groups
-      setGroups(prev => prev.map(g => {
-        if (Number(g.group_id) === Number(groupId)) {
-          return { ...g, member_count: Math.max(0, (g.member_count || 1) - 1) };
-        }
-        return g;
-      }));
+      await fetchFreshData();
       
     } catch (err) {
       console.error("Error in handleLeave:", err);
       alert(err.message);
     } finally {
-      // Reset the flag after a delay
       setTimeout(() => {
         isLeaving.current = false;
       }, 1000);
@@ -290,7 +221,13 @@ export default function GroupsPage() {
   }, [groups]);
 
   const myGroups = useMemo(() => {
-    return groups.filter((g) => memberships.includes(Number(g.group_id)));
+    // Debug log to see what's happening
+    console.log("Calculating myGroups. memberships:", memberships);
+    console.log("All groups:", groups.map(g => ({ id: g.group_id, name: g.name })));
+    
+    const filtered = groups.filter((g) => memberships.includes(Number(g.group_id)));
+    console.log("Filtered myGroups:", filtered.map(g => ({ id: g.group_id, name: g.name })));
+    return filtered;
   }, [groups, memberships]);
 
   // Filtered discover groups based on filter and search
@@ -339,7 +276,7 @@ export default function GroupsPage() {
         </div>
       )}
 
-      {/* Owned Groups - Unfiltered */}
+      {/* Owned Groups */}
       <section style={{ marginTop: 18 }}>
         <h2 style={{ marginBottom: 10 }}>Owned Groups</h2>
 
@@ -348,50 +285,58 @@ export default function GroupsPage() {
             You haven't created any groups yet. Click "Create Group" to make one!
           </p>
         ) : (
-          ownedGroups.map((g) => (
-            <div key={g.group_id} style={ownedRow}>
-              <div
-                style={{ flex: 1, cursor: "pointer" }}
-                onClick={() => navigate(`/groups/${g.group_id}`)}
-              >
-                <h3 style={{ margin: 0 }}>{g.name}</h3>
-                <p style={{ margin: "6px 0 0", color: "#444" }}>
-                  {g.description}
-                </p>
+          ownedGroups.map((g) => {
+            const isAlsoMember = memberships.includes(Number(g.group_id));
+            return (
+              <div key={g.group_id} style={ownedRow}>
+                <div
+                  style={{ flex: 1, cursor: "pointer" }}
+                  onClick={() => navigate(`/groups/${g.group_id}`)}
+                >
+                  <h3 style={{ margin: 0 }}>{g.name}</h3>
+                  <p style={{ margin: "6px 0 0", color: "#444" }}>
+                    {g.description}
+                  </p>
 
-                <div style={metaRow}>
-                  <span style={pill}>{g.category}</span>
-                  <span
-                    style={{
-                      ...pill,
-                      background: !g.is_private ? "#e9f7ef" : "#fdecea",
-                    }}
-                  >
-                    {!g.is_private ? "Open" : "Private"}
-                  </span>
-                  {g.max_members && (
-                    <span style={pill}>
-                      Max {g.max_members} members
+                  <div style={metaRow}>
+                    <span style={pill}>{g.category}</span>
+                    <span
+                      style={{
+                        ...pill,
+                        background: !g.is_private ? "#e9f7ef" : "#fdecea",
+                      }}
+                    >
+                      {!g.is_private ? "Open" : "Private"}
                     </span>
-                  )}
-                  <span style={{...pill, background: "#e3f2fd", color: "#1976d2"}}>
-                    ✅ Owner
-                  </span>
+                    {g.max_members && (
+                      <span style={pill}>
+                        Max {g.max_members} members
+                      </span>
+                    )}
+                    <span style={{...pill, background: "#e3f2fd", color: "#1976d2"}}>
+                      Owner
+                    </span>
+                    {isAlsoMember && (
+                      <span style={{...pill, background: "#e3f2fd", color: "#1976d2"}}>
+                        Member
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              <button
-                style={secondaryBtn}
-                onClick={() => navigate(`/groups/${g.group_id}/edit`)}
-              >
-                Edit Group
-              </button>
-            </div>
-          ))
+                <button
+                  style={secondaryBtn}
+                  onClick={() => navigate(`/groups/${g.group_id}/edit`)}
+                >
+                  Edit Group
+                </button>
+              </div>
+            );
+          })
         )}
       </section>
 
-      {/* My Groups - Unfiltered */}
+      {/* My Groups */}
       <section style={{ marginTop: 26 }}>
         <h2 style={{ marginBottom: 10 }}>My Groups</h2>
 
@@ -413,7 +358,7 @@ export default function GroupsPage() {
         )}
       </section>
 
-      {/* Discover Groups - Filtered */}
+      {/* Discover Groups */}
       <section style={{ marginTop: 26 }}>
         <h2 style={{ marginBottom: 10 }}>Discover Groups</h2>
 
