@@ -27,11 +27,10 @@ db.connect((err) => {
 // if includePast=true: return all events
 app.get("/api/events", (req, res) => {
   const includePast = String(req.query.includePast).toLowerCase() === "true";
-
-  const whereClause = includePast ? "" : "WHERE e.event_date >= CURDATE()";
+  const whereClause = includePast ? "" : "WHERE TIMESTAMP(e.event_date, e.event_time) >= NOW()";
 
   const sql = `
-  SELECT 
+    SELECT 
       e.id,
       e.title,
       e.description,
