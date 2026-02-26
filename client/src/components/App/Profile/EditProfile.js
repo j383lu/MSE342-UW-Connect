@@ -117,6 +117,11 @@ function EditProfile() {
       return;
     }
 
+    if (!draft.program_id) {
+      setSaveError("Please select a program.");
+      return;
+    }
+
     const payload = {
       name: draft.name.trim(),
       bio: draft.bio,
@@ -150,13 +155,13 @@ function EditProfile() {
 
   return (
     <Box sx={{ p: 3, display: "flex", justifyContent: "center" }}>
-      <Card sx={{ width: 800 }}>
+      <Card sx={{ width: 800, bgcolor: "background.paper", borderColor: "divider" }}>
         <CardContent>
-          <Typography variant="h5" sx={{ fontWeight: 700 }}>
+          <Typography variant="h2" sx={{ fontWeight: 700, color: "text.primary" }}>
             Edit Profile
           </Typography>
 
-          <Divider sx={{ my: 3 }} />
+          <Divider sx={{ my: 3, borderColor: "divider" }} />
 
           <Stack spacing={2}>
             {/* Display Name */}
@@ -197,9 +202,6 @@ function EditProfile() {
                 }
                 inputProps={{ "data-testid": "program-input" }}
               >
-                <MenuItem value="">
-                  <em>None</em>
-                </MenuItem>
                 {programOptions.map((program) => (
                   <MenuItem
                     key={program.program_id}
@@ -227,8 +229,8 @@ function EditProfile() {
             {/* Courses */}
             <Box>
               <Typography
-                variant="subtitle1"
-                sx={{ fontWeight: 600 }}
+                variant="h2"
+                sx={{ fontWeight: 600, color: "text.primary", fontSize: "1rem" }}
               >
                 Courses
               </Typography>
@@ -261,6 +263,7 @@ function EditProfile() {
                 <Button
                   variant="contained"
                   onClick={handleAddCourse}
+                  sx={{ bgcolor: "primary.main", color: "primary.contrastText", fontWeight: 600 }}
                 >
                   Add
                 </Button>
@@ -278,12 +281,17 @@ function EditProfile() {
               justifyContent="flex-end"
               spacing={1}
             >
-              <Button variant="text" onClick={handleCancel}>
+              <Button 
+                variant="text" 
+                onClick={handleCancel}
+                sx={{ color: "text.primary", fontWeight: 600 }}
+              >
                 Cancel
               </Button>
               <Button
                 variant="contained"
                 onClick={handleSave}
+                sx={{ bgcolor: "primary.main", color: "primary.contrastText", fontWeight: 600 }}
               >
                 Save
               </Button>

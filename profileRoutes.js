@@ -102,15 +102,11 @@ router.put("/", (req, res) => {
     return res.status(400).json({ error: "Display name is required." });
   }
 
-  // Accept null/empty for "no program selected"
-  const programIdValue =
-    program_id === null || program_id === undefined || program_id === ""
-      ? null
-      : Number(program_id);
-
-  if (programIdValue !== null && Number.isNaN(programIdValue)) {
+  // program_id is now required
+  const programIdValue = Number(program_id);
+  if (!program_id || Number.isNaN(programIdValue) || programIdValue <= 0) {
     connection.end();
-    return res.status(400).json({ error: "program_id must be a number or null." });
+    return res.status(400).json({ error: "Program is required." });
   }
 
   const updateSql = `
