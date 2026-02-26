@@ -1,66 +1,246 @@
 // client/src/components/App/Groups/GroupDetailsPage.js
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  CURRENT_USER_ID,
-  initStore,
-  getGroupById,
-  getMemberships,
-  joinGroup,
-  leaveGroup,
-} from "./GroupsTemporaryStore";
 
 export default function GroupDetailsPage() {
   const navigate = useNavigate();
   const { groupId } = useParams();
 
   const [group, setGroup] = useState(null);
-  const [memberships, setMemberships] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [isMember, setIsMember] = useState(false);
+  const [membersCount, setMembersCount] = useState(0);
+  const [isJoining, setIsJoining] = useState(false);
+  const [checkingMembership, setCheckingMembership] = useState(true);
+  
+  // Add a ref to track if we've manually updated the state
+  const manuallyUpdated = useRef(false);
+  const membershipCheckId = useRef(0); // ✅ add this
+
+  // Hardcoded user ID for now (should come from auth context later)
+  const CURRENT_USER_ID = 1;
 
   useEffect(() => {
-    initStore();
-    setGroup(getGroupById(groupId));
-    setMemberships(getMemberships());
+    // ✅ reset when group changes (prevents “default Leave” from previous group)
+    setIsMember(false);
+    setCheckingMembership(true);
+    manuallyUpdated.current = false;
+
+    loadGroup();
   }, [groupId]);
 
-  const isMember = useMemo(() => {
-    if (!group) return false;
-    return memberships.includes(group.id);
-  }, [memberships, group]);
+  // Check membership after group loads
+  useEffect(() => {
+    if (group && !manuallyUpdated.current) {
+      checkMembership();
+    } else {
+      // Reset the flag after checking
+      manuallyUpdated.current = false;
+    }
+  }, [group]); // Keep group in dependencies
+
+  async function loadGroup() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const res = await fetch(`/api/groups/${groupId}`);
+      
+      if (!res.ok) {
+        if (res.status === 404) {
+          throw new Error("Group not found");
+        }
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      console.log("Group data loaded:", data);
+      setGroup(data);
+      setMembersCount(data.member_count || 0);
+      
+    } catch (err) {
+      console.error("Error loading group:", err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function checkMembership() {
+    const myCheck = ++membershipCheckId.current; // ✅ unique id for this run
+
+    try {
+      setCheckingMembership(true);
+
+      if (!group) return;
+
+      // owner is always a member
+      if (Number(group.creator_id) === Number(CURRENT_USER_ID)) {
+        if (membershipCheckId.current !== myCheck) return;
+        setIsMember(true);
+        return;
+      }
+
+      const res = await fetch(`/api/users/${CURRENT_USER_ID}/groups/member`);
+
+      if (membershipCheckId.current !== myCheck) return; // ✅ ignore late response
+
+      if (res.ok) {
+        const userGroups = await res.json();
+
+        const isMemberOfThisGroup = userGroups.some((g) => {
+          const gid = g.group_id ?? g.groupId ?? g.id; // ✅ handle different shapes
+          return Number(gid) === Number(groupId);
+        });
+
+        setIsMember(isMemberOfThisGroup);
+      } else {
+        setIsMember(false);
+      }
+    } catch (err) {
+      if (membershipCheckId.current !== myCheck) return;
+      setIsMember(false);
+    } finally {
+      if (membershipCheckId.current === myCheck) {
+        setCheckingMembership(false);
+      }
+    }
+  }
+
+
+  async function handleJoin() {
+    if (!group || group.is_private) return;
+    
+    setIsJoining(true);
+    try {
+      console.log(`Joining group ${groupId}`);
+      const res = await fetch(`/api/groups/${groupId}/join`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const responseData = await res.json();
+      console.log("Join response:", responseData);
+
+      if (!res.ok) {
+        // If already a member, just update the state
+        if (responseData.error === 'Already a member of this group') {
+          console.log("Already a member, updating state");
+          manuallyUpdated.current = true;
+          setIsMember(true);
+          setMembersCount(prev => prev + 1);
+          setGroup(prev => ({
+            ...prev,
+            member_count: (prev.member_count || 0) + 1
+          }));
+          return;
+        }
+        
+        throw new Error(responseData.error || 'Failed to join group');
+      }
+
+      console.log("Successfully joined group");
+      
+      // Update local state immediately and set flag
+      manuallyUpdated.current = true;
+      setIsMember(true);
+      setMembersCount(prev => prev + 1);
+      setGroup(prev => ({
+        ...prev,
+        member_count: (prev.member_count || 0) + 1
+      }));
+      
+    } catch (err) {
+      console.error("Error joining group:", err);
+      alert(err.message);
+    } finally {
+      setIsJoining(false);
+    }
+  }
+
+  async function handleLeave() {
+    setIsJoining(true);
+    try {
+      console.log(`Leaving group ${groupId}`);
+      const res = await fetch(`/api/groups/${groupId}/leave`, {
+        method: 'DELETE'
+      });
+
+      const responseData = await res.json();
+      console.log("Leave response:", responseData);
+
+      if (!res.ok) {
+        // If not a member, just update the state
+        if (responseData.error === 'Not a member of this group') {
+          console.log("Not a member, updating state");
+          manuallyUpdated.current = true;
+          setIsMember(false);
+          setMembersCount(prev => Math.max(0, prev - 1));
+          setGroup(prev => ({
+            ...prev,
+            member_count: Math.max(0, (prev.member_count || 1) - 1)
+          }));
+          return;
+        }
+        
+        throw new Error(responseData.error || 'Failed to leave group');
+      }
+
+      console.log("Successfully left group");
+      
+      // Update local state immediately and set flag
+      manuallyUpdated.current = true;
+      setIsMember(false);
+      setMembersCount(prev => Math.max(0, prev - 1));
+      setGroup(prev => ({
+        ...prev,
+        member_count: Math.max(0, (prev.member_count || 1) - 1)
+      }));
+      
+    } catch (err) {
+      console.error("Error leaving group:", err);
+      alert(err.message);
+    } finally {
+      setIsJoining(false);
+    }
+  }
 
   const isOwner = useMemo(() => {
-    if (!group) return false;
-    return group.ownerId === CURRENT_USER_ID;
+    return group && group.creator_id === CURRENT_USER_ID;
   }, [group]);
 
-  // fake stats/members (frontend only)
-  const stats = useMemo(() => {
-    if (!group) return null;
+  // Mock data for posts and members
+  const posts = useMemo(() => [
+    {
+      id: 1,
+      author: "Van Nguyen",
+      time: "2h ago",
+      content: "Welcome! Drop an intro + what you're looking for.",
+      likes: 7,
+      comments: 2
+    },
+    {
+      id: 2,
+      author: "Student",
+      time: "1d ago",
+      content: "Anyone down to meet up this week?",
+      likes: 3,
+      comments: 1
+    }
+  ], []);
 
-    // deterministic-ish fake numbers based on id
-    const seed = group.id.split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
-    const membersCount = isMember ? 12 + (seed % 40) : 10 + (seed % 35);
-    const postsCount = 3 + (seed % 18);
-    const eventsCount = 1 + (seed % 6);
-    const activity = 50 + (seed % 45);
+  const membersPreview = useMemo(() => [
+    { name: "Van Nguyen", role: isOwner ? "Owner" : "Member" },
+    { name: "Alex Chen", role: "Member" },
+    { name: "Sam Taylor", role: "Member" },
+    { name: "Jordan Lee", role: "Member" }
+  ], [isOwner]);
 
-    return { membersCount, postsCount, eventsCount, activity };
-  }, [group, isMember]);
-
-  const membersPreview = useMemo(() => {
-    // fake member list
-    const base = [
-      { name: "Van Nguyen", role: isOwner ? "Owner" : "Member" },
-      { name: "Member 1", role: "Member" },
-      { name: "Member 2", role: "Member" },
-      { name: "Member 3", role: "Member" },
-      { name: "Member 4", role: "Member" },
-    ];
-    return base.slice(0, 4);
-  }, [isOwner]);
-
-  if (!group) {
+  if (loading) {
     return (
       <div style={page}>
         <div style={container}>
@@ -70,26 +250,32 @@ export default function GroupDetailsPage() {
             </button>
           </div>
           <div style={mainCard}>
-            <h2 style={{ marginTop: 0 }}>Group not found</h2>
-            <p style={{ color: "#555" }}>This group id doesn’t exist.</p>
+            <p>Loading group...</p>
           </div>
         </div>
       </div>
     );
   }
 
-  function handleJoin() {
-    if (!group.isOpen) return;
-    joinGroup(group.id);
-    setMemberships(getMemberships());
+  if (error || !group) {
+    return (
+      <div style={page}>
+        <div style={container}>
+          <div style={navBar}>
+            <button style={backLink} onClick={() => navigate("/groups")}>
+              ← Back to Groups
+            </button>
+          </div>
+          <div style={mainCard}>
+            <h2 style={{ marginTop: 0, color: "#b00020" }}>Error</h2>
+            <p style={{ color: "#555" }}>{error || "Group not found"}</p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
-  function handleLeave() {
-    leaveGroup(group.id);
-    setMemberships(getMemberships());
-  }
-
-  const createdText = new Date(group.createdAt).toLocaleDateString();
+  const createdDate = new Date().toLocaleDateString();
 
   return (
     <div style={page}>
@@ -104,32 +290,47 @@ export default function GroupDetailsPage() {
             {isOwner ? (
               <button
                 style={btn("secondary")}
-                onClick={() => navigate(`/groups/${group.id}/edit`)}
+                onClick={() => navigate(`/groups/${group.group_id}/edit`)}
               >
                 Edit Group
               </button>
             ) : null}
 
-            {isMember ? (
-              <button style={btn("danger")} onClick={handleLeave}>
-                Leave Group
-              </button>
-            ) : (
-              <button
-                style={btn("primary", !group.isOpen)}
-                onClick={handleJoin}
-                disabled={!group.isOpen}
-                title={!group.isOpen ? "Private group (invite later)" : ""}
-              >
-                Join Group
-              </button>
+            {!checkingMembership && (
+              isMember ? (
+                <button 
+                  style={btn("danger")} 
+                  onClick={handleLeave}
+                  disabled={isJoining}
+                >
+                  {isJoining ? 'Leaving...' : 'Leave Group'}
+                </button>
+              ) : (
+                <button
+                  style={btn("primary", group.is_private)}
+                  onClick={handleJoin}
+                  disabled={group.is_private || isJoining}
+                  title={group.is_private ? "Private group - join by invitation only" : ""}
+                >
+                  {isJoining ? 'Joining...' : 'Join Group'}
+                </button>
+              )
             )}
           </div>
         </div>
 
-        {/* Group Cover */}
+        {/* Group Cover with Image */}
         <div style={cover}>
-          <div style={avatar}>👥</div>
+          {group.image_url ? (
+            <img 
+              src={`/uploads/${group.image_url}`} 
+              alt={group.name}
+              style={coverImage}
+            />
+          ) : null}
+          <div style={avatar}>
+            {group.image_url ? null : "👥"}
+          </div>
         </div>
 
         {/* Main Content */}
@@ -140,29 +341,34 @@ export default function GroupDetailsPage() {
               <h1 style={groupTitle}>{group.name}</h1>
 
               <div style={groupMeta}>
-                <span style={metaItem}>📅 Created {createdText}</span>
+                <span style={metaItem}>📅 Created {createdDate}</span>
                 <span style={metaItem}>
-                  👤 Created by {isOwner ? "You" : "Student"}
+                  👤 Created by {isOwner ? "You" : `User ${group.creator_id}`}
                 </span>
+                {group.max_members && (
+                  <span style={metaItem}>
+                    👥 Max {group.max_members} members
+                  </span>
+                )}
               </div>
 
               <div style={badges}>
-                <span style={badge(group.isOpen ? "public" : "private")}>
-                  {group.isOpen ? "Public Group" : "Private Group"}
+                <span style={badge(group.is_private ? "private" : "public")}>
+                  {group.is_private ? "Private Group" : "Public Group"}
                 </span>
                 <span style={badge("category")}>{group.category}</span>
-                {isOwner ? <span style={badge("owner")}>Owner</span> : null}
-                {isMember ? <span style={badge("member")}>Member</span> : null}
+                {isOwner && <span style={badge("owner")}>Owner</span>}
+                {isMember && <span style={badge("member")}>Member</span>}
               </div>
             </div>
           </div>
 
           {/* Stats */}
           <div style={statsGrid}>
-            <StatItem value={stats.membersCount} label="Members" />
-            <StatItem value={stats.postsCount} label="Posts" />
-            <StatItem value={stats.eventsCount} label="Events" />
-            <StatItem value={`${stats.activity}%`} label="Activity" />
+            <StatItem value={membersCount} label="Members" />
+            <StatItem value={group.max_members || "∞"} label="Max Members" />
+            <StatItem value="12" label="Posts" />
+            <StatItem value="3" label="Events" />
           </div>
 
           {/* About */}
@@ -171,11 +377,10 @@ export default function GroupDetailsPage() {
             <p style={description}>{group.description}</p>
           </div>
 
-          {/* Tags (placeholder for now) */}
+          {/* Tags */}
           <div style={section}>
             <h3 style={sectionTitle}>Tags</h3>
             <div style={tagsList}>
-              {/* For now: show category as a tag; you can upgrade store to save tags later */}
               <span style={tagPill}>{group.category.toLowerCase()}</span>
               <span style={tagPill}>students</span>
               <span style={tagPill}>campus</span>
@@ -185,12 +390,12 @@ export default function GroupDetailsPage() {
           {/* Members Preview */}
           <div style={section}>
             <h3 style={sectionTitle}>
-              Members ({stats.membersCount})
+              Members ({membersCount})
             </h3>
 
             <div style={membersGrid}>
-              {membersPreview.map((m) => (
-                <div key={m.name} style={memberCard}>
+              {membersPreview.map((m, index) => (
+                <div key={index} style={memberCard}>
                   <div style={memberAvatar}>{initials(m.name)}</div>
                   <div>
                     <div style={memberName}>{m.name}</div>
@@ -200,45 +405,43 @@ export default function GroupDetailsPage() {
               ))}
             </div>
 
-            <div style={{ marginTop: 10, color: "#666", fontSize: 12 }}>
-              * Members list is demo data (frontend-only)
-            </div>
+            {membersCount > 4 && (
+              <div style={{ marginTop: 10, color: "#666", fontSize: 13 }}>
+                and {membersCount - 4} more members...
+              </div>
+            )}
           </div>
 
-          {/* Posts Preview (demo) */}
+          {/* Posts Preview */}
           <div style={section}>
             <h3 style={sectionTitle}>Posts</h3>
 
             <div style={postsList}>
-              <PostCard
-                author="Student"
-                time="2h ago"
-                content="Welcome! Drop an intro + what you’re looking for."
-                likes={7}
-                comments={2}
-              />
-              <PostCard
-                author="Student"
-                time="1d ago"
-                content="Anyone down to meet up this week?"
-                likes={3}
-                comments={1}
-              />
+              {posts.map(post => (
+                <PostCard
+                  key={post.id}
+                  author={post.author}
+                  time={post.time}
+                  content={post.content}
+                  likes={post.likes}
+                  comments={post.comments}
+                />
+              ))}
             </div>
 
             <div style={createPost}>
               <textarea
                 style={createPostTextarea}
-                placeholder="Write a post... (demo UI only)"
+                placeholder="Write a post... (coming soon)"
                 disabled
               />
               <div style={createPostActions}>
-                <button style={btn("primary", true)} disabled title="Demo only">
+                <button style={btn("primary", true)} disabled>
                   Post
                 </button>
               </div>
               <div style={{ marginTop: 8, color: "#666", fontSize: 12 }}>
-                * Posting is demo UI for now (add later)
+                * Posting feature coming soon
               </div>
             </div>
           </div>
@@ -249,7 +452,6 @@ export default function GroupDetailsPage() {
 }
 
 /* ---------- small components ---------- */
-
 function StatItem({ value, label }) {
   return (
     <div style={statItem}>
@@ -289,8 +491,7 @@ function initials(name) {
   return (a + b).toUpperCase();
 }
 
-/* ---------- styles (black/grey scheme) ---------- */
-
+/* ---------- styles ---------- */
 const page = {
   backgroundColor: "#f5f5f5",
   minHeight: "100vh",
@@ -333,6 +534,13 @@ const cover = {
   position: "relative",
   marginBottom: 80,
   background: "linear-gradient(135deg, #111 0%, #444 100%)",
+  overflow: "hidden",
+};
+
+const coverImage = {
+  width: "100%",
+  height: "100%",
+  objectFit: "cover",
 };
 
 const avatar = {
@@ -411,11 +619,11 @@ function badge(kind) {
     color: "#111",
   };
 
-  if (kind === "public") return { ...base, background: "#f3f3f3" };
-  if (kind === "private") return { ...base, background: "#fafafa", color: "#333" };
-  if (kind === "category") return { ...base, background: "#f3f3f3" };
+  if (kind === "public") return { ...base, background: "#e8f5e8" };
+  if (kind === "private") return { ...base, background: "#fff0f0", color: "#b00020" };
+  if (kind === "category") return { ...base, background: "#f0f0f0" };
   if (kind === "owner") return { ...base, background: "#111", color: "#fff", borderColor: "#111" };
-  if (kind === "member") return { ...base, background: "#fff", color: "#111" };
+  if (kind === "member") return { ...base, background: "#e3f2fd", color: "#1976d2", borderColor: "#1976d2" };
   return base;
 }
 
@@ -534,7 +742,7 @@ function btn(kind, disabled = false) {
     fontSize: 14,
     fontWeight: 800,
     cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.6 : 1,
+    opacity: disabled ? 0.5 : 1,
   };
 
   if (kind === "primary") {
@@ -544,7 +752,7 @@ function btn(kind, disabled = false) {
     return { ...base, background: "#fff", color: "#111", borderColor: "#bbb" };
   }
   if (kind === "danger") {
-    return { ...base, background: "#fff", color: "#111", borderColor: "#111" };
+    return { ...base, background: "#fff", color: "#b00020", borderColor: "#b00020" };
   }
   return base;
 }
