@@ -134,8 +134,8 @@ export default function EventsPage() {
   const tStr = todayStr();
 
   // Split events into upcoming + past
-  const upcoming = events.filter((e) => String(e.event_date) >= tStr);
-  const past = events.filter((e) => String(e.event_date) < tStr);
+  const upcoming = events.filter((e) => Number(e.is_past) === 0);
+  const past = events.filter((e) => Number(e.is_past) === 1);
 
   // Render one event card
   const renderCard = (ev, isPast) => {
