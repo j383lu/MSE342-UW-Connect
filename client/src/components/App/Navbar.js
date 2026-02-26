@@ -20,7 +20,7 @@ function Navbar() {
               <Button 
                 color="inherit"
                 component={Link}
-                to='/'
+                to='/feed'
                 >
                 Home
               </Button>

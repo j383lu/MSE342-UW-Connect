@@ -20,4 +20,61 @@ app.use(express.static(path.join(__dirname, "client/build")));
 // GET /api/movies - retrieve all movies from database  
 // POST /api/reviews - create a new movie review
 
+// Post /api/posts - create a new post
+app.post('/api/posts', (req, res) => {
+    let connection = mysql.createConnection(config);
+
+
+    let { title, content, group_id = null, is_anonymous = 0, image_url = null, tags = [] } = req.body;
+    let author_id = 1; // Placeholder for now, should be replaced with actual user ID from authentication
+
+    let postSql = 'INSERT INTO Posts (author_id, group_id, title, content, is_anonymous, image_url) VALUES (?, ?, ?, ?, ?, ?)';
+    let postData = [author_id, group_id, title, content, is_anonymous, image_url];
+    
+    connection.query(postSql, postData, (err, result) => {
+        if (err) {
+            console.error(err);
+            connection.end();
+            return res.status(500).send('Error creating post');
+        } 
+
+        let postId = result.insertId;
+
+        // Insert tags into post_tags table
+        if (tags.length > 0) {
+            let placeholders = tags.map(() => '?').join(', ');
+            let tagSql = 'SELECT tag_id, tag_name FROM Tags WHERE tag_name IN (' + placeholders + ')';
+
+
+            //let tagData = tags.map(tag => [postId, tag]);
+            connection.query(tagSql, tags, (err, tagResult) => {
+                if (err) {
+                    console.error(err);
+                    connection.end();
+                    return res.status(500).send('Error creating post tags');
+                }
+
+                let postTagData = tagResult.map(tag => [postId, tag.tag_id]);
+                if (postTagData.length > 0) {
+                    let postTagSql = 'INSERT INTO post_tags (post_id, tag_id) VALUES ?';
+                    connection.query(postTagSql, [postTagData], (err) => {
+                        connection.end();
+                        if (err) {
+                            console.error(err);
+                            return res.status(500).send('Error creating post tags');
+                        } 
+                        res.json({postId, message: 'Post created successfully with tags' });
+                    });
+                } else {
+                    connection.end();
+                    res.json({postId, message: 'Post created successfully but no valid tags found' });
+                }
+            });
+        } else {
+            connection.end();
+            res.json({postId, message: 'Post created successfully without tags' });
+        }
+    });
+});
+
 app.listen(port, () => console.log(`Listening on port ${port}`)); //for the dev version

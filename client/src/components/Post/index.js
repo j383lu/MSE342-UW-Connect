@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Grid, Button, Typography } from "@mui/material";
 import PostList from "./PostList";
 import CreatePostForm from "./CreatePostForm";
@@ -7,15 +7,50 @@ function Post() {
   const [posts, setPosts] = useState([]);
   const [open, setOpen] = useState(false);
 
-  const handleCreatePost = (newPost) => {
-    const postWithDate = {
-      ...newPost,
-      createdAt: new Date().toISOString()
-    };
-
-    setPosts([postWithDate, ...posts]);
-    setOpen(false);
+  const fetchPosts = async () => {
+    try {
+      const response = await fetch('/api/posts');
+      const data = await response.json();
+      setPosts(data);
+    } catch (error) {
+      console.error("Error fetching posts:", error);
+    }
   };
+
+  useEffect(() => {
+    fetchPosts();
+  }, []);
+
+  const handleCreatePost = async (newPost) => {
+    try {
+      const response = await fetch('/api/posts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          title: newPost.title,
+          content: newPost.description, // backend expects "content"
+          tags: newPost.tags
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error(data);
+        return;
+      }
+
+      // After successful insert, refresh posts
+      fetchPosts();
+
+      setOpen(false);
+
+  } catch (error) {
+    console.error("Error creating post:", error);
+  }
+};
 
   return (
     <Grid container spacing={3}>
