@@ -2,9 +2,13 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { BrowserRouter } from 'react-router-dom';
-import GroupDetailsPage from '../GroupDetailsPage';
+import EditGroupForm from '../EditGroupForm';
 
-// Mock useParams
+// Mock URL methods
+global.URL.createObjectURL = jest.fn();
+global.URL.revokeObjectURL = jest.fn();
+
+// Mock useParams and useNavigate
 jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
   useParams: () => ({ groupId: '1' }),
@@ -28,6 +32,10 @@ afterAll(() => {
 
 global.fetch = jest.fn();
 
+const mockTags = [
+  { tag_id: 1, tag_name: 'Sports' }
+];
+
 const mockGroup = {
   group_id: 1,
   name: 'Soccer Team',
@@ -40,35 +48,42 @@ const mockGroup = {
   image_url: 'test-image.jpg'
 };
 
-describe('GroupDetailsPage', () => {
+describe('EditGroupForm', () => {
   beforeEach(() => {
     fetch.mockClear();
-    fetch.mockImplementation(() => 
-      Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve(mockGroup)
-      })
-    );
+    fetch
+      .mockImplementationOnce(() => 
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(mockTags)
+        })
+      )
+      .mockImplementationOnce(() => 
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(mockGroup)
+        })
+      );
   });
 
   test('renders loading state', () => {
     render(
       <BrowserRouter>
-        <GroupDetailsPage />
+        <EditGroupForm />
       </BrowserRouter>
     );
     expect(screen.getByText(/Loading group/i)).toBeInTheDocument();
   });
 
-  test('displays group details after loading', async () => {
+  test('loads group data', async () => {
     render(
       <BrowserRouter>
-        <GroupDetailsPage />
+        <EditGroupForm />
       </BrowserRouter>
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Soccer Team')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('Soccer Team')).toBeInTheDocument();
     });
   });
 });
