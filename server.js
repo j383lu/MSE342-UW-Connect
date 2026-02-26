@@ -93,6 +93,7 @@ app.post('/api/posts', (req, res) => {
     });
 });
 
+// GET API for posts
 app.get('/api/posts', (req, res) => {
     let connection = mysql.createConnection(config);
 
@@ -125,6 +126,53 @@ app.get('/api/posts', (req, res) => {
         }));
 
         res.json(formattedPosts);
+    });
+});
+
+// GET API for seraching posts
+app.get('/api/posts/search', (req, res) => {
+    const { keyword } = req.query;
+
+    if (!keyword || keyword.trim() === "") {
+        return res.status(400).json({ error: "Please enter a keyword to search" });
+    }
+
+    const connection = mysql.createConnection(config);
+
+    const searchSql = `
+        SELECT p.post_id, p.title, p.content AS description, p.created_at AS createdAt,
+        GROUP_CONCAT(t.tag_name) AS tags
+        FROM Posts p
+        LEFT JOIN post_tags pt ON p.post_id = pt.post_id
+        LEFT JOIN Tags t ON pt.tag_id = t.tag_id
+        WHERE LOWER(p.title) LIKE ? OR LOWER(p.content) LIKE ?
+        GROUP BY p.post_id
+        ORDER BY p.created_at DESC
+        LIMIT 50
+    `;
+
+    const keywordParam = `%${keyword.toLowerCase()}%`;
+
+    connection.query(searchSql, [keywordParam, keywordParam], (err, results) => {
+        connection.end();
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ error: "Database error while searching posts" });
+        }
+
+        const formattedPosts = results.map(post => ({
+            post_id: post.post_id,
+            title: post.title,
+            description: post.description,
+            tags: post.tags ? post.tags.split(',') : [],
+            createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null
+        }));
+
+        if (formattedPosts.length === 0) {
+            return res.json({ message: "No results found.", posts: [] });
+        }
+
+        res.json({ posts: formattedPosts });
     });
 });
 

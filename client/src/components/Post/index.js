@@ -1,11 +1,17 @@
 import React, { useState, useEffect } from "react";
-import { Grid, Button, Typography } from "@mui/material";
+import { Grid, Button, Typography, TextField, Stack } from "@mui/material";
 import PostList from "./PostList";
 import CreatePostForm from "./CreatePostForm";
 
 function Post() {
   const [posts, setPosts] = useState([]);
   const [open, setOpen] = useState(false);
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [searchError, setSearchError] = useState("");
+
+   useEffect(() => {
+    fetchPosts();
+  }, []);
 
   const fetchPosts = async () => {
     try {
@@ -17,9 +23,33 @@ function Post() {
     }
   };
 
-  useEffect(() => {
-    fetchPosts();
-  }, []);
+
+  // Search function
+  const handleSearch = async () => {
+    if (!searchKeyword.trim()) {
+      setSearchError("Please enter a keyword to search");
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/posts/search?keyword=${encodeURIComponent(searchKeyword)}`);
+      const data = await response.json();
+
+      if (data.posts) {
+        setPosts(data.posts);
+        setSearchError("");
+      } else {
+        setPosts([]);
+        setSearchError(data.message || "No results found.");
+      }
+    } catch (err) {
+      console.error("Error searching posts:", err);
+      setSearchError("Error occurred while searching.");
+    }
+  };
+
+
+ 
 
   const handleCreatePost = async (newPost) => {
     try {
@@ -56,6 +86,30 @@ function Post() {
         <Typography variant="h4">
           Posts
         </Typography>
+      </Grid>
+
+      {/* Search Bar */}
+      <Grid item xs={12}>
+        <Stack direction="row" spacing={2} justifyContent="center">
+          <TextField
+            label="Search posts..."
+            value={searchKeyword}
+            onChange={(e) => setSearchKeyword(e.target.value)}
+            error={Boolean(searchError)}
+            helperText={searchError}
+            sx={{ width: '50%', 
+                  '& .MuiOutlinedInput-root': {
+                  borderRadius: '50px',    
+                },
+              }}
+          />
+          <Button variant="contained" onClick={handleSearch}>
+            Search
+          </Button>
+          <Button variant="outlined" onClick={fetchPosts}>
+            Reset
+          </Button>
+        </Stack>
       </Grid>
 
       {/* Create Button */}
