@@ -28,11 +28,7 @@ function Post() {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          title: newPost.title,
-          content: newPost.description, // backend expects "content"
-          tags: newPost.tags
-        })
+        body: JSON.stringify({newPost})
       });
 
       const data = await response.json();
@@ -43,7 +39,7 @@ function Post() {
       }
 
       // After successful insert, refresh posts
-      fetchPosts();
+      setPosts([data.post, ...posts]);
 
       setOpen(false);
 

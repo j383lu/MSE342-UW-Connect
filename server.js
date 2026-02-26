@@ -63,18 +63,70 @@ app.post('/api/posts', (req, res) => {
                             console.error(err);
                             return res.status(500).send('Error creating post tags');
                         } 
-                        res.json({postId, message: 'Post created successfully with tags' });
+                        res.json({
+                            post: {
+                                post_id: postId,
+                                title,
+                                description: content,
+                                tags: tagResult.map(t => t.tag_name),
+                                createdAt: new Date().toISOString()
+                            },
+                            message: 'Post created successfully with tags'  
+                        });                  
                     });
                 } else {
                     connection.end();
-                    res.json({postId, message: 'Post created successfully but no valid tags found' });
+                    res.json({
+                        post: { post_id: postId, title, description: content, tags: [], createdAt: new Date().toISOString() },
+                        message: 'Post created successfully but no valid tags found'
+                    });                
                 }
             });
         } else {
             connection.end();
-            res.json({postId, message: 'Post created successfully without tags' });
+            res.json({
+                post: { post_id: postId, title, description: content, tags: [], createdAt: new Date().toISOString() },
+                message: 'Post created successfully without tags'
+            });
         }
+
     });
 });
+
+app.get('/api/posts', (req, res) => {
+    let connection = mysql.createConnection(config);
+
+    let sql = `
+         SELECT p.post_id, p.title, p.content, p.author_id, p.group_id,
+               p.is_anonymous, p.image_url, p.created_at AS createdAt,
+               GROUP_CONCAT(t.tag_name) AS tags
+        FROM Posts p
+        LEFT JOIN post_tags pt ON p.post_id = pt.post_id
+        LEFT JOIN Tags t ON pt.tag_id = t.tag_id
+        GROUP BY p.post_id
+        ORDER BY p.post_id DESC
+    `;
+
+    connection.query(sql, (err, results) => {
+        connection.end();
+
+        if (err) {
+            console.error(err);
+            return res.status(500).send('Error retrieving posts');
+        }
+
+        const formattedPosts = results.map(post => ({
+            post_id: post.post_id,
+            title: post.title,
+            description: post.content, // <-- map content to description
+            tags: post.tags ? post.tags.split(',') : [],
+            createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null
+
+        }));
+
+        res.json(formattedPosts);
+    });
+});
+
 
 app.listen(port, () => console.log(`Listening on port ${port}`)); //for the dev version
