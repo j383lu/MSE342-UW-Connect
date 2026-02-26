@@ -18,7 +18,7 @@ import {
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 
-function validateDisplayName(rawName) {
+export function validateDisplayName(rawName) {
   const trimmed = rawName.trim();
 
   if (!trimmed) return "Name cannot be empty.";
