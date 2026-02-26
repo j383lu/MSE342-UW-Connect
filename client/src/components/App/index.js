@@ -1,9 +1,9 @@
 import * as React from "react";
-import { BrowserRouter, Routes, Route} from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import Layout from "./Layout";
-import EventsPage from "./EventsPage";
-import CreateEventForm from "./CreateEventForm";
+import EventsPage from "./Events/EventsPage";
+import CreateEventForm from "./Events/CreateEventForm";
 
 export default function App() {
   return (
