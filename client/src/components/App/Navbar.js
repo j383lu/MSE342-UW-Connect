@@ -22,7 +22,7 @@ function Navbar() {
               </Button>
             </Grid>
             <Grid item>
-              <Button color="inherit" component={RouterLink} to="/home">
+              <Button color="inherit" component={RouterLink} to="/feed">
                 Home
               </Button>
             </Grid>
