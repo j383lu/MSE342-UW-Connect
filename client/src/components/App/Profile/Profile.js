@@ -13,6 +13,7 @@ import { useNavigate } from "react-router-dom";
 function Profile() {
   const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
+  const [userCourses, setUserCourses] = useState([]);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -27,6 +28,21 @@ function Profile() {
     };
 
     fetchProfile();
+  }, []);
+
+  useEffect(() => {
+    const fetchUserCourses = async () => {
+      try {
+        const res = await fetch("/api/profile/user-courses");
+        if (!res.ok) throw new Error("Failed to fetch user courses");
+        const data = await res.json();
+        setUserCourses(data || []);
+      } catch (err) {
+        console.error("Failed to load user courses", err);
+      }
+    };
+
+    fetchUserCourses();
   }, []);
 
   if (!profile) return null;
@@ -75,10 +91,10 @@ function Profile() {
             </Typography>
 
             <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: "wrap" }}>
-              {(profile.courses || []).map((course, idx) => (
+              {userCourses.map((course) => (
                 <Chip 
-                  key={`${course}-${idx}`} 
-                  label={course} 
+                  key={course.course_id} 
+                  label={`${course.course_code} - ${course.course_name}`}
                   variant="outlined"
                   sx={{ borderColor: "divider", color: "text.primary" }}
                 />

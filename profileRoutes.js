@@ -81,20 +81,78 @@ router.get("/programs", (req, res) => {
       return res.status(500).json({ error: "Failed to fetch programs" });
     }
 
-    // results already in the shape you want:
-    // [{ program_id, program_name }, ...]
     return res.json(results);
   });
 });
 
 // ------------------------------------
+// GET /api/profile/courses
+// ------------------------------------
+router.get("/courses", (req, res) => {
+  const connection = mysql.createConnection(config);
+
+  const sql = `
+    SELECT course_id, course_code, course_name
+    FROM Courses
+    ORDER BY course_code ASC;
+  `;
+
+  console.log("Executing SQL:", sql);
+
+  connection.query(sql, (error, results) => {
+    connection.end();
+
+    if (error) {
+      console.error("Database error:", error.message);
+      return res.status(500).json({ error: "Failed to fetch courses" });
+    }
+
+    return res.json(results);
+  });
+});
+
+// ------------------------------------
+// GET /api/profile/user-courses
+// (courses enrolled by current user)
+// ------------------------------------
+router.get("/user-courses", (req, res) => {
+  const connection = mysql.createConnection(config);
+
+  const sql = `
+    SELECT c.course_id, c.course_code, c.course_name
+    FROM User_Profile_Courses upc
+    JOIN Courses c ON c.course_id = upc.course_id
+    JOIN User_Profiles up ON up.profile_id = upc.profile_id
+    WHERE up.user_id = ?
+    ORDER BY c.course_code ASC;
+  `;
+
+  console.log("Executing SQL for user courses, userId:", TEMP_USER_ID);
+
+  connection.query(sql, [TEMP_USER_ID], (error, results) => {
+    connection.end();
+
+    if (error) {
+      console.error("Database error:", error.message);
+      return res.status(500).json({ error: "Failed to fetch user courses" });
+    }
+
+    return res.json(results || []);
+  });
+});
+
+// ------------------------------------
 // PUT /api/profile
-// (update profile info)
 // ------------------------------------
 router.put("/", (req, res) => {
   const connection = mysql.createConnection(config);
 
-  const { name, bio, program_id } = req.body;
+  const { name, bio, program_id, courses } = req.body; // courses is expected to be array of course_id
+
+  console.log("=== PUT /api/profile called ===");
+  console.log("Body received:", { name, bio, program_id, courses });
+  console.log("Courses type:", Array.isArray(courses) ? "array" : typeof courses);
+  console.log("Courses value:", courses);
 
   // Minimal validation (frontend validates name too)
   if (!name || typeof name !== "string" || !name.trim()) {
@@ -135,38 +193,73 @@ router.put("/", (req, res) => {
       return res.status(404).json({ error: "Profile not found" });
     }
 
-    // Return updated profile (handy for frontend)
-    const selectSql = `
-      SELECT
-        up.user_id,
-        up.display_name,
-        up.bio,
-        up.program_id,
-        p.program_name
-      FROM User_Profiles up
-      LEFT JOIN Programs p ON p.program_id = up.program_id
-      WHERE up.user_id = ?
-      LIMIT 1;
-    `;
-
-    connection.query(selectSql, [TEMP_USER_ID], (error2, rows) => {
-      connection.end();
-
-      if (error2) {
-        console.error("Database error:", error2.message);
+    // Get profile_id for course updates
+    const pidSql = `SELECT profile_id FROM User_Profiles WHERE user_id = ? LIMIT 1`;
+    connection.query(pidSql, [TEMP_USER_ID], (pidErr, pidRows) => {
+      if (pidErr) {
+        console.error("Failed to fetch profile_id:", pidErr.message);
+        connection.end();
         return res.json({ ok: true });
       }
 
-      const r = rows?.[0];
+      const profileId = pidRows?.[0]?.profile_id;
+      if (!profileId) {
+        console.error("Profile ID not found for user", TEMP_USER_ID);
+        connection.end();
+        return res.json({ ok: true });
+      }
 
-      return res.json({
-        ok: true,
-        name: r?.display_name ?? "",
-        bio: r?.bio ?? "",
-        program_id: r?.program_id ?? null,
-        program_name: r?.program_name ?? "",
-        program: r?.program_name ?? "",
-        courses: [],
+      console.log("Found profile_id:", profileId, "for user:", TEMP_USER_ID);
+
+      // Delete existing course links
+      const delSql = `DELETE FROM User_Profile_Courses WHERE profile_id = ?`;
+      connection.query(delSql, [profileId], (delErr) => {
+        if (delErr) {
+          console.error("Failed to delete courses:", delErr.message);
+          connection.end();
+          return res.json({ ok: true });
+        }
+
+        console.log("Deleted old course links for profile_id:", profileId);
+
+        // If no courses, we're done
+        if (!Array.isArray(courses) || courses.length === 0) {
+          console.log("No courses to insert");
+          connection.end();
+          return res.json({
+            ok: true,
+            name: name.trim(),
+            bio: bio ?? "",
+            program_id: programIdValue,
+            program_name: "",
+            program: "",
+            courses: [],
+          });
+        }
+
+        // Insert new course links
+        console.log("Inserting", courses.length, "courses for profile_id:", profileId);
+        const insertSql = `INSERT INTO User_Profile_Courses (profile_id, course_id) VALUES ?`;
+        const values = courses.map(cid => [profileId, Number(cid)]);
+        console.log("Insert values:", values);
+
+        connection.query(insertSql, [values], (insertErr) => {
+          if (insertErr) {
+            console.error("Failed to insert courses:", insertErr.message);
+          } else {
+            console.log("Successfully inserted courses");
+          }
+          connection.end();
+          return res.json({
+            ok: true,
+            name: name.trim(),
+            bio: bio ?? "",
+            program_id: programIdValue,
+            program_name: "",
+            program: "",
+            courses: [],
+          });
+        });
       });
     });
   });

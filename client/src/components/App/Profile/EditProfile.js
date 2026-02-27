@@ -35,7 +35,7 @@ function EditProfile() {
 
   const [draft, setDraft] = useState(null);
   const [programOptions, setProgramOptions] = useState([]);
-  const [newCourse, setNewCourse] = useState("");
+  const [courseOptions, setCourseOptions] = useState([]);
 
   const [nameError, setNameError] = useState("");
   const [successOpen, setSuccessOpen] = useState(false);
@@ -81,6 +81,23 @@ function EditProfile() {
     fetchPrograms();
   }, []);
 
+  // Load courses for dropdown
+  useEffect(() => {
+    const fetchCourses = async () => {
+      try {
+        const res = await fetch("/api/profile/courses");
+        if (!res.ok) throw new Error("Failed to fetch courses");
+        const data = await res.json();
+        setCourseOptions(data);
+      } catch (err) {
+        console.error(err);
+        setSaveError("Could not load courses.");
+      }
+    };
+
+    fetchCourses();
+  }, []);
+
   if (!draft) {
     return (
       <Box sx={{ p: 3 }}>
@@ -91,20 +108,11 @@ function EditProfile() {
 
   const handleCancel = () => navigate("/profile");
 
-  const handleAddCourse = () => {
-    const trimmed = newCourse.trim();
-    if (!trimmed) return;
-
-    if (!draft.courses.includes(trimmed)) {
-      setDraft({ ...draft, courses: [...draft.courses, trimmed] });
-    }
-    setNewCourse("");
-  };
-
-  const handleRemoveCourse = (courseToRemove) => {
+  const handleCoursesChange = (event) => {
+    const value = event.target.value;
     setDraft({
       ...draft,
-      courses: draft.courses.filter((c) => c !== courseToRemove),
+      courses: typeof value === 'string' ? value.split(',') : value,
     });
   };
 
@@ -127,6 +135,7 @@ function EditProfile() {
       bio: draft.bio,
       program_id:
         draft.program_id === "" ? null : Number(draft.program_id),
+      courses: draft.courses || [],
     };
 
     try {
@@ -235,39 +244,37 @@ function EditProfile() {
                 Courses
               </Typography>
 
-              <Stack
-                direction="row"
-                spacing={1}
-                sx={{ mt: 1, flexWrap: "wrap" }}
-              >
-                {(draft.courses || []).map((course, idx) => (
-                  <Chip
-                    key={`${course}-${idx}`}
-                    label={course}
-                    onDelete={() =>
-                      handleRemoveCourse(course)
-                    }
-                  />
-                ))}
-              </Stack>
+              <FormControl fullWidth sx={{ mt: 2 }}>
+                <InputLabel id="courses-select-label">Select Courses</InputLabel>
+                <Select
+                  labelId="courses-select-label"
+                  id="courses-select"
+                  multiple
+                  value={draft.courses || []}
+                  label="Select Courses"
+                  onChange={handleCoursesChange}
+                  renderValue={(selected) => (
+                    <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 0.5 }}>
+                      {selected.map((courseId) => {
+                        const course = courseOptions.find((c) => c.course_id === courseId);
+                        return (
+                          <Chip
+                            key={courseId}
+                            label={course ? `${course.course_code}` : courseId}
 
-              <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-                <TextField
-                  label="Add course"
-                  value={newCourse}
-                  onChange={(e) =>
-                    setNewCourse(e.target.value)
-                  }
-                  fullWidth
-                />
-                <Button
-                  variant="contained"
-                  onClick={handleAddCourse}
-                  sx={{ bgcolor: "primary.main", color: "primary.contrastText", fontWeight: 600 }}
+                          />
+                        );
+                      })}
+                    </Stack>
+                  )}
                 >
-                  Add
-                </Button>
-              </Stack>
+                  {courseOptions.map((course) => (
+                    <MenuItem key={course.course_id} value={course.course_id}>
+                      {course.course_code}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Box>
 
             {saveError && (
