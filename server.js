@@ -4,9 +4,6 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import bodyParser from 'body-parser';
-
-//Added imports
-
 import multer from 'multer'; // For file uploads
 import fs from 'fs'; // For file system operations
 
@@ -16,7 +13,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const port = process.env.PORT || 5000;
 
-// Create database connection using your config
+// Create database connection using your config (ONLY ONE DECLARATION)
 const db = mysql.createConnection({
   host: config.host,
   user: config.user,
@@ -70,18 +67,10 @@ const upload = multer({
   }
 });
 
-
-
-
-
 app.use(express.static(path.join(__dirname, "client/build")));
 
-// MySQL connection
-const db = mysql.createConnection(config);
-db.connect((err) => {
-  if (err) console.log("DB connection error:", err);
-  else console.log("Connected to MySQL!");
-});
+// REMOVED THE DUPLICATE db CONNECTION HERE
+// The duplicate "const db = mysql.createConnection(config);" has been removed
 
 // GET /api/events
 // default: upcoming only
@@ -560,7 +549,6 @@ app.delete("/api/groups/:groupId", (req, res) => {
   });
 });
 
-
 // GET GROUP MEMBERS with user details
 app.get("/api/groups/:groupId/members", (req, res) => {
   const groupId = req.params.groupId;
@@ -612,16 +600,10 @@ app.get("/api/groups/:groupId/members", (req, res) => {
   });
 });
 
-
-
-
-
-
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error("Server error:", err);
   res.status(500).json({ error: err.message || "Internal server error" });
 });
-
 
 app.listen(port, () => console.log(`Listening on port ${port}`)); //for the dev version
