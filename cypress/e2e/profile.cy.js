@@ -8,6 +8,7 @@ describe('Profile and EditProfile flows', () => {
         bio: 'Sample bio',
         program_id: 2,
         program_name: 'Engineering',
+        program: 'Engineering', // component uses profile.program
       },
     }).as('getProfile');
 
@@ -39,7 +40,8 @@ describe('Profile and EditProfile flows', () => {
     cy.wait('@getUserCourses');
 
     cy.contains('Alice');
-    cy.contains('Engineering');
+    // program is rendered under profile.program
+    cy.contains('Engineering', { timeout: 10000 });
     cy.contains('MATH101');
   });
 
@@ -58,8 +60,10 @@ describe('Profile and EditProfile flows', () => {
     cy.wait('@getCourses');
 
     cy.get('[data-testid="display-name-input"]').clear().type('Bob');
-    cy.get('[data-testid="program-input"]').click();
-    cy.contains('Engineering').click();
+    // open the material-ui select by clicking the visible select container
+    cy.get('#program-select').click();
+    // select the item from the listbox to avoid backdrop covering
+    cy.get('ul[role="listbox"]').contains('Engineering').click();
 
     cy.get('#courses-select').click();
     cy.contains('CS102').click();
