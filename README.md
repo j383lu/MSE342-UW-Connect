@@ -14,6 +14,8 @@ Login/Registration Feature: This feature is not fully functioning yet due to the
 
 Groups Features: This feature currently uses a default user (user_id = 1) to create, edit, join and leave groups. 
 
+Database Connection: l2jung
+
 ## Development Tips:
 - Use CodeSpaces for this project.
 - In VSCode terminal on CodeSpaces start a new branch:
