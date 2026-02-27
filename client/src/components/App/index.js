@@ -1,74 +1,11 @@
 import * as React from 'react';
 import { ThemeProvider } from '@mui/material/styles';
-import theme from './Theme'
-import LogInAndRegister from './LogIn/LogInAndRegister';
-import {BrowserRouter, Routes, Route} from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import theme from './Theme';
 import Navbar from './Navbar';
-// import * as React from 'react';
-// import GroupsPage from './GroupsPage';
+import LogInAndRegister from './LogIn/LogInAndRegister';
 
-
-// const App = () => {
-
-  return (
-    <div>
-      <BrowserRouter>
-        <ThemeProvider theme={theme}>
-          <Navbar /> 
-          
-          {/* Note: Login/Registration is not set up to handle authentication because of lecture timing;
-            therefore, we have chosen to render the logIn page using the NavBar for now. */}
-          <Routes>
-            <Route path="/login" element={<LogInAndRegister />} />
-          </Routes>
-        </ThemeProvider>
-    </BrowserRouter>
-    </div>
-
-//   return (
-//     <div>
-//         <h1>MSci 245 - D1 template </h1>
-//       {/* Render <Review /> child component */}
-
-//       <GroupsPage />
-
-
-//     </div>
-//   );
-// }
-
-// export default App;
-
-// import * as React from "react";
-// import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-
-// import GroupsPage from "./GroupsPage";
-// import CreateGroupForm from "./CreateGroupForm";
-// import GroupDetailsPage from "./GroupDetailsPage";
-// import EditGroupForm from "./EditGroupForm";
-
-// const App = () => {
-//   return (
-//     <BrowserRouter>
-//       <Routes>
-//         <Route path="/" element={<Navigate to="/groups" replace />} />
-//         <Route path="/groups" element={<GroupsPage />} />
-//         <Route path="/groups/new" element={<CreateGroupForm />} />
-//         <Route path="/groups/:groupId" element={<GroupDetailsPage />} />
-//         <Route path="/groups/:groupId/edit" element={<EditGroupForm />} />
-//       </Routes>
-//     </BrowserRouter>
-//   );
-// };
-
-// export default App;
-
-// client/src/components/App/index.js
-import * as React from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-
-import Layout from "./Layout";
-
+// Import groups components
 import GroupsPage from "./Groups/GroupsPage";
 import CreateGroupForm from "./Groups/CreateGroupForm";
 import GroupDetailsPage from "./Groups/GroupDetailsPage";
@@ -81,22 +18,29 @@ const EventsPage = () => <div>Events</div>;
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Layout>
-        <Routes>
-          {/* <Route path="/" element={<Navigate to="/home" replace />} />
-          <Route path="/home" element={<HomePage />} /> */}
-
-          {/* ✅ Groups routes */}
-          <Route path="/groups" element={<GroupsPage />} />
-          <Route path="/groups/new" element={<CreateGroupForm />} />
-          <Route path="/groups/:groupId" element={<GroupDetailsPage />} />
-          <Route path="/groups/:groupId/edit" element={<EditGroupForm />} />
-
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/events" element={<EventsPage />} />
-        </Routes>
-      </Layout>
-    </BrowserRouter>
+    <div>
+      <BrowserRouter>
+        <ThemeProvider theme={theme}>
+          <Navbar />
+          <Routes>
+            {/* Login route */}
+            <Route path="/login" element={<LogInAndRegister />} />
+            
+            {/* Home route */}
+            <Route path="/" element={<HomePage />} />
+            
+            {/* Groups routes */}
+            <Route path="/groups" element={<GroupsPage />} />
+            <Route path="/groups/new" element={<CreateGroupForm />} />
+            <Route path="/groups/:groupId" element={<GroupDetailsPage />} />
+            <Route path="/groups/:groupId/edit" element={<EditGroupForm />} />
+            
+            {/* Other routes */}
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/events" element={<EventsPage />} />
+          </Routes>
+        </ThemeProvider>
+      </BrowserRouter>
+    </div>
   );
 }

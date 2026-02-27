@@ -253,19 +253,18 @@ export default function GroupsPage() {
 
   if (loading && groups.length === 0) {
     return (
-      <div style={{ maxWidth: 950, margin: "0 auto", padding: 16 }}>
+      <div style={pageContainer}>
         <p>Loading groups...</p>
       </div>
     );
   }
 
   return (
-    <div style={{ maxWidth: 950, margin: "0 auto", padding: 16 }}>
-      {/* Header */}
-      <div style={headerRow}>
-        <h1 style={{ margin: 0 }}>Groups</h1>
-
-        <button style={primaryBtn} onClick={() => navigate("/groups/new")}>
+    <div style={pageContainer}>
+      {/* Header with frame */}
+      <div style={headerFrame}>
+        <h1 style={pageTitle}>Groups</h1>
+        <button style={createBtn} onClick={() => navigate("/groups/new")}>
           + Create Group
         </button>
       </div>
@@ -276,44 +275,44 @@ export default function GroupsPage() {
         </div>
       )}
 
-      {/* Owned Groups */}
-      <section style={{ marginTop: 18 }}>
-        <h2 style={{ marginBottom: 10 }}>Owned Groups</h2>
+      {/* Owned Groups Section with frame */}
+      <div style={sectionFrame}>
+        <h2 style={sectionTitle}>Owned Groups</h2>
 
         {ownedGroups.length === 0 ? (
-          <p style={{ color: "#444" }}>
+          <p style={emptyMessage}>
             You haven't created any groups yet. Click "Create Group" to make one!
           </p>
         ) : (
-          ownedGroups.map((g) => {
-            const isAlsoMember = memberships.includes(Number(g.group_id));
-            return (
-              <div key={g.group_id} style={ownedRow}>
-                <div
-                  style={{ flex: 1, cursor: "pointer" }}
-                  onClick={() => navigate(`/groups/${g.group_id}`)}
-                >
-                  <h3 style={{ margin: 0 }}>{g.name}</h3>
-                  <p style={{ margin: "6px 0 0", color: "#444" }}>
-                    {g.description}
-                  </p>
-
-                  <div style={metaRow}>
-                    <span style={pill}>{g.category}</span>
-                    <span
-                      style={{
-                        ...pill,
-                        background: !g.is_private ? "#e9f7ef" : "#fdecea",
+          <div style={cardsContainer}>
+            {ownedGroups.map((g) => {
+              const isAlsoMember = memberships.includes(Number(g.group_id));
+              return (
+                <div key={g.group_id} style={card}>
+                  <div style={cardHeader}>
+                    <h3 style={cardTitle}>{g.name}</h3>
+                    <button
+                      style={outlineBtn}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/groups/${g.group_id}/edit`);
                       }}
                     >
+                      Edit
+                    </button>
+                  </div>
+                  <p style={cardDescription}>
+                    {g.description}
+                  </p>
+                  <div style={tagsContainer}>
+                    <span style={getPillStyle(g.category)}>{g.category}</span>
+                    <span style={getPillStyle(g.is_private ? 'private' : 'open')}>
                       {!g.is_private ? "Open" : "Private"}
                     </span>
                     {g.max_members && (
-                      <span style={pill}>
-                        Max {g.max_members} members
-                      </span>
+                      <span style={greyPill}>Max {g.max_members}</span>
                     )}
-                    <span style={{...pill, background: "#e3f2fd", color: "#1976d2"}}>
+                    <span style={{...pill, background: "#fff3e0", color: "#ed6c02"}}>
                       Owner
                     </span>
                     {isAlsoMember && (
@@ -323,56 +322,51 @@ export default function GroupsPage() {
                     )}
                   </div>
                 </div>
-
-                <button
-                  style={secondaryBtn}
-                  onClick={() => navigate(`/groups/${g.group_id}/edit`)}
-                >
-                  Edit Group
-                </button>
-              </div>
-            );
-          })
+              );
+            })}
+          </div>
         )}
-      </section>
+      </div>
 
-      {/* My Groups */}
-      <section style={{ marginTop: 26 }}>
-        <h2 style={{ marginBottom: 10 }}>My Groups</h2>
+      {/* My Groups Section with frame */}
+      <div style={sectionFrame}>
+        <h2 style={sectionTitle}>My Groups</h2>
 
         {myGroups.length === 0 ? (
-          <p style={{ color: "#444" }}>
+          <p style={emptyMessage}>
             You're not in any groups yet. Join one below!
           </p>
         ) : (
-          myGroups.map((g) => (
-            <GroupCardRow
-              key={g.group_id}
-              group={g}
-              isMember={true}
-              onJoin={handleJoin}
-              onLeave={handleLeave}
-              onOpen={() => navigate(`/groups/${g.group_id}`)}
-            />
-          ))
+          <div style={cardsContainer}>
+            {myGroups.map((g) => (
+              <GroupCard
+                key={g.group_id}
+                group={g}
+                isMember={true}
+                onJoin={handleJoin}
+                onLeave={handleLeave}
+                onOpen={() => navigate(`/groups/${g.group_id}`)}
+              />
+            ))}
+          </div>
         )}
-      </section>
+      </div>
 
-      {/* Discover Groups */}
-      <section style={{ marginTop: 26 }}>
-        <h2 style={{ marginBottom: 10 }}>Discover Groups</h2>
+      {/* Discover Groups Section with frame */}
+      <div style={sectionFrame}>
+        <h2 style={sectionTitle}>Discover Groups</h2>
 
-        <div style={toolbar}>
+        <div style={toolbarFrame}>
           {/* Category Filter Dropdown */}
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <label style={{ fontWeight: 600, color: "#444" }}>Category:</label>
+          <div style={filterContainer}>
+            <label style={filterLabel}>Category:</label>
             <select
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               style={selectInput}
               disabled={loadingTags}
             >
-              <option value="Any">Any</option>
+              <option value="Any">All Categories</option>
               {tagOptions.map((tag) => (
                 <option key={tag.tag_id} value={tag.tag_name}>
                   {tag.tag_name}
@@ -396,14 +390,14 @@ export default function GroupsPage() {
           </div>
         )}
 
-        <div style={{ marginTop: 12 }}>
+        <div style={cardsContainer}>
           {discoverGroups.length === 0 ? (
-            <p style={{ color: "#444" }}>No groups match your filter/search.</p>
+            <p style={emptyMessage}>No groups match your filter/search.</p>
           ) : (
             discoverGroups.map((g) => {
               const isMember = memberships.includes(Number(g.group_id));
               return (
-                <GroupCardRow
+                <GroupCard
                   key={g.group_id}
                   group={g}
                   isMember={isMember}
@@ -415,52 +409,26 @@ export default function GroupsPage() {
             })
           )}
         </div>
-      </section>
+      </div>
     </div>
   );
 }
 
-/** Clickable "card row". Join/Leave buttons don't navigate. */
-function GroupCardRow({ group, isMember, onJoin, onLeave, onOpen }) {
-  console.log(`Rendering GroupCardRow for ${group.name} (ID: ${group.group_id}), isMember: ${isMember}`);
+/** Group Card Component */
+function GroupCard({ group, isMember, onJoin, onLeave, onOpen }) {
+  console.log(`Rendering GroupCard for ${group.name} (ID: ${group.group_id}), isMember: ${isMember}`);
   
   // Check if group is full
   const isFull = group.max_members && group.member_count >= group.max_members;
   
   return (
     <div onClick={onOpen} style={card}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-        <div style={{ flex: 1 }}>
-          <h3 style={{ margin: 0 }}>{group.name}</h3>
-          <p style={{ margin: "6px 0 0", color: "#444" }}>{group.description}</p>
-
-          <div style={metaRow}>
-            <span style={pill}>{group.category}</span>
-            <span
-              style={{
-                ...pill,
-                background: !group.is_private ? "#e9f7ef" : "#fdecea",
-              }}
-            >
-              {!group.is_private ? "Open" : "Private"}
-            </span>
-            {group.member_count !== undefined && (
-              <span style={pill}>
-                👥 {group.member_count} {group.max_members ? `/ ${group.max_members}` : 'members'}
-              </span>
-            )}
-            {isMember && (
-              <span style={{...pill, background: "#e3f2fd", color: "#1976d2"}}>
-                ✅ Joined
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "flex-start" }}>
+      <div style={cardHeader}>
+        <h3 style={cardTitle}>{group.name}</h3>
+        <div style={buttonWrapper}>
           {isMember ? (
             <button
-              style={secondaryBtn}
+              style={outlineBtn}
               onClick={(e) => {
                 e.stopPropagation();
                 console.log("Leave button clicked for group:", group.group_id);
@@ -471,7 +439,7 @@ function GroupCardRow({ group, isMember, onJoin, onLeave, onOpen }) {
             </button>
           ) : (
             <button
-              style={primaryBtn}
+              style={solidBtn}
               disabled={group.is_private || isFull}
               onClick={(e) => {
                 e.stopPropagation();
@@ -491,111 +459,299 @@ function GroupCardRow({ group, isMember, onJoin, onLeave, onOpen }) {
           )}
         </div>
       </div>
+      <p style={cardDescription}>{group.description}</p>
+      <div style={tagsContainer}>
+        <span style={getPillStyle(group.category)}>{group.category}</span>
+        <span style={getPillStyle(group.is_private ? 'private' : 'open')}>
+          {!group.is_private ? "Open" : "Private"}
+        </span>
+        {group.member_count !== undefined && (
+          <span style={greyPill}>
+            {group.member_count} {group.max_members ? `/ ${group.max_members}` : 'members'}
+          </span>
+        )}
+        {isMember && (
+          <span style={{...pill, background: "#e3f2fd", color: "#1976d2"}}>
+            ✅ Joined
+          </span>
+        )}
+      </div>
     </div>
   );
 }
 
+// Helper function to get pill style based on category/type
+function getPillStyle(type) {
+  const baseStyle = { ...pill };
+  
+  switch(type?.toLowerCase()) {
+    case 'academic':
+      return { ...baseStyle, background: "#e3f2fd", color: "#1976d2" };
+    case 'social':
+      return { ...baseStyle, background: "#f3e5f5", color: "#7b1fa2" };
+    case 'intramural':
+      return { ...baseStyle, background: "#e8f5e8", color: "#2e7d32" };
+    case 'open':
+      return { ...baseStyle, background: "#e9f7ef", color: "#2e7d32" };
+    case 'private':
+      return { ...baseStyle, background: "#fdecea", color: "#b00020" };
+    default:
+      return { ...baseStyle, background: "#f3f3f3", color: "#17292B" };
+  }
+}
+
 /* ---------------- styles ---------------- */
-const headerRow = {
+const pageContainer = {
+  maxWidth: "1000px",
+  margin: "0 auto",
+  padding: "20px",
+  width: "100%",
+  boxSizing: "border-box",
+};
+
+const pageTitle = {
+  margin: 0,
+  fontSize: "2.5rem",
+  fontWeight: 700,
+  color: "#17292B",
+};
+
+const headerFrame = {
+  background: "#FFFFFF",
+  padding: "20px 30px",
+  borderRadius: "20px",
+  border: "1px solid #D6DFE2",
+  boxShadow: "0 4px 12px rgba(93,108,92,0.1)",
+  borderLeft: "6px solid #5D6C5C",
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  gap: 12,
+  gap: "12px",
+  marginBottom: "24px",
+  width: "100%",
+  boxSizing: "border-box",
 };
 
-const toolbar = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: 12,
-  flexWrap: "wrap",
-  marginBottom: 16,
+const sectionFrame = {
+  background: "#FFFFFF",
+  borderRadius: "24px",
+  padding: "24px",
+  marginTop: "32px",
+  border: "1px solid #D6DFE2",
+  boxShadow: "0 4px 12px rgba(93,108,92,0.08)",
+  width: "100%",
+  boxSizing: "border-box",
 };
 
-const ownedRow = {
-  border: "1px solid #ddd",
-  borderRadius: 12,
-  padding: 14,
-  marginBottom: 12,
+const sectionTitle = {
+  fontWeight: 700,
+  fontSize: "2rem",
+  marginBottom: "24px",
+  color: "#5D6C5C",
+  borderBottom: "3px solid #D6DFE2",
+  paddingBottom: "10px",
+  display: "inline-block",
+};
+
+const cardsContainer = {
   display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: 12,
-  backgroundColor: "#fff",
+  flexDirection: "column",
+  gap: "16px",
+  width: "100%",
 };
 
 const card = {
-  border: "1px solid #ddd",
-  borderRadius: 12,
-  padding: 14,
-  marginBottom: 12,
+  border: "1px solid #D6DFE2",
+  borderRadius: "16px",
+  padding: "20px",
+  backgroundColor: "#FDFDF6",
+  boxShadow: "0px 2px 8px rgba(0,0,0,0.03)",
+  transition: "all 0.2s",
   cursor: "pointer",
-  backgroundColor: "#fff",
-  transition: "box-shadow 0.2s",
+  width: "100%",
+  boxSizing: "border-box",
 };
 
-const metaRow = {
-  marginTop: 10,
+const cardHeader = {
   display: "flex",
-  gap: 8,
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: "12px",
+  width: "100%",
+  minHeight: "56px", // Increased to accommodate taller buttons
+};
+
+const cardTitle = {
+  fontSize: "1.3rem",
+  fontWeight: 700,
+  color: "#17292B",
+  margin: 0,
+  flex: "1",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  lineHeight: "56px", // Match button height for vertical alignment
+};
+
+const cardDescription = {
+  color: "#686967",
+  fontSize: "0.95rem",
+  marginBottom: "16px",
+  lineHeight: 1.5,
+  width: "100%",
+};
+
+const tagsContainer = {
+  display: "flex",
+  gap: "8px",
   flexWrap: "wrap",
+  width: "100%",
 };
 
 const pill = {
-  fontSize: 12,
-  padding: "4px 8px",
-  borderRadius: 999,
+  fontSize: "12px",
+  padding: "6px 14px",
+  borderRadius: "30px",
+  fontWeight: 600,
+  border: "none",
+  display: "inline-block",
+};
+
+const greyPill = {
+  fontSize: "12px",
+  padding: "6px 14px",
+  borderRadius: "30px",
+  fontWeight: 600,
+  border: "none",
+  display: "inline-block",
   background: "#f3f3f3",
-  color: "#333",
+  color: "#686967",
+};
+
+const toolbarFrame = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "12px",
+  flexWrap: "wrap",
+  marginBottom: "24px",
+  background: "#FDFDF6",
+  padding: "16px 20px",
+  borderRadius: "16px",
+  border: "1px solid #D6DFE2",
+  width: "100%",
+  boxSizing: "border-box",
+};
+
+const filterContainer = {
+  display: "flex",
+  gap: "12px",
+  alignItems: "center",
+  flexWrap: "wrap",
+};
+
+const filterLabel = {
+  fontWeight: 600,
+  color: "#686967",
 };
 
 const searchInput = {
-  minWidth: 240,
+  minWidth: "260px",
   flex: "1 1 260px",
-  padding: 10,
-  borderRadius: 10,
-  border: "1px solid #ccc",
+  padding: "12px 20px",
+  borderRadius: "30px",
+  border: "2px solid #D6DFE2",
   outline: "none",
-  fontSize: 14,
+  fontSize: "14px",
+  background: "#FFFFFF",
+  color: "#17292B",
+  transition: "all 0.2s",
+  boxSizing: "border-box",
 };
 
 const selectInput = {
-  padding: "8px 12px",
-  borderRadius: 8,
-  border: "1px solid #ccc",
-  background: "#fff",
-  fontSize: 14,
-  minWidth: 150,
+  padding: "10px 16px",
+  borderRadius: "30px",
+  border: "2px solid #D6DFE2",
+  background: "#FFFFFF",
+  fontSize: "14px",
+  minWidth: "150px",
   cursor: "pointer",
+  color: "#17292B",
+  fontWeight: 500,
+  transition: "all 0.2s",
 };
 
 const errorBanner = {
-  backgroundColor: "#ffebee",
+  backgroundColor: "#fdecea",
   color: "#b00020",
-  padding: "8px 12px",
-  borderRadius: 8,
+  padding: "12px 20px",
+  borderRadius: "30px",
   border: "1px solid #ffcdd2",
-  fontSize: 13,
+  fontSize: "14px",
+  marginBottom: "16px",
+  width: "100%",
+  boxSizing: "border-box",
 };
 
-const primaryBtn = {
-  padding: "10px 14px",
-  borderRadius: 10,
-  border: "1px solid #111",
-  background: "#111",
-  color: "#fff",
-  fontWeight: 800,
-  cursor: "pointer",
-  fontSize: 14,
+const emptyMessage = {
+  color: "#686967",
+  padding: "20px",
+  textAlign: "center",
+  width: "100%",
 };
 
-const secondaryBtn = {
-  padding: "10px 14px",
-  borderRadius: 10,
-  border: "1px solid #bbb",
-  background: "#fff",
-  color: "#111",
-  fontWeight: 800,
+const createBtn = {
+  padding: "14px 28px", // Increased vertical padding
+  borderRadius: "30px",
+  border: "none",
+  background: "#17292B",
+  color: "#FDFDF6",
+  fontWeight: 700,
   cursor: "pointer",
-  fontSize: 14,
+  fontSize: "15px", // Slightly larger font
+  transition: "all 0.2s",
+  boxShadow: "0 4px 10px rgba(23,41,43,0.2)",
+  minWidth: "160px",
+  lineHeight: "1.2",
+};
+
+// Solid button for Join - TALLER VERTICAL HEIGHT
+const solidBtn = {
+  padding: "14px 28px", // Increased vertical padding from 12px to 14px
+  borderRadius: "30px",
+  border: "none",
+  background: "#17292B",
+  color: "#FDFDF6",
+  fontWeight: 700,
+  cursor: "pointer",
+  fontSize: "15px", // Slightly larger font
+  transition: "all 0.2s",
+  minWidth: "100px",
+  textAlign: "center",
+  boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+  lineHeight: "1.2",
+};
+
+// Outline button for Edit and Leave - TALLER VERTICAL HEIGHT
+const outlineBtn = {
+  padding: "14px 28px", // Increased vertical padding from 12px to 14px
+  borderRadius: "30px",
+  border: "2px solid #5D6C5C",
+  background: "transparent",
+  color: "#17292B",
+  fontWeight: 700,
+  cursor: "pointer",
+  fontSize: "15px", // Slightly larger font
+  transition: "all 0.2s",
+  minWidth: "100px",
+  textAlign: "center",
+  lineHeight: "1.2",
+};
+
+const buttonWrapper = {
+  display: "flex",
+  justifyContent: "flex-end",
+  alignItems: "center",
+  height: "56px", // Increased from 48px to 56px for taller buttons
 };
