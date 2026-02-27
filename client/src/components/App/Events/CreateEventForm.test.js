@@ -1,12 +1,12 @@
 // Created by: Derrick Lu
 
-// Unit tests for User Story #16 and #24
+// Unit tests for CreateEventForm.js with two user stories used
 // 16. As an event organizer, I want to create an event post, 
 //     so that I can promote and get people to RSVP to my event.
 // 24. As an event organizer, I want to set a maximum number of RSVP spots, 
 //     so that my event does not exceed its capacity.
 
-describe("CreateEventForm test for User Story 16 and 24)", () => {
+describe("CreateEventForm test with User Story 16 and 24)", () => {
   
     // Set up helper function to check empty enters
     const validateRequiredFields = (formData) => {
