@@ -4,6 +4,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import bodyParser from 'body-parser';
+import profileRoutes from "./profileRoutes.js";
 import multer from 'multer'; // For file uploads
 import fs from 'fs'; // For file system operations
 
@@ -69,8 +70,8 @@ const upload = multer({
 
 app.use(express.static(path.join(__dirname, "client/build")));
 
-// REMOVED THE DUPLICATE db CONNECTION HERE
-// The duplicate "const db = mysql.createConnection(config);" has been removed
+// Profile routes
+app.use("/api/profile", profileRoutes);
 
 // GET /api/events
 // default: upcoming only

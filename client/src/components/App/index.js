@@ -17,9 +17,12 @@ import EditGroupForm from "./Groups/EditGroupForm";
 import EventsPage from "./Events/EventsPage";
 import CreateEventForm from "./Events/CreateEventForm";
 
+// Import profile components
+import ProfilePage from "./Profile/Profile";
+import EditProfile from "./Profile/EditProfile";  
+
 // placeholders (optional)
 const HomePage = () => <div>Home</div>;
-const ProfilePage = () => <div>Profile</div>;
 
 export default function App() {
   return (
@@ -46,8 +49,9 @@ export default function App() {
           <Route path="/events" element={<EventsPage />} />
           <Route path="/events/new" element={<CreateEventForm />} />
           
-          {/* Other routes */}
+          {/* Profile routes */}
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/edit-profile" element={<EditProfile />} />
         </Routes>
       </ThemeProvider>
     </BrowserRouter>

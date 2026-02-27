@@ -1,8 +1,10 @@
 import React from "react";
-import { AppBar, Toolbar, Typography, Button, Grid } from "@mui/material";
+import {AppBar, Toolbar, Typography, Button, Grid
+} from "@mui/material";
 import { Link as RouterLink } from "react-router-dom";
 
 function Navbar() {
+
   return (
     <AppBar position="static">
       <Toolbar>
