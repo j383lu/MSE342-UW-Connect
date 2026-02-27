@@ -13,6 +13,8 @@ Jest/Cypress tests: The recording of the Jest and Cypress tests passing will be 
 
 Login/Registration Feature: This feature is not fully functioning yet due to the authentication lesson not being taught yet. For now, this feature includes data input validation, and page switching between the registation and login page. As a group, we have also decided to add the login page to the NavBar, as we wait for the next sprint to implement firebase.
 
+Database Connection: l2jung
+
 
 ## Development Tips:
 - Use CodeSpaces for this project.
