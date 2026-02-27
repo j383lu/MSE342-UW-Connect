@@ -261,7 +261,7 @@ function EditProfile() {
                           <Chip
                             key={courseId}
                             label={course ? `${course.course_code}` : courseId}
-
+                            sx={{ bgcolor: "primary.main", color: "primary.contrastText", fontWeight: 600 }}
                           />
                         );
                       })}

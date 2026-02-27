@@ -94,9 +94,8 @@ function Profile() {
               {userCourses.map((course) => (
                 <Chip 
                   key={course.course_id} 
-                  label={`${course.course_code} - ${course.course_name}`}
-                  variant="outlined"
-                  sx={{ borderColor: "divider", color: "text.primary" }}
+                  label={course.course_code}
+                  sx={{ bgcolor: "primary.main", color: "primary.contrastText", fontWeight: 600 }}
                 />
               ))}
             </Stack>

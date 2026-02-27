@@ -92,7 +92,7 @@ router.get("/courses", (req, res) => {
   const connection = mysql.createConnection(config);
 
   const sql = `
-    SELECT course_id, course_code, course_name
+    SELECT course_id, course_code
     FROM Courses
     ORDER BY course_code ASC;
   `;
@@ -119,7 +119,7 @@ router.get("/user-courses", (req, res) => {
   const connection = mysql.createConnection(config);
 
   const sql = `
-    SELECT c.course_id, c.course_code, c.course_name
+    SELECT c.course_id, c.course_code
     FROM User_Profile_Courses upc
     JOIN Courses c ON c.course_id = upc.course_id
     JOIN User_Profiles up ON up.profile_id = upc.profile_id
