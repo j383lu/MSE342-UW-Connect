@@ -58,7 +58,11 @@ function Post() {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({newPost})
+        body: JSON.stringify({
+          title: newPost.title,
+          content: newPost.description, // backend expects "content"
+          tags: newPost.tags
+        })
       });
 
       const data = await response.json();
