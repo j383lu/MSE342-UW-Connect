@@ -1,3 +1,20 @@
+import * as React from "react";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+
+import Layout from "./Layout";
+import EventsPage from "./Events/EventsPage";
+import CreateEventForm from "./Events/CreateEventForm";
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Layout>
+        <Routes>
+          <Route path="/events" element={<EventsPage />} />
+          <Route path="/events/new" element={<CreateEventForm />} />
+        </Routes>
+      </Layout>
+    </BrowserRouter>
 import * as React from 'react';
 import { ThemeProvider } from '@mui/material/styles';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
