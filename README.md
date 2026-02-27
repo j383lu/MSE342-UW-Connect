@@ -1,6 +1,18 @@
 [![Open in Codespaces](https://classroom.github.com/assets/launch-codespace-2972f46106e565e64193e422d61a12cf1da4916b45550586e14ef0a7c637dd04.svg)](https://classroom.github.com/open-in-codespaces?assignment_repo_id=22136868)
-# MSE 342 - Project template (based on the repository of MSE 245 - Project Deliverable 2)
+# MSE 342 - Group Project: UW Connect
 
+## Project Description:
+
+UW Connect is a centralized social engagement platform specifically engineered for the University of Waterloo’s students and staff. By integrating campus activities into a single intuitive interface, the app streamlines how the UW community interacts with eachother.
+
+The platform serves as a digital hub for students to find each other and connect for intramurals, study groups, and event management, fostering a more cohesive campus culture. Through real-time posts and centralized engagement tools, UW bridges the gap between academic and extracurriculars. In turn, it helps students meet each other; post their thoughts and opinions; and bring the community together. 
+
+## Additional Information:
+Jes/Cypress tests: The recording of the Jest and Cypress tests passing will be included at the end of the demo video.
+
+Login/Registration Feature: This feature is not fully functioning yet due to the authentication lesson not being taught yet. For now, this feature includes data input validation, and page switching between the registation and login page. As a group, we have also decided to add the login page to the NavBar, as we wait for the next sprint to implement firebase.
+
+Groups Features: This feature currently uses a default user (user_id = 1) to create, edit, join and leave groups. 
 
 ## Development Tips:
 - Use CodeSpaces for this project.
