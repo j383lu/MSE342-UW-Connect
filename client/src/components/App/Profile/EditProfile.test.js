@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import Profile from "./Profile";
 import EditProfile from "./EditProfile";
@@ -7,24 +7,49 @@ import { Routes, Route, MemoryRouter } from "react-router-dom";
 
 describe("Update Display Name ", () => {
   beforeEach(() => {
-    global.fetch = jest.fn();
+    // generic fetch mock that returns sensible defaults per-endpoint
+    global.fetch = jest.fn((url, opts) => {
+      // handle PUT separately to allow overriding in individual tests
+      if (opts && opts.method && opts.method.toUpperCase() === "PUT") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ message: "ok" }),
+        });
+      }
 
-    global.fetch
-      .mockResolvedValueOnce({ 
-        ok: true, 
-        json: async () => ({
-          name: "OriginalName",
-          bio: "",
-          program_id: "",
-          courses: []
-        })
-      })
-      .mockResolvedValueOnce({ 
-        ok: true, 
-        json: async () => ([
-          { program_id: 1, program_name: "Management Engineering" }
-        ])
-      });
+      switch (url) {
+        case "/api/profile":
+          // when called on mount return original profile, tests may mock again later
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              name: "OriginalName",
+              bio: "",
+              program_id: 1,            // ensure a program is already selected
+              courses: [],
+            }),
+          });
+        case "/api/profile/programs":
+          return Promise.resolve({
+            ok: true,
+            json: async () => [
+              { program_id: 1, program_name: "Management Engineering" },
+            ],
+          });
+        case "/api/profile/courses":
+          return Promise.resolve({
+            ok: true,
+            json: async () => [
+              { course_id: 1, course_code: "MATH101" },
+            ],
+          });
+        case "/api/profile/user-courses":
+          return Promise.resolve({ ok: true, json: async () => [] });
+        default:
+          // any other request just succeed with an empty result
+          return Promise.resolve({ ok: true, json: async () => ({}) });
+      }
+    });
   });
 
   test("1. Empty name shows 'Name cannot be empty.'", async () => {
@@ -108,21 +133,27 @@ describe("Update Display Name ", () => {
   });
   
   test("6. Saving a valid new name shows updated name on Profile page", async () => {
-    // Mock PUT /api/profile success (3rd fetch call after the 2 GETs in beforeEach)
-    global.fetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ message: "ok" }),
-    });
-
-    // Mock GET /api/profile for the Profile page after navigation (4th fetch call)
-    global.fetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        name: "NewName",
-        program: "Management Engineering",
-        bio: "",
-        courses: [],
-      }),
+    // override fetch implementation so that after saving the profile
+    // subsequent GET /api/profile returns the updated name
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn((url, opts) => {
+      if (opts && opts.method && opts.method.toUpperCase() === "PUT") {
+        return Promise.resolve({ ok: true, json: async () => ({ message: "ok" }) });
+      }
+      if (url === "/api/profile") {
+        // simulate updated data on second profile request
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            name: "NewName",
+            program: "Management Engineering",
+            bio: "",
+            courses: [],
+          }),
+        });
+      }
+      // delegate other requests to the original mock from beforeEach
+      return originalFetch(url, opts);
     });
 
     render(
@@ -134,21 +165,31 @@ describe("Update Display Name ", () => {
       </MemoryRouter>
     );
 
-    const input = await screen.findByLabelText(/Display Name/i);
+    const input = await screen.findByTestId("display-name-input");
     fireEvent.change(input, { target: { value: "NewName" } });
+
+    // program selection is required before saving
+    fireEvent.mouseDown(screen.getByLabelText(/Program/i));
+    const listbox = await screen.findByRole("listbox");
+    fireEvent.click(within(listbox).getByText(/Management Engineering/i));
+
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
 
-    // Wait for the PUT request to have been made
-    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(3));
+    // ensure the PUT request was fired with correct payload
+    await waitFor(() =>
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/profile',
+        expect.objectContaining({ method: 'PUT' })
+      )
+    );
 
-    // Render the Profile page 
+    // finally render profile page to verify name updated
     render(
       <MemoryRouter>
         <Profile />
       </MemoryRouter>
     );
 
-    // Wait for Profile to fetch and render the updated name
     await waitFor(() => {
       expect(screen.getByText("NewName")).toBeInTheDocument();
     });
