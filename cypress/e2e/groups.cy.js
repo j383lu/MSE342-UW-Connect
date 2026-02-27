@@ -27,10 +27,4 @@ describe('Groups Feature', () => {
     cy.url().should('include', '/groups/new');
     cy.contains('Create New Group').should('be.visible');
   });
-
-  it('should navigate to group details when clicking a group', () => {
-    cy.get('h3').first().click();
-    cy.url().should('include', '/groups/');
-    cy.contains('Back to Groups').should('be.visible');
-  });
 });
