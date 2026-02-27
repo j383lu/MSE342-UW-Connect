@@ -9,6 +9,8 @@ UW Connect is a centralized social engagement platform specifically engineered f
 The platform serves as a digital hub for students to find each other and connect for intramurals, study groups, and event management, fostering a more cohesive campus culture. Through real-time posts and centralized engagement tools, UW bridges the gap between academic and extracurriculars. In turn, it helps students meet each other; post their thoughts and opinions; and bring the community together. 
 
 ## Additional Information:
+Jes/Cypress tests: The recording of the Jest and Cypress tests passing will be included at the end of the demo video.
+
 Login/Registration Feature: This feature is not fully functioning yet due to the authentication lesson not being taught yet. For now, this feature includes data input validation, and page switching between the registation and login page. As a group, we have also decided to add the login page to the NavBar, as we wait for the next sprint to implement firebase.
 
 
