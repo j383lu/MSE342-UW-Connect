@@ -4,6 +4,8 @@ import { ThemeProvider } from '@mui/material/styles';
 import theme from './Theme';
 import Navbar from './Navbar';
 import LogInAndRegister from './LogIn/LogInAndRegister';
+import Layout from './Layout';
+import Post from '../Post'
 
 // Import groups components
 import GroupsPage from "./Groups/GroupsPage";
@@ -33,6 +35,9 @@ export default function App() {
           
           {/* Home route */}
           <Route path="/" element={<HomePage />} />
+
+          {/* Post route */}
+          <Route path="/feed" element={<Post />} />
           
           {/* Groups routes */}
           <Route path="/groups" element={<GroupsPage />} />

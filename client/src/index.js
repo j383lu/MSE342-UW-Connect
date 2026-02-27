@@ -5,6 +5,7 @@ import CssBaseline from "@mui/material/CssBaseline";
 import "./index.css";
 import theme from "./components/App/Theme";
 import App from "./components/App";
+import Post from "./components/Post"
 
 const root = createRoot(document.getElementById("root"));
 root.render(
