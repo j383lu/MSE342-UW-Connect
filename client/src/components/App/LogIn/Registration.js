@@ -7,9 +7,12 @@ import { Typography, Button, TextField, Box, Container, Link, Card, CardContent 
 import { InputAdornment, IconButton } from '@mui/material';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
+import { useNavigate } from 'react-router-dom';
 
 
 const Registration = ({ onSwitchPage }) => { 
+
+    const navigate = useNavigate();
 
     const [formData, setFormData] = useState({
             firstname: '',
@@ -94,6 +97,7 @@ const Registration = ({ onSwitchPage }) => {
             setErrors(newErrors);
         } else {
             console.log('Form Submitted successfully', formData);
+            navigate('./Post/index.js');
         }
     };
 

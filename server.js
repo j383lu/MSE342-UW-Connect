@@ -763,5 +763,67 @@ app.get('/api/posts/search', (req, res) => {
     });
 });
 
+// For Login
+app.post('/api/login', (req, res) => {
+    const { email, password } = req.body;
+
+    // find matching pair
+    const sql = "SELECT * FROM User_Credentials WHERE email = ? AND password_hash = ?";
+    
+    db.query(sql, [email, password], (err, results) => {
+        if (err) {
+            return res.status(500).json({ error: "Database error" });
+        }
+
+        if (results.length > 0) {
+            // Found match
+            res.status(200).json({ 
+                message: "Login successful", 
+                user: { id: user.user_id, email: user.email, role: user.role } 
+            });
+        } else {
+            // no match found
+            res.status(401).json({ message: "Invalid email or password" });
+        }
+    });
+});
+
+// for registration
+app.post('/api/register', (req, res) => {
+    // Destructure everything from the frontend formData
+    const { email, password, firstname, lastname, username } = req.body;
+    const displayName = `${firstname} ${lastname}`;
+
+    // QUERY 1: Insert into User_Credentials
+    const sqlCredentials = "INSERT INTO User_Credentials (email, password_hash) VALUES (?, ?)";
+    
+    db.query(sqlCredentials, [email, password], (err, result) => {
+        if (err) {
+            console.error("Error inserting credentials:", err);
+            return res.status(500).json({ message: "Email already exists or database error." });
+        }
+
+        // Capture the newly created user_id
+        const newUserId = result.insertId;
+
+        // QUERY 2: Insert into User_Profiles using that newUserId
+        // We use the 'username' or 'displayName' for the display_name column
+        const sqlProfile = "INSERT INTO User_Profiles (user_id, display_name) VALUES (?, ?)";
+        
+        db.query(sqlProfile, [newUserId, displayName], (profileErr) => {
+            if (profileErr) {
+                console.error("Error inserting profile:", profileErr);
+                return res.status(500).json({ message: "Failed to create user profile." });
+            }
+
+            // Success! Both tables are updated.
+            res.status(201).json({ 
+                message: "User and Profile created successfully!",
+                user_id: newUserId 
+            });
+        });
+    });
+});
+
 
 app.listen(port, () => console.log(`Listening on port ${port}`)); //for the dev version

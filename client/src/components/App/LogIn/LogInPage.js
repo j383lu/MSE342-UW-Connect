@@ -11,10 +11,13 @@ import { InputAdornment, IconButton } from '@mui/material';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const LogInPage = ({ onSwitchPage }) => { 
 
-    const [formData, setFormData] = React.useState({ username: '', password: '' });
+    const navigate = useNavigate();
+
+    const [formData, setFormData] = React.useState({ email: '', password: '' });
     const [errors, setErrors] = React.useState({});
 
     const handleChange = (e) => {
@@ -29,13 +32,14 @@ const LogInPage = ({ onSwitchPage }) => {
         let newErrors = {};
 
         // this creates the "This field is required." messages your test looks for
-        if (!formData.username) newErrors.username = 'This field is required.';
+        if (!formData.email) newErrors.email = 'This field is required.';
         if (!formData.password) newErrors.password = 'This field is required.';
 
         setErrors(newErrors);
 
         if (Object.keys(newErrors).length === 0) {
             console.log('Logging in...', formData);
+            navigate('./Post/index.js');
         }
     };
 
@@ -85,14 +89,14 @@ const LogInPage = ({ onSwitchPage }) => {
                                     margin="normal"
                                     required
                                     fullWidth
-                                    id="username"
-                                    label="Username"
-                                    name="username"
+                                    id="email"
+                                    label="Email"
+                                    name="email"
                                     autoFocus
-                                    value={formData.username}
+                                    value={formData.email}
                                     onChange={handleChange}
-                                    error={!!errors.username}
-                                    helperText={errors.username}
+                                    error={!!errors.email}
+                                    helperText={errors.email}
                                 />
                                 <TextField
                                     margin="normal"

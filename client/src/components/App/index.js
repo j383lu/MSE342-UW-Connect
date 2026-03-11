@@ -1,10 +1,9 @@
 import * as React from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { ThemeProvider } from '@mui/material/styles';
 import theme from './Theme';
 import Navbar from './Navbar';
 import LogInAndRegister from './LogIn/LogInAndRegister';
-import Layout from './Layout';
 import Post from '../Post'
 
 // Import groups components
@@ -24,36 +23,72 @@ import EditProfile from "./Profile/EditProfile";
 // placeholders (optional)
 const HomePage = () => <div>Home</div>;
 
+function AppContent() {
+  const location = useLocation();
+
+  const isLoginPage = location.pathname === "/";
+
+  return (
+    <ThemeProvider theme={theme}>
+      {!isLoginPage && <Navbar />}
+      
+      <Routes>
+        {/* login is the default page */}
+        <Route path="/" element={<LogInAndRegister />} />
+        
+        {/* when authenticated */}
+        <Route path="/feed" element={<Post />} />
+        <Route path="/groups" element={<GroupsPage />} />
+        <Route path="/groups/new" element={<CreateGroupForm />} />
+        <Route path="/groups/:groupId" element={<GroupDetailsPage />} />
+        <Route path="/groups/:groupId/edit" element={<EditGroupForm />} />
+        <Route path="/events" element={<EventsPage />} />
+        <Route path="/events/new" element={<CreateEventForm />} />
+        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/edit-profile" element={<EditProfile />} />
+      </Routes>
+    </ThemeProvider>
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
-      <ThemeProvider theme={theme}>
-        <Navbar />
-        <Routes>
-          {/* Login route */}
-          <Route path="/login" element={<LogInAndRegister />} />
-          
-          {/* Home route */}
-          <Route path="/" element={<HomePage />} />
-
-          {/* Post route */}
-          <Route path="/feed" element={<Post />} />
-          
-          {/* Groups routes */}
-          <Route path="/groups" element={<GroupsPage />} />
-          <Route path="/groups/new" element={<CreateGroupForm />} />
-          <Route path="/groups/:groupId" element={<GroupDetailsPage />} />
-          <Route path="/groups/:groupId/edit" element={<EditGroupForm />} />
-          
-          {/* Events routes */}
-          <Route path="/events" element={<EventsPage />} />
-          <Route path="/events/new" element={<CreateEventForm />} />
-          
-          {/* Profile routes */}
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/edit-profile" element={<EditProfile />} />
-        </Routes>
-      </ThemeProvider>
+      <AppContent />
     </BrowserRouter>
   );
 }
+
+// export default function App() {
+//   return (
+//     <BrowserRouter>
+//       <ThemeProvider theme={theme}>
+//         <Navbar />
+//         <Routes>
+//           {/* Login route */}
+//           <Route path="/login" element={<LogInAndRegister />} />
+          
+//           {/* Home route */}
+//           <Route path="/" element={<HomePage />} />
+
+//           {/* Post route */}
+//           <Route path="/feed" element={<Post />} />
+          
+//           {/* Groups routes */}
+//           <Route path="/groups" element={<GroupsPage />} />
+//           <Route path="/groups/new" element={<CreateGroupForm />} />
+//           <Route path="/groups/:groupId" element={<GroupDetailsPage />} />
+//           <Route path="/groups/:groupId/edit" element={<EditGroupForm />} />
+          
+//           {/* Events routes */}
+//           <Route path="/events" element={<EventsPage />} />
+//           <Route path="/events/new" element={<CreateEventForm />} />
+          
+//           {/* Profile routes */}
+//           <Route path="/profile" element={<ProfilePage />} />
+//           <Route path="/edit-profile" element={<EditProfile />} />
+//         </Routes>
+//       </ThemeProvider>
+//     </BrowserRouter>
+//   );
+// }
