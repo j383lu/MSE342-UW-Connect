@@ -1,36 +1,74 @@
-import React from "react";
-import { Card, CardContent, Typography, CardActions, Button, Stack, Chip, CardHeader } from "@mui/material";
+import React, {useState} from "react";
+import { Card, CardContent, CardHeader, CardActions,
+  Typography, Stack, Chip, Button,
+  Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions 
+} from "@mui/material";
 
+const currentUser = { id : 1};
 
-function PostCard({ post }) {
+function PostCard({ post, onDeletePost }) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const isAuthor = post.author_id === currentUser.id;
+
+  const handleDeleteConfirm = () => {
+    onDeletePost(post.post_id);
+    setConfirmOpen(false);
+  };
+
   return (
-    <Card sx={{ mb: 2 }}>
-      <CardHeader
-        title={post.title}
-        subheader={new Date(post.createdAt).toLocaleString()}
-      />
+    <>
+      <Card sx={{ mb: 2 }}>
+        <CardHeader
+          title={post.title}
+          subheader={new Date(post.createdAt).toLocaleString()}
+        />
 
-      <CardContent>
-        <Typography variant="body1" sx={{ mb: 2 }}>
-          {post.description}
-        </Typography>
+        <CardContent>
+          <Typography variant="body1" sx={{ mb: 2 }}>
+            {post.description}
+          </Typography>
 
-        {/* TAGS SECTION */}
-        {post.tags && post.tags.length > 0 && (
-          <Stack direction="row" spacing={1} flexWrap="wrap">
-            {post.tags.map((tag, index) => (
-              <Chip
-                key={index}
-                label={tag}
-                size="small"
-                sx={{ mb: 1 }}
-              />
-            ))}
-          </Stack>
+          {post.tags && post.tags.length > 0 && (
+            <Stack direction="row" spacing={1} flexWrap="wrap">
+              {post.tags.map((tag, index) => (
+                <Chip key={index} label={tag} size="small" sx={{ mb: 1 }} />
+              ))}
+            </Stack>
+          )}
+        </CardContent>
+
+        {/* Only show delete button if current user is the author */}
+        {isAuthor && (
+          <CardActions>
+            <Button
+              size="small"
+              color="error"
+              onClick={() => setConfirmOpen(true)}
+            >
+              Delete Post
+            </Button>
+          </CardActions>
         )}
-      </CardContent>
-    </Card>
+      </Card>
+
+      {/* Confirmation Dialog */}
+      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
+        <DialogTitle>Delete Post?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete "{post.title}"? This cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmOpen(false)}>Cancel</Button>
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained">
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
   );
-};
+}
 
 export default PostCard;

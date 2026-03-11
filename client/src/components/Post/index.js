@@ -23,6 +23,28 @@ function Post() {
     }
   };
 
+  // Add this handler in Post.jsx
+  const handleDeletePost = async (postId) => {
+    try {
+        const response = await fetch(`/api/posts/${postId}`, {
+            method: 'DELETE',
+        });
+
+        if (!response.ok) {
+            const data = await response.json();
+            console.error("Delete failed:", data.error);
+            return;
+        }
+
+        // Remove deleted post from state without refetching
+        setPosts(prev => prev.filter(p => p.post_id !== postId));
+    } catch (error) {
+        console.error("Error deleting post:", error);
+    }
+  };
+
+  // Then update your PostList render to pass it down:
+  <PostList posts={posts} onDeletePost={handleDeletePost} />
 
   // Search function
   const handleSearch = async () => {

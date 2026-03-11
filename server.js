@@ -653,6 +653,7 @@ app.post('/api/posts', (req, res) => {
                         res.json({
                             post: {
                                 post_id: postId,
+                                author_id: author_id,
                                 title,
                                 description: content,
                                 tags: tagResult.map(t => t.tag_name),
@@ -664,7 +665,7 @@ app.post('/api/posts', (req, res) => {
                 } else {
                     connection.end();
                     res.json({
-                        post: { post_id: postId, title, description: content, tags: [], createdAt: new Date().toISOString() },
+                        post: { post_id: postId, author_id: author_id, title, description: content, tags: [], createdAt: new Date().toISOString() },
                         message: 'Post created successfully but no valid tags found'
                     });                
                 }
@@ -672,7 +673,7 @@ app.post('/api/posts', (req, res) => {
         } else {
             connection.end();
             res.json({
-                post: { post_id: postId, title, description: content, tags: [], createdAt: new Date().toISOString() },
+                post: { post_id: postId, author_id: author_id, title, description: content, tags: [], createdAt: new Date().toISOString() },
                 message: 'Post created successfully without tags'
             });
         }
@@ -705,6 +706,7 @@ app.get('/api/posts', (req, res) => {
 
         const formattedPosts = results.map(post => ({
             post_id: post.post_id,
+            author_id: post.author_id,
             title: post.title,
             description: post.content, // <-- map content to description
             tags: post.tags ? post.tags.split(',') : [],
@@ -749,6 +751,7 @@ app.get('/api/posts/search', (req, res) => {
 
         const formattedPosts = results.map(post => ({
             post_id: post.post_id,
+            author_id: post.author_id,
             title: post.title,
             description: post.description,
             tags: post.tags ? post.tags.split(',') : [],
@@ -760,6 +763,53 @@ app.get('/api/posts/search', (req, res) => {
         }
 
         res.json({ posts: formattedPosts });
+    });
+});
+
+// DELETE /api/posts/:id - delete a post (only by author)
+app.delete('/api/posts/:id', (req, res) => {
+    let connection = mysql.createConnection(config);
+    const postId = req.params.id;
+    const requestingUserId = 1; // Placeholder - replace with real auth user ID later
+
+    // First verify the post exists and the requester is the author
+    const checkSql = 'SELECT author_id FROM Posts WHERE post_id = ?';
+    connection.query(checkSql, [postId], (err, results) => {
+        if (err) {
+            console.error(err);
+            connection.end();
+            return res.status(500).json({ error: 'Error finding post' });
+        }
+
+        if (results.length === 0) {
+            connection.end();
+            return res.status(404).json({ error: 'Post not found' });
+        }
+
+        if (results[0].author_id !== requestingUserId) {
+            connection.end();
+            return res.status(403).json({ error: 'Not authorized to delete this post' });
+        }
+
+        // Delete post_tags first (FK constraint), then the post
+        const deleteTagsSql = 'DELETE FROM post_tags WHERE post_id = ?';
+        connection.query(deleteTagsSql, [postId], (err) => {
+            if (err) {
+                console.error(err);
+                connection.end();
+                return res.status(500).json({ error: 'Error deleting post tags' });
+            }
+
+            const deletePostSql = 'DELETE FROM Posts WHERE post_id = ?';
+            connection.query(deletePostSql, [postId], (err) => {
+                connection.end();
+                if (err) {
+                    console.error(err);
+                    return res.status(500).json({ error: 'Error deleting post' });
+                }
+                res.json({ message: 'Post deleted successfully', post_id: postId });
+            });
+        });
     });
 });
 
