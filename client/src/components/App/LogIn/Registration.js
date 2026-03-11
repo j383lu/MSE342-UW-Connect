@@ -76,6 +76,20 @@ const Registration = ({ onSwitchPage }) => {
             }
         }
 
+        if (formData.password) {
+        const password = formData.password;
+
+            if (password.length < 8) {
+                newErrors.password = 'Password doesn’t meet minimum character length.'; // AC 1
+            } else if (password.length > 32) {
+                newErrors.password = 'Password has exceeded the maximum character length'; // AC 2
+            } else if (!/[A-Z]/.test(password)) {
+                newErrors.password = 'Password must contain an uppercase'; // AC 3
+            } else if (!/[a-z]/.test(password)) {
+                newErrors.password = 'Password must contain a lowercase letter.'; // AC 4
+            }
+        }
+
         if (Object.keys(newErrors).length > 0) {
             setErrors(newErrors);
         } else {
