@@ -7,6 +7,7 @@ import {
   Card,
   CardContent,
   Button,
+  Alert,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 
@@ -14,6 +15,7 @@ function Profile() {
   const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
   const [userCourses, setUserCourses] = useState([]);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -24,6 +26,7 @@ function Profile() {
         setProfile(data);
       } catch (err) {
         console.error("Failed to load profile", err);
+        setLoadError("Profile failed to load.");
       }
     };
 
@@ -45,22 +48,41 @@ function Profile() {
     fetchUserCourses();
   }, []);
 
-  if (!profile) return null;
+  if (loadError) {
+    return (
+      <Box sx={{ p: 3, display: "flex", justifyContent: "center" }}>
+        <Card sx={{ width: 800, bgcolor: "background.paper", borderColor: "divider" }}>
+          <CardContent>
+            <Alert severity="error" variant="outlined">
+              {loadError}
+            </Alert>
+          </CardContent>
+        </Card>
+      </Box>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <Box sx={{ p: 3, display: "flex", justifyContent: "center" }}>
+        <Typography>Loading...</Typography>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ p: 3, display: "flex", justifyContent: "center" }}>
       <Card sx={{ width: 800, bgcolor: "background.paper", borderColor: "divider" }}>
         <CardContent>
-          {/* Header */}
           <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Box>
               <Typography variant="h2" sx={{ fontWeight: 600, color: "text.primary", mb: 1 }}>
                 {profile.name}
               </Typography>
 
-              <Chip 
-                label={profile.program} 
-                sx={{ mt: 1, bgcolor: "primary.main", color: "primary.contrastText", fontWeight: 600 }} 
+              <Chip
+                label={profile.program}
+                sx={{ mt: 1, bgcolor: "primary.main", color: "primary.contrastText", fontWeight: 600 }}
               />
             </Box>
 
@@ -74,7 +96,6 @@ function Profile() {
             </Button>
           </Stack>
 
-          {/* Bio */}
           <Box sx={{ mt: 3 }}>
             <Typography variant="h2" sx={{ fontWeight: 600, color: "text.primary", fontSize: "1rem", mb: 1 }}>
               Bio
@@ -84,7 +105,6 @@ function Profile() {
             </Typography>
           </Box>
 
-          {/* Courses */}
           <Box sx={{ mt: 3 }}>
             <Typography variant="h2" sx={{ fontWeight: 600, color: "text.primary", fontSize: "1rem", mb: 1 }}>
               Current Courses
@@ -92,8 +112,8 @@ function Profile() {
 
             <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: "wrap" }}>
               {userCourses.map((course) => (
-                <Chip 
-                  key={course.course_id} 
+                <Chip
+                  key={course.course_id}
                   label={course.course_code}
                   sx={{ bgcolor: "primary.main", color: "primary.contrastText", fontWeight: 600 }}
                 />
