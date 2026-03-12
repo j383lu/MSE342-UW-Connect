@@ -11,10 +11,10 @@ describe('Groups Feature', () => {
     // wait for Firebase login + redirect
     cy.contains('Home', { timeout: 10000 }).should('be.visible')
 
-    // Click the Navbar link to go to groups
+    // click the Navbar link to go to groups
     cy.contains('Groups').click()
 
-    // Confirm groups page loaded
+    // confirm groups page loaded
     cy.url().should('include', '/groups')
     cy.contains('Groups').should('be.visible')
   });

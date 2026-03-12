@@ -1,6 +1,5 @@
 // Author: Lauren Jung
 
-
 describe('Login and Registration Flow', () => {
   
     beforeEach(() => {
