@@ -20,6 +20,7 @@ import CreateEventForm from "./Events/CreateEventForm";
 // Import profile components
 import ProfilePage from "./Profile/Profile";
 import EditProfile from "./Profile/EditProfile";  
+import ProgramStudents from "./Profile/ProgramStudents";
 
 // placeholders (optional)
 const HomePage = () => <div>Home</div>;
@@ -52,6 +53,7 @@ export default function App() {
           {/* Profile routes */}
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/edit-profile" element={<EditProfile />} />
+          <Route path="/programs/:programId/students" element={<ProgramStudents />} />
         </Routes>
       </ThemeProvider>
     </BrowserRouter>

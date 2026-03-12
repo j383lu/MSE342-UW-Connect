@@ -41,7 +41,6 @@ function EditProfile() {
   const [successOpen, setSuccessOpen] = useState(false);
   const [saveError, setSaveError] = useState("");
 
-  // Load profile
   useEffect(() => {
     const fetchProfile = async () => {
       try {
@@ -52,6 +51,9 @@ function EditProfile() {
         setDraft({
           name: data.name || "",
           bio: data.bio || "",
+          gender: data.gender || "",
+          birthday: data.birthday ? data.birthday.slice(0, 10) : "",
+          phone_number: data.phone_number || "",
           program_id: data.program_id ?? "",
           courses: Array.isArray(data.courses) ? data.courses : [],
         });
@@ -64,7 +66,6 @@ function EditProfile() {
     fetchProfile();
   }, []);
 
-  // Load programs for dropdown
   useEffect(() => {
     const fetchPrograms = async () => {
       try {
@@ -81,7 +82,6 @@ function EditProfile() {
     fetchPrograms();
   }, []);
 
-  // Load courses for dropdown
   useEffect(() => {
     const fetchCourses = async () => {
       try {
@@ -100,8 +100,8 @@ function EditProfile() {
 
   if (!draft) {
     return (
-      <Box sx={{ p: 3 }}>
-        <Typography>Loading...</Typography>
+      <Box sx={{ p: 3, bgcolor: "background.default" }}>
+        <Typography color="text.secondary">Loading...</Typography>
       </Box>
     );
   }
@@ -112,7 +112,7 @@ function EditProfile() {
     const value = event.target.value;
     setDraft({
       ...draft,
-      courses: typeof value === 'string' ? value.split(',') : value,
+      courses: typeof value === "string" ? value.split(",") : value,
     });
   };
 
@@ -133,8 +133,10 @@ function EditProfile() {
     const payload = {
       name: draft.name.trim(),
       bio: draft.bio,
-      program_id:
-        draft.program_id === "" ? null : Number(draft.program_id),
+      gender: draft.gender,
+      birthday: draft.birthday || null,
+      phone_number: draft.phone_number.trim(),
+      program_id: draft.program_id === "" ? null : Number(draft.program_id),
       courses: draft.courses || [],
     };
 
@@ -163,17 +165,16 @@ function EditProfile() {
   };
 
   return (
-    <Box sx={{ p: 3, display: "flex", justifyContent: "center" }}>
+    <Box sx={{ p: 3, display: "flex", justifyContent: "center", bgcolor: "background.default" }}>
       <Card sx={{ width: 800, bgcolor: "background.paper", borderColor: "divider" }}>
         <CardContent>
-          <Typography variant="h2" sx={{ fontWeight: 700, color: "text.primary" }}>
+          <Typography variant="h2" sx={{ color: "text.primary" }}>
             Edit Profile
           </Typography>
 
           <Divider sx={{ my: 3, borderColor: "divider" }} />
 
           <Stack spacing={2}>
-            {/* Display Name */}
             <TextField
               label="Display Name"
               value={draft.name}
@@ -193,11 +194,8 @@ function EditProfile() {
               }}
             />
 
-            {/* Program Dropdown */}
             <FormControl fullWidth>
-              <InputLabel id="program-select-label">
-                Program
-              </InputLabel>
+              <InputLabel id="program-select-label">Program</InputLabel>
               <Select
                 labelId="program-select-label"
                 id="program-select"
@@ -222,7 +220,40 @@ function EditProfile() {
               </Select>
             </FormControl>
 
-            {/* Bio */}
+            <FormControl fullWidth>
+              <InputLabel id="gender-select-label">Gender</InputLabel>
+              <Select
+                labelId="gender-select-label"
+                id="gender-select"
+                value={draft.gender}
+                label="Gender"
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    gender: e.target.value,
+                  })
+                }
+                inputProps={{ "data-testid": "gender-input" }}
+              >
+                <MenuItem value="She/Her">She/Her</MenuItem>
+                <MenuItem value="He/Him">He/Him</MenuItem>
+                <MenuItem value="They/Them">They/Them</MenuItem>
+                <MenuItem value="Prefer not to say">Prefer not to say</MenuItem>
+              </Select>
+            </FormControl>
+
+            <TextField
+              label="Birthday"
+              type="date"
+              value={draft.birthday}
+              onChange={(e) =>
+                setDraft({ ...draft, birthday: e.target.value })
+              }
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+              inputProps={{ "data-testid": "birthday-input" }}
+            />
+
             <TextField
               label="Bio"
               value={draft.bio}
@@ -235,12 +266,21 @@ function EditProfile() {
               inputProps={{ "data-testid": "bio-input" }}
             />
 
-            {/* Courses */}
+            <TextField
+              label="Phone Number (Optional)"
+              value={draft.phone_number}
+              onChange={(e) =>
+                setDraft({ ...draft, phone_number: e.target.value })
+              }
+              fullWidth
+              inputProps={{
+                maxLength: 20,
+                "data-testid": "phone-number-input",
+              }}
+            />
+
             <Box>
-              <Typography
-                variant="h2"
-                sx={{ fontWeight: 600, color: "text.primary", fontSize: "1rem" }}
-              >
+              <Typography variant="h2" sx={{ fontSize: "1rem", color: "text.primary" }}>
                 Courses
               </Typography>
 
@@ -256,12 +296,15 @@ function EditProfile() {
                   renderValue={(selected) => (
                     <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 0.5 }}>
                       {selected.map((courseId) => {
-                        const course = courseOptions.find((c) => c.course_id === courseId);
+                        const course = courseOptions.find(
+                          (c) => Number(c.course_id) === Number(courseId)
+                        );
                         return (
                           <Chip
                             key={courseId}
-                            label={course ? `${course.course_code}` : courseId}
-                            sx={{ bgcolor: "primary.main", color: "primary.contrastText", fontWeight: 600 }}
+                            label={course ? course.course_code : courseId}
+                            color="primary"
+                            sx={{ fontWeight: 600 }}
                           />
                         );
                       })}
@@ -283,22 +326,17 @@ function EditProfile() {
               </Alert>
             )}
 
-            <Stack
-              direction="row"
-              justifyContent="flex-end"
-              spacing={1}
-            >
-              <Button 
-                variant="text" 
+            <Stack direction="row" justifyContent="flex-end" spacing={1}>
+              <Button
+                variant="text"
                 onClick={handleCancel}
-                sx={{ color: "text.primary", fontWeight: 600 }}
+                sx={{ color: "text.primary" }}
               >
                 Cancel
               </Button>
               <Button
                 variant="contained"
                 onClick={handleSave}
-                sx={{ bgcolor: "primary.main", color: "primary.contrastText", fontWeight: 600 }}
               >
                 Save
               </Button>
