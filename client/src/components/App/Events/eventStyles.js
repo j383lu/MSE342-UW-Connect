@@ -554,6 +554,107 @@ const eventStyles = {
     transition: "all 0.2s ease",
   },
 
+  tagInputRow: {
+    display: "flex",
+    gap: 12,
+    alignItems: "center",
+    flexWrap: "wrap",
+  },
+
+  addTagBtn: {
+    height: 42,
+    borderRadius: 999,
+    border: "1px solid #D6DFE2",
+    background: "#FFFFFF",
+    color: "#17292B",
+    fontWeight: 700,
+    cursor: "pointer",
+    padding: "0 18px",
+    transition: "all 0.2s ease",
+  },
+
+  tagsWrap: {
+    marginTop: 12,
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+
+  tagChip: {
+    display: "inline-flex",
+    alignItems: "center",
+    minHeight: 32,
+    padding: "0 12px",
+    borderRadius: 999,
+    background: "#F4EEE5",
+    border: "1px solid #D6DFE2",
+    boxShadow: "0 4px 10px rgba(23,41,43,0.05)",
+  },
+
+  tagChipText: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#17292B",
+  },
+
+  tagRemoveBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: "50%",
+    border: "none",
+    background: "#FFFFFF",
+    color: "#17292B",
+    fontWeight: 700,
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
+    lineHeight: 1,
+    boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
+  },
+
+  formSelect: {
+    height: 46,
+    borderRadius: 14,
+    border: "1px solid #D6DFE2",
+    padding: "0 14px",
+    fontSize: 14,
+    color: "#17292B",
+    background: "rgba(255,255,255,0.92)",
+    outline: "none",
+    boxSizing: "border-box",
+    boxShadow: "inset 0 1px 2px rgba(23,41,43,0.03)",
+    cursor: "pointer",
+  },
+  
+  categoryRow: {
+    marginTop: 14,
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+
+  categoryLabel: {
+    fontSize: 13,
+    color: "#686967",
+    fontWeight: 700,
+  },
+
+  categoryChip: {
+    display: "inline-flex",
+    alignItems: "center",
+    minHeight: 32,
+    padding: "0 12px",
+    borderRadius: 999,
+    background: "rgba(93,108,92,0.12)",
+    color: "#36513B",
+    border: "1px solid rgba(93,108,92,0.18)",
+    fontSize: 13,
+    fontWeight: 700,
+  },
+
   likesRow: {
   marginTop: 10,
   display: "flex",

@@ -90,10 +90,13 @@ app.get("/api/events", (req, res) => {
       e.location,
       e.capacity,
       e.likes,
-      COUNT(a.id) AS current_count,
+      e.category,
+      COUNT(DISTINCT a.id) AS current_count,
+      GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
       (TIMESTAMP(e.event_date, e.event_time) < NOW()) AS is_past
     FROM Events e
     LEFT JOIN Event_Attendees a ON a.event_id = e.id
+    LEFT JOIN Event_Tags t ON t.event_id = e.id
     ${whereClause}
     GROUP BY e.id
     ORDER BY e.event_date ASC, e.event_time ASC
@@ -110,9 +113,11 @@ app.get("/api/events", (req, res) => {
 
 // POST /api/events (create event)
 app.post("/api/events", (req, res) => {
-  const { title, description, event_date, event_time, location, capacity } = req.body;
+  const {title, description, event_date, event_time, location, capacity, category, tags,
+  } = req.body;
 
-  if (!title || !description || !event_date || !event_time || !location || capacity === undefined) {
+  if (!title || !description || !event_date || !event_time || !location || capacity === undefined || !category
+  ) {
     return res.status(400).json({ error: "Missing required fields." });
   }
 
@@ -121,18 +126,56 @@ app.post("/api/events", (req, res) => {
     return res.status(400).json({ error: "Capacity must be a positive integer." });
   }
 
-  const sql = `
-    INSERT INTO Events (title, description, event_date, event_time, location, capacity)
-    VALUES (?, ?, ?, ?, ?, ?)
+  const safeTags = Array.isArray(tags) ? tags : [];
+
+  const insertEventSql = `
+    INSERT INTO Events (title, description, event_date, event_time, location, capacity, category)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `;
 
-  db.query(sql, [title, description, event_date, event_time, location, capNum], (err, result) => {
-    if (err) {
-      console.log("POST /api/events error:", err);
-      return res.status(500).json({ error: "Failed to create event." });
+  db.query(
+    insertEventSql,
+    [title, description, event_date, event_time, location, capNum, category],
+    (err, result) => {
+      if (err) {
+        console.log("POST /api/events error:", err);
+        return res.status(500).json({ error: "Failed to create event." });
+      }
+
+      const eventId = result.insertId;
+
+      if (safeTags.length === 0) {
+        return res.status(201).json({ id: eventId, message: "Event created successfully." });
+      }
+
+      const uniqueTags = [...new Set(safeTags.map((tag) => String(tag).trim()).filter(Boolean))];
+
+      if (uniqueTags.length === 0) {
+        return res.status(201).json({ id: eventId, message: "Event created successfully." });
+      }
+
+      const values = uniqueTags.map((tag) => [eventId, tag]);
+
+      const insertTagsSql = `
+        INSERT INTO Event_Tags (event_id, tag_name)
+        VALUES ?
+      `;
+
+      db.query(insertTagsSql, [values], (tagErr) => {
+        if (tagErr) {
+          console.log("Insert Event_Tags error:", tagErr);
+          return res.status(500).json({
+            error: "Event was created, but failed to save tags.",
+          });
+        }
+
+        return res.status(201).json({
+          id: eventId,
+          message: "Event created successfully.",
+        });
+      });
     }
-    return res.status(201).json({ id: result.insertId });
-  });
+  );
 });
 
 // POST /api/events/:id/join
@@ -794,6 +837,23 @@ app.post("/api/events/:id/like", (req, res) => {
 
       return res.json({ likes: Number(rows[0].likes || 0) });
     });
+  });
+});
+
+app.get("/api/categories", (req, res) => {
+  const sql = `
+    SELECT tag_name
+    FROM Tags
+    ORDER BY tag_name ASC
+  `;
+
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.log("GET /api/categories error:", err);
+      return res.status(500).json({ error: "Failed to load categories." });
+    }
+
+    return res.json(results);
   });
 });
 

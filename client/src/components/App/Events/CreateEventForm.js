@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styles from "./eventStyles";
 
@@ -12,15 +12,49 @@ export default function CreateEventForm() {
   const [location, setLocation] = useState("");
   const [capacity, setCapacity] = useState("");
 
+  const [categories, setCategories] = useState([]);
+  const [category, setCategory] = useState("");
+
+  const [tagInput, setTagInput] = useState("");
+  const [tags, setTags] = useState([]);
+
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const res = await fetch("/api/categories");
+        const data = await res.json();
+
+        if (!res.ok) {
+          console.log(data.error || "Failed to load categories.");
+          return;
+        }
+
+        setCategories(Array.isArray(data) ? data : []);
+      } catch (e) {
+        console.log("Failed to load categories.");
+      }
+    };
+
+    loadCategories();
+  }, []);
 
   const handleCreate = async (e) => {
     e.preventDefault();
     setError("");
     setMessage("");
 
-    if (!title || !description || !eventDate || !eventTime || !location || !capacity) {
+    if (
+      !title ||
+      !description ||
+      !eventDate ||
+      !eventTime ||
+      !location ||
+      !capacity ||
+      !category
+    ) {
       setError("Please fill in all fields.");
       return;
     }
@@ -42,6 +76,8 @@ export default function CreateEventForm() {
           event_time: eventTime,
           location,
           capacity: capNum,
+          category,
+          tags,
         }),
       });
 
@@ -57,6 +93,28 @@ export default function CreateEventForm() {
     } catch (e2) {
       setError("Cannot connect to backend.");
     }
+  };
+
+  const handleAddTag = () => {
+    const cleanTag = tagInput.trim();
+
+    if (!cleanTag) return;
+
+    const alreadyExists = tags.some(
+      (tag) => tag.toLowerCase() === cleanTag.toLowerCase()
+    );
+
+    if (alreadyExists) {
+      setTagInput("");
+      return;
+    }
+
+    setTags((prev) => [...prev, cleanTag]);
+    setTagInput("");
+  };
+
+  const handleRemoveTag = (tagToRemove) => {
+    setTags((prev) => prev.filter((tag) => tag !== tagToRemove));
   };
 
   return (
@@ -117,6 +175,67 @@ export default function CreateEventForm() {
                 style={styles.formTextarea}
                 rows={5}
               />
+            </div>
+
+            <div style={styles.formField}>
+              <label style={styles.formLabel}>Category</label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                style={styles.formSelect}
+              >
+                <option value="">Select a category</option>
+                {categories.map((item) => (
+                  <option key={item.tag_name} value={item.tag_name}>
+                    {item.tag_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={styles.formField}>
+              <label style={styles.formLabel}>Tags</label>
+
+              <div style={styles.tagInputRow}>
+                <input
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddTag();
+                    }
+                  }}
+                  style={styles.formInput}
+                  placeholder="Enter a tag"
+                />
+
+                <button
+                  type="button"
+                  style={styles.addTagBtn}
+                  onClick={handleAddTag}
+                >
+                  Add Tag
+                </button>
+              </div>
+
+              {tags.length > 0 ? (
+                <div style={styles.tagsWrap}>
+                  {tags.map((tag, index) => (
+                    <div key={index} style={styles.tagChip}>
+                      <span style={styles.tagChipText}>{tag}</span>
+
+                      <button
+                        type="button"
+                        style={styles.tagRemoveBtn}
+                        onClick={() => handleRemoveTag(tag)}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             <div style={styles.formRow}>

@@ -3,7 +3,7 @@ import styles from "./eventStyles";
 
 // Sprint 2 limitation:
 // Likes are currently stored only as a total count. User authentication is not implemented yet,
-// so the system cannot prevent multiple likes from the same user. 
+// so the system cannot prevent multiple likes from the same user.
 // This will be improved once the login system is implemented.
 
 export default function EventCard({
@@ -32,6 +32,7 @@ export default function EventCard({
     : styles.statusOpen;
 
   const statusText = isPast ? "Ended" : isFull ? "Full" : "Open";
+  const eventTags = ev.tags ? ev.tags.split(",") : [];
 
   const handleLike = async () => {
     if (likeLoading || liked) return;
@@ -101,6 +102,23 @@ export default function EventCard({
         </div>
       </div>
 
+      {ev.category ? (
+        <div style={styles.categoryRow}>
+          <span style={styles.categoryLabel}>Category</span>
+          <span style={styles.categoryChip}>{ev.category}</span>
+        </div>
+      ) : null}
+
+      {eventTags.length > 0 ? (
+        <div style={styles.tagsWrap}>
+          {eventTags.map((tag, index) => (
+            <div key={index} style={styles.tagChip}>
+              <span style={styles.tagChipText}>{tag}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <div style={styles.desc}>{ev.description}</div>
 
       <div style={styles.likesRow}>
@@ -117,7 +135,6 @@ export default function EventCard({
         </button>
 
         <span style={styles.likeCount}>{likes} Likes</span>
-
       </div>
 
       <div style={styles.actions}>
