@@ -258,19 +258,16 @@ const eventStyles = {
   },
 
   card: {
-    borderRadius: 22,
-    border: "1px solid rgba(214,223,226,0.95)",
-    padding: 22,
-    background:
-      "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(253,253,246,0.94) 100%)",
-    boxShadow: "0 10px 28px rgba(23,41,43,0.05)",
-    transition: "transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease",
+  border: "1px solid #e6e6e6",
+  borderRadius: 18,
+  padding: 22,
+  background: "#FDFDF6",
+  transition: "all 0.25s ease",
   },
 
   cardHover: {
-    transform: "translateY(-4px)",
-    boxShadow: "0 18px 40px rgba(23,41,43,0.10)",
-    borderColor: "#C9D2D7",
+  transform: "translateY(-6px)",
+  boxShadow: "0 16px 40px rgba(0,0,0,0.15)",
   },
 
   cardPast: {
@@ -556,6 +553,36 @@ const eventStyles = {
     padding: "0 18px",
     transition: "all 0.2s ease",
   },
+
+  likesRow: {
+  marginTop: 10,
+  display: "flex",
+  alignItems: "center",
+  gap: 8
+  },
+
+  likeBtn: {
+    border: "none",
+    background: "#F4EEE5",
+    borderRadius: 999,
+    padding: "6px 12px",
+    cursor: "pointer",
+    fontWeight: 600
+  },
+
+  likeBtnActive: {
+  background: "#F4EEE5",
+  color: "#17292B",
+  border: "1px solid #E0D2BE",
+  },
+
+  likeCount: {
+    fontSize: 14,
+    color: "#686967",
+    fontWeight: 600
+  }
+
 };
 
+ 
 export default eventStyles;

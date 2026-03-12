@@ -1,6 +1,11 @@
 import React, { useState } from "react";
 import styles from "./eventStyles";
 
+// Sprint 2 limitation:
+// Likes are currently stored only as a total count. User authentication is not implemented yet,
+// so the system cannot prevent multiple likes from the same user. 
+// This will be improved once the login system is implemented.
+
 export default function EventCard({
   ev,
   isPast,
@@ -12,6 +17,9 @@ export default function EventCard({
   handleJoin,
 }) {
   const [hover, setHover] = useState(false);
+  const [likes, setLikes] = useState(Number(ev.likes || 0));
+  const [liked, setLiked] = useState(false);
+  const [likeLoading, setLikeLoading] = useState(false);
 
   const current = Number(ev.current_count || 0);
   const max = Number(ev.capacity || 0);
@@ -24,6 +32,32 @@ export default function EventCard({
     : styles.statusOpen;
 
   const statusText = isPast ? "Ended" : isFull ? "Full" : "Open";
+
+  const handleLike = async () => {
+    if (likeLoading || liked) return;
+
+    try {
+      setLikeLoading(true);
+
+      const res = await fetch(`/api/events/${ev.id}/like`, {
+        method: "POST",
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        window.alert(data.error || "Failed to like event.");
+        return;
+      }
+
+      setLikes(Number(data.likes || 0));
+      setLiked(true);
+    } catch (e) {
+      window.alert("Cannot connect to backend.");
+    } finally {
+      setLikeLoading(false);
+    }
+  };
 
   return (
     <div
@@ -68,6 +102,23 @@ export default function EventCard({
       </div>
 
       <div style={styles.desc}>{ev.description}</div>
+
+      <div style={styles.likesRow}>
+        <button
+          style={{
+            ...styles.likeBtn,
+            ...(liked ? styles.likeBtnActive : null),
+            ...(likeLoading ? styles.joinBtnDisabled : null),
+          }}
+          onClick={handleLike}
+          disabled={likeLoading || liked}
+        >
+          {liked ? "❤ Liked" : "♡ Like"}
+        </button>
+
+        <span style={styles.likeCount}>{likes} Likes</span>
+
+      </div>
 
       <div style={styles.actions}>
         <button

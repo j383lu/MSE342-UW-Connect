@@ -89,6 +89,7 @@ app.get("/api/events", (req, res) => {
       TIME_FORMAT(e.event_time, '%H:%i') AS event_time,
       e.location,
       e.capacity,
+      e.likes,
       COUNT(a.id) AS current_count,
       (TIMESTAMP(e.event_date, e.event_time) < NOW()) AS is_past
     FROM Events e
@@ -763,5 +764,37 @@ app.get('/api/posts/search', (req, res) => {
     });
 });
 
+// Post API for "Like an Event"
+app.post("/api/events/:id/like", (req, res) => {
+  const eventId = Number(req.params.id);
+
+  if (!eventId) {
+    return res.status(400).json({ error: "Invalid event id." });
+  }
+
+  const updateSql = `UPDATE Events SET likes = likes + 1 WHERE id = ?`;
+
+  db.query(updateSql, [eventId], (err, result) => {
+    if (err) {
+      console.log("POST /api/events/:id/like error:", err);
+      return res.status(500).json({ error: "Failed to like event." });
+    }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "Event not found." });
+    }
+
+    const selectSql = `SELECT likes FROM Events WHERE id = ?`;
+
+    db.query(selectSql, [eventId], (err2, rows) => {
+      if (err2) {
+        console.log("Reload likes error:", err2);
+        return res.status(500).json({ error: "Liked event, but failed to reload likes." });
+      }
+
+      return res.json({ likes: Number(rows[0].likes || 0) });
+    });
+  });
+});
 
 app.listen(port, () => console.log(`Listening on port ${port}`)); //for the dev version
