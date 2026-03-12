@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import styles from "./eventStyles";
 
 export default function CreateEventForm() {
   const navigate = useNavigate();
@@ -51,218 +52,130 @@ export default function CreateEventForm() {
         return;
       }
 
-      setMessage("Event created!");
-      setTimeout(() => navigate("/events"), 600);
+      setMessage("Event created successfully.");
+      setTimeout(() => navigate("/events"), 700);
     } catch (e2) {
       setError("Cannot connect to backend.");
     }
   };
 
   return (
-    <div style={styles.page}>
-      <div style={styles.container}>
-        <div style={styles.heroCard}>
-          <div>
-            <h1 style={styles.pageTitle}>Create Event</h1>
-            <p style={styles.pageSubtitle}>Create an event post with max RSVP capacity.</p>
-          </div>
+    <div style={styles.pageBackground}>
+      <div style={styles.pageWrapper}>
+        <div style={styles.hero}>
+          <div style={styles.heroGlowOne} />
+          <div style={styles.heroGlowTwo} />
+          <div style={styles.heroOverlay} />
 
-          <button
-            type="button"
-            style={styles.outlineButton}
-            onClick={() => navigate("/events")}
-          >
-            Back
-          </button>
+          <div style={styles.heroContent}>
+            <div style={styles.heroTextBlock}>
+              <div style={styles.heroEyebrow}>UW Connect</div>
+              <h1 style={styles.heroTitle}>Create a New Event</h1>
+              <p style={styles.heroSubtitle}>
+                Plan an activity, share the details, and invite people to join your next campus event.
+              </p>
+            </div>
+
+            <div style={styles.heroActionRow}>
+              <button
+                type="button"
+                style={styles.heroSecondaryBtn}
+                onClick={() => navigate("/events")}
+              >
+                Back to Events
+              </button>
+            </div>
+          </div>
         </div>
 
-        {error ? <div style={styles.errorText}>{error}</div> : null}
-        {message ? <div style={styles.successText}>{message}</div> : null}
+        {error ? <div style={styles.errorBanner}>{error}</div> : null}
+        {message ? <div style={styles.summaryCard}>{message}</div> : null}
 
-        <div style={styles.formCard}>
+        <div style={styles.panel}>
+          <div style={styles.sectionHeaderBlock}>
+            <h2 style={styles.panelTitle}>Event Information</h2>
+            <p style={styles.panelSubtitle}>
+              Fill in the details below to publish a new event for students to discover and join.
+            </p>
+          </div>
+
           <form onSubmit={handleCreate} style={styles.form}>
-            <label style={styles.label}>
-              Title
+            <div style={styles.formField}>
+              <label style={styles.formLabel}>Event Title</label>
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                style={styles.input}
+                style={styles.formInput}
               />
-            </label>
+            </div>
 
-            <label style={styles.label}>
-              Description
+            <div style={styles.formField}>
+              <label style={styles.formLabel}>Description</label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                style={styles.textarea}
+                style={styles.formTextarea}
                 rows={5}
               />
-            </label>
+            </div>
 
-            <div style={styles.row}>
-              <label style={styles.label}>
-                Date
+            <div style={styles.formRow}>
+              <div style={styles.formField}>
+                <label style={styles.formLabel}>Date</label>
                 <input
                   type="date"
                   value={eventDate}
                   onChange={(e) => setEventDate(e.target.value)}
-                  style={styles.input}
+                  style={styles.formInput}
                 />
-              </label>
+              </div>
 
-              <label style={styles.label}>
-                Time
+              <div style={styles.formField}>
+                <label style={styles.formLabel}>Time</label>
                 <input
                   type="time"
                   value={eventTime}
                   onChange={(e) => setEventTime(e.target.value)}
-                  style={styles.input}
+                  style={styles.formInput}
                 />
-              </label>
+              </div>
             </div>
 
-            <label style={styles.label}>
-              Location
+            <div style={styles.formField}>
+              <label style={styles.formLabel}>Location</label>
               <input
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
-                style={styles.input}
+                style={styles.formInput}
               />
-            </label>
+            </div>
 
-            <label style={styles.label}>
-              Max RSVP Spots
+            <div style={styles.formField}>
+              <label style={styles.formLabel}>Max RSVP Spots</label>
               <input
                 type="number"
                 value={capacity}
                 onChange={(e) => setCapacity(e.target.value)}
-                style={styles.input}
+                style={styles.formInput}
               />
-            </label>
+            </div>
 
-            <button type="submit" style={styles.primaryButton}>
-              Create
-            </button>
+            <div style={styles.formActions}>
+              <button
+                type="button"
+                style={styles.cancelBtn}
+                onClick={() => navigate("/events")}
+              >
+                Cancel
+              </button>
+
+              <button type="submit" style={styles.submitBtn}>
+                Create Event
+              </button>
+            </div>
           </form>
         </div>
       </div>
     </div>
   );
 }
-
-const styles = {
-  page: {
-    minHeight: "100vh",
-    background: "#FDFDF6",
-    padding: "24px 20px 40px",
-  },
-  container: {
-    maxWidth: 980,
-    margin: "0 auto",
-  },
-  heroCard: {
-    background: "#FFFFFF",
-    border: "1px solid #D6DFE2",
-    borderLeft: "6px solid #5D6C5C",
-    borderRadius: 24,
-    padding: "28px 32px",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 20,
-    boxShadow: "0px 4px 14px rgba(0,0,0,0.05)",
-    marginBottom: 28,
-  },
-  pageTitle: {
-    margin: 0,
-    fontSize: "2.4rem",
-    fontWeight: 700,
-    color: "#17292B",
-  },
-  pageSubtitle: {
-    marginTop: 8,
-    marginBottom: 0,
-    color: "#686967",
-    fontSize: "1rem",
-  },
-  formCard: {
-    background: "#FFFFFF",
-    border: "1px solid #D6DFE2",
-    borderRadius: 24,
-    padding: 28,
-    boxShadow: "0px 4px 14px rgba(0,0,0,0.05)",
-  },
-  form: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 16,
-  },
-  row: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 16,
-  },
-  label: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 8,
-    fontSize: 14,
-    fontWeight: 600,
-    color: "#17292B",
-  },
-  input: {
-    width: "100%",
-    height: 42,
-    padding: "0 12px",
-    border: "1px solid #D6DFE2",
-    borderRadius: 10,
-    fontSize: 14,
-    outline: "none",
-    boxSizing: "border-box",
-    background: "#fff",
-  },
-  textarea: {
-    width: "100%",
-    padding: 12,
-    border: "1px solid #D6DFE2",
-    borderRadius: 10,
-    fontSize: 14,
-    outline: "none",
-    resize: "vertical",
-    boxSizing: "border-box",
-    background: "#fff",
-  },
-  primaryButton: {
-    height: 42,
-    borderRadius: 12,
-    border: "none",
-    background: "#17292B",
-    color: "#FDFDF6",
-    fontWeight: 700,
-    fontSize: 14,
-    cursor: "pointer",
-    marginTop: 6,
-  },
-  outlineButton: {
-    height: 42,
-    borderRadius: 999,
-    border: "2px solid #5D6C5C",
-    background: "#FFFFFF",
-    color: "#17292B",
-    fontWeight: 700,
-    cursor: "pointer",
-    padding: "0 22px",
-    whiteSpace: "nowrap",
-  },
-  errorText: {
-    color: "#C62828",
-    marginBottom: 16,
-    fontWeight: 600,
-  },
-  successText: {
-    color: "#2E7D32",
-    marginBottom: 16,
-    fontWeight: 600,
-  },
-};

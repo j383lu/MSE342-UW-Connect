@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import styles from "./eventStyles";
 
 export default function EventCard({
@@ -11,14 +11,32 @@ export default function EventCard({
   toggleAttendees,
   handleJoin,
 }) {
+  const [hover, setHover] = useState(false);
+
   const current = Number(ev.current_count || 0);
   const max = Number(ev.capacity || 0);
   const isFull = max > 0 && current >= max;
 
+  const statusStyle = isPast
+    ? styles.statusEnded
+    : isFull
+    ? styles.statusFull
+    : styles.statusOpen;
+
+  const statusText = isPast ? "Ended" : isFull ? "Full" : "Open";
+
   return (
-    <div style={{ ...styles.card, ...(isPast ? styles.cardPast : null) }}>
+    <div
+      style={{
+        ...styles.card,
+        ...(isPast ? styles.cardPast : null),
+        ...(hover ? styles.cardHover : null),
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
       <div style={styles.cardTop}>
-        <div>
+        <div style={styles.cardLeft}>
           <div style={styles.title}>{ev.title}</div>
 
           <div style={styles.metaBlock}>
@@ -26,10 +44,12 @@ export default function EventCard({
               <span style={styles.metaLabel}>Date</span>
               <span style={styles.metaValue}>{ev.event_date}</span>
             </div>
+
             <div style={styles.metaLine}>
               <span style={styles.metaLabel}>Time</span>
               <span style={styles.metaValue}>{ev.event_time}</span>
             </div>
+
             <div style={styles.metaLine}>
               <span style={styles.metaLabel}>Location</span>
               <span style={styles.metaValue}>{ev.location}</span>
@@ -38,11 +58,11 @@ export default function EventCard({
         </div>
 
         <div style={styles.rightBox}>
-          <div style={styles.capacity}>
-            {current}/{max}
-          </div>
-          <div style={styles.capacityHint}>
-            {isPast ? "Ended" : isFull ? "Full" : "Spots"}
+          <div style={styles.capacity}>{current}/{max}</div>
+          <div style={styles.capacityHint}>RSVP spots</div>
+
+          <div style={{ ...styles.statusPill, ...statusStyle }}>
+            {statusText}
           </div>
         </div>
       </div>
@@ -58,10 +78,13 @@ export default function EventCard({
           disabled={isFull || isPast}
           onClick={() => handleJoin(ev)}
         >
-          Join Now
+          Join Event
         </button>
 
-        <button style={styles.detailsBtn} onClick={() => toggleAttendees(ev.id)}>
+        <button
+          style={styles.detailsBtn}
+          onClick={() => toggleAttendees(ev.id)}
+        >
           {isOpen ? "Hide Attendees" : "Show Attendees"}
         </button>
       </div>
@@ -79,9 +102,9 @@ export default function EventCard({
             {detailsError ? (
               <div style={styles.errorText}>{detailsError}</div>
             ) : detailsLoading ? (
-              <div>Loading attendees...</div>
+              <div style={styles.infoText}>Loading attendees...</div>
             ) : attendees.length === 0 ? (
-              <div style={{ color: "#666" }}>No one has joined yet.</div>
+              <div style={styles.infoText}>No one has joined yet.</div>
             ) : (
               <ul style={styles.list}>
                 {attendees.map((a, idx) => (

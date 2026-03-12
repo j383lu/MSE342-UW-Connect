@@ -33,7 +33,7 @@ export default function EventsPage() {
 
       setEvents(Array.isArray(data) ? data : []);
     } catch (e) {
-      setError("Cannot connect to backend");
+      setError("Cannot connect to backend.");
       setEvents([]);
     } finally {
       setLoading(false);
@@ -132,62 +132,111 @@ export default function EventsPage() {
   };
 
   return (
-    <div style={styles.pageWrapper}>
-      <div style={styles.headerRow}>
-        <div>
-          <h2 style={{ margin: 0 }}>Events</h2>
-          <p style={{ marginTop: 6, color: "#555" }}>
-            Upcoming and past events (Sprint 1).
-          </p>
+    <div style={styles.pageBackground}>
+      <div style={styles.pageWrapper}>
+        <div style={styles.hero}>
+          <div style={styles.heroGlowOne} />
+          <div style={styles.heroGlowTwo} />
+          <div style={styles.heroOverlay} />
+
+          <div style={styles.heroContent}>
+            <div style={styles.heroTextBlock}>
+              <div style={styles.heroEyebrow}>UW Connect</div>
+              <h1 style={styles.heroTitle}>Discover Campus Events</h1>
+              <p style={styles.heroSubtitle}>
+                Explore upcoming activities, join student events, and stay
+                connected with the campus community.
+              </p>
+            </div>
+
+            <div style={styles.heroActionRow}>
+              <button style={styles.heroSecondaryBtn} onClick={loadEvents}>
+                Refresh
+              </button>
+
+              <button
+                style={styles.heroPrimaryBtn}
+                onClick={() => navigate("/events/new")}
+              >
+                Create Event
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <button style={styles.secondarySmallBtn} onClick={loadEvents}>
-            Refresh
-          </button>
-          <button
-            style={styles.primaryBtn}
-            onClick={() => navigate("/events/new")}
-          >
-            Create Event
-          </button>
-        </div>
-      </div>
+        {error ? <div style={styles.errorBanner}>{error}</div> : null}
 
-      {error ? <div style={styles.errorText}>{error}</div> : null}
+        <div style={styles.summaryGrid}>
+          <div style={styles.summaryCard}>
+            <div style={styles.summaryNumber}>{upcoming.length}</div>
+            <div style={styles.summaryLabel}>Upcoming Events</div>
+          </div>
 
-      <div style={styles.panel}>
-        <div style={styles.panelTitleRow}>
-          <div style={styles.panelTitle}>Upcoming Events</div>
+          <div style={styles.summaryCard}>
+            <div style={styles.summaryNumber}>{past.length}</div>
+            <div style={styles.summaryLabel}>Past Events</div>
+          </div>
 
-          <button
-            style={styles.toggleBtn}
-            onClick={() => setShowPastEvents((v) => !v)}
-          >
-            {showPastEvents ? "Hide Past Events" : "Show Past Events"}
-          </button>
+          <div style={styles.summaryCard}>
+            <div style={styles.summaryNumber}>{events.length}</div>
+            <div style={styles.summaryLabel}>Total Events</div>
+          </div>
         </div>
 
-        {loading ? (
-          <p>Loading...</p>
-        ) : upcoming.length === 0 ? (
-          <p>No upcoming events.</p>
-        ) : (
-          <div style={styles.grid}>{upcoming.map((ev) => renderCard(ev, false))}</div>
-        )}
+        <div style={styles.panel}>
+          <div style={styles.panelTitleRow}>
+            <div>
+              <h2 style={styles.panelTitle}>Upcoming Events</h2>
+              <p style={styles.panelSubtitle}>
+                Find what is happening next and join in quickly.
+              </p>
+            </div>
 
-        {showPastEvents ? (
-          <>
-            <div style={{ height: 18 }} />
-            <div style={styles.panelTitle}>Past Events</div>
+            <button
+              style={styles.toggleBtn}
+              onClick={() => setShowPastEvents((v) => !v)}
+            >
+              {showPastEvents ? "Hide Past Events" : "Show Past Events"}
+            </button>
+          </div>
 
-            {loading ? null : past.length === 0 ? (
-              <p style={{ color: "#666" }}>No past events.</p>
-            ) : (
-              <div style={styles.grid}>{past.map((ev) => renderCard(ev, true))}</div>
-            )}
-          </>
-        ) : null}
+          {loading ? (
+            <p style={styles.infoText}>Loading...</p>
+          ) : upcoming.length === 0 ? (
+            <div style={styles.emptyStateCard}>
+              <div style={styles.emptyStateTitle}>No upcoming events</div>
+              <div style={styles.emptyStateText}>
+                Create a new event to get started.
+              </div>
+            </div>
+          ) : (
+            <div style={styles.grid}>{upcoming.map((ev) => renderCard(ev, false))}</div>
+          )}
+
+          {showPastEvents ? (
+            <>
+              <div style={styles.sectionDivider} />
+
+              <div style={styles.sectionHeaderBlock}>
+                <h2 style={styles.panelTitle}>Past Events</h2>
+                <p style={styles.panelSubtitle}>
+                  Review previous events and attendee details.
+                </p>
+              </div>
+
+              {loading ? null : past.length === 0 ? (
+                <div style={styles.emptyStateCard}>
+                  <div style={styles.emptyStateTitle}>No past events</div>
+                  <div style={styles.emptyStateText}>
+                    Past events will appear here automatically.
+                  </div>
+                </div>
+              ) : (
+                <div style={styles.grid}>{past.map((ev) => renderCard(ev, true))}</div>
+              )}
+            </>
+          ) : null}
+        </div>
       </div>
     </div>
   );
