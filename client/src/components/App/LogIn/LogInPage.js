@@ -47,7 +47,7 @@ const LogInPage = ({ onSwitchPage, firebase }) => {
             } catch (error) {
                 switch (error.code) {
                 case 'auth/invalid-email':
-                    setServerError('The email address is badly formatted.');
+                    setServerError('The email address is poorly formatted.');
                     break;
                 case 'auth/user-not-found':
                     setServerError('No user found with this email.');
@@ -107,6 +107,21 @@ const LogInPage = ({ onSwitchPage, firebase }) => {
                             </Typography>
 
                             <Box component="form" onSubmit={handleSubmit} noValidate sx={{ mt: 1 }}>
+                                {serverError && (
+                                    <Typography 
+                                        color="error" 
+                                        variant="body2" 
+                                        sx={{ 
+                                            mb: 2, 
+                                            textAlign: 'center', 
+                                            backgroundColor: '#ffebee', // Light red background
+                                            padding: '8px', 
+                                            borderRadius: '4px' 
+                                        }}
+                                    >
+                                        {serverError}
+                                    </Typography>
+                                )}
                                 <TextField
                                     margin="normal"
                                     required

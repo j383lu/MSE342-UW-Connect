@@ -80,6 +80,16 @@ const Registration = ({ onSwitchPage, firebase }) => {
             }
         }
 
+        if (!formData.email) {
+            newErrors.email = 'Email is required.';
+        } else {
+        // uwaterloo address restriction
+        const emailLower = formData.email.toLowerCase();
+        if (!emailLower.endsWith('@uwaterloo.ca')) {
+            newErrors.email = 'Only @uwaterloo.ca addresses are allowed.';
+        }
+    }
+
         if (formData.password) {
         const password = formData.password;
 
@@ -173,7 +183,6 @@ const Registration = ({ onSwitchPage, firebase }) => {
                                     id="firstname"
                                     label="First Name"
                                     name="firstname"
-                                    autoFocus
                                     value={formData.firstname}
                                     onChange={handleChange}
                                     error={!!errors.firstname}
@@ -186,7 +195,6 @@ const Registration = ({ onSwitchPage, firebase }) => {
                                     id="lastname"
                                     label="Last Name"
                                     name="lastname"
-                                    autoFocus
                                     value={formData.lastname}
                                     onChange={handleChange}
                                     error={!!errors.lastname}
@@ -296,4 +304,5 @@ const Registration = ({ onSwitchPage, firebase }) => {
     );
 }
 
+export { Registration }
 export default withFirebase(Registration);

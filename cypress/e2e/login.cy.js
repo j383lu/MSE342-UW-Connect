@@ -1,6 +1,4 @@
 // Author: Lauren Jung
-// Notes: The Log in and Registration page is not set up to handle data as we have not completed the authentication lecture yet
-// (Will be implemented in a later sprint)
 
 describe('Login and Registration Flow', () => {
   
