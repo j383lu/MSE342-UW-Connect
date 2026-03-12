@@ -336,7 +336,6 @@ router.get("/programs/:programId/students", (req, res) => {
     LEFT JOIN User_Profile_Courses upc ON upc.profile_id = up.profile_id
     LEFT JOIN Courses c ON c.course_id = upc.course_id
     WHERE up.program_id = ?
-      AND uc.role = 'Student'
     ORDER BY up.display_name ASC, c.course_code ASC;
   `;
 
