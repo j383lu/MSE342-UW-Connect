@@ -39,7 +39,9 @@ export default function EventCard({
   const statusText = isPast ? "Ended" : isFull ? "Full" : "Open";
   const eventTags = ev.tags ? ev.tags.split(",") : [];
 
-  const handleLike = async () => {
+  const handleLike = async (e) => {
+    e.preventDefault();
+
     if (likeLoading || liked) return;
 
     try {
@@ -60,9 +62,9 @@ export default function EventCard({
       setLiked(true);
 
       if (onLikeSuccess) {
-        onLikeSuccess();
+        await onLikeSuccess();
       }
-    } catch (e) {
+    } catch (e2) {
       window.alert("Cannot connect to backend.");
     } finally {
       setLikeLoading(false);
@@ -137,6 +139,7 @@ export default function EventCard({
 
       <div style={styles.likesRow}>
         <button
+          type="button"
           style={{
             ...styles.likeBtn,
             ...(liked ? styles.likeBtnActive : null),
@@ -153,6 +156,7 @@ export default function EventCard({
 
       <div style={styles.actions}>
         <button
+          type="button"
           style={{
             ...styles.joinBtn,
             ...(isFull || isPast ? styles.joinBtnDisabled : null),
@@ -164,6 +168,7 @@ export default function EventCard({
         </button>
 
         <button
+          type="button"
           style={styles.detailsBtn}
           onClick={() => toggleAttendees(ev.id)}
         >

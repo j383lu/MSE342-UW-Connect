@@ -29,7 +29,6 @@ export default function EventsPage() {
   const [searchMessage, setSearchMessage] = useState("");
   const [isSearching, setIsSearching] = useState(false);
 
-  // mostUpcoming | mostRecentPublished | mostLiked
   const [sortBy, setSortBy] = useState("mostUpcoming");
 
   const loadEvents = async () => {
@@ -280,11 +279,21 @@ export default function EventsPage() {
     }
   };
 
-  const handleLikeRefresh = async () => {
+  const handleLikeRefresh = async (eventId, newLikes) => {
+    setEvents((prev) =>
+      prev.map((item) =>
+        item.id === eventId ? { ...item, likes: newLikes } : item
+      )
+    );
+
+    setSearchResults((prev) =>
+      prev.map((item) =>
+        item.id === eventId ? { ...item, likes: newLikes } : item
+      )
+    );
+
     if (isSearching && searchTerm.trim()) {
       await reloadSearchResultsIfNeeded();
-    } else {
-      await loadEvents();
     }
   };
 
@@ -410,6 +419,14 @@ export default function EventsPage() {
   const upcoming = sortedEvents.filter((e) => Number(e.is_past) === 0);
   const past = sortedEvents.filter((e) => Number(e.is_past) === 1);
 
+  const upcomingSearchResults = searchResults.filter(
+    (e) => Number(e.is_past) === 0
+  );
+
+  const pastSearchResults = searchResults.filter(
+    (e) => Number(e.is_past) === 1
+  );
+
   const renderCard = (ev, isPast) => {
     const isOpen = openDetailsId === ev.id;
 
@@ -431,10 +448,10 @@ export default function EventsPage() {
 
   const searchSubtitleText =
     sortBy === "mostLiked"
-      ? "Results are sorted from highest to lowest number of likes."
+      ? "Results are sorted from highest to lowest number of likes within each section."
       : sortBy === "mostRecentPublished"
-      ? "Results are sorted from most recently published to least recently published."
-      : "Results are sorted from earliest upcoming event to latest upcoming event.";
+      ? "Results are sorted from most recently published to least recently published within each section."
+      : "Results are sorted from earliest upcoming event to latest upcoming event within each section.";
 
   return (
     <div style={styles.pageBackground}>
@@ -627,11 +644,55 @@ export default function EventsPage() {
                 </div>
               </div>
             ) : (
-              <div style={styles.grid}>
-                {searchResults.map((ev) =>
-                  renderCard(ev, Number(ev.is_past) === 1)
+              <>
+                <div style={styles.sectionHeaderBlock}>
+                  <h2 style={styles.panelTitle}>Upcoming Search Results</h2>
+                  <p style={styles.panelSubtitle}>
+                    Matching upcoming events based on your current search and
+                    sort option.
+                  </p>
+                </div>
+
+                {upcomingSearchResults.length === 0 ? (
+                  <div style={styles.emptyStateCard}>
+                    <div style={styles.emptyStateTitle}>
+                      No upcoming matching events
+                    </div>
+                    <div style={styles.emptyStateText}>
+                      Try another keyword or check past search results below.
+                    </div>
+                  </div>
+                ) : (
+                  <div style={styles.grid}>
+                    {upcomingSearchResults.map((ev) => renderCard(ev, false))}
+                  </div>
                 )}
-              </div>
+
+                <div style={styles.sectionDivider} />
+
+                <div style={styles.sectionHeaderBlock}>
+                  <h2 style={styles.panelTitle}>Past Search Results</h2>
+                  <p style={styles.panelSubtitle}>
+                    Matching past events based on your current search and sort
+                    option.
+                  </p>
+                </div>
+
+                {pastSearchResults.length === 0 ? (
+                  <div style={styles.emptyStateCard}>
+                    <div style={styles.emptyStateTitle}>
+                      No past matching events
+                    </div>
+                    <div style={styles.emptyStateText}>
+                      There are no matching past events for this search.
+                    </div>
+                  </div>
+                ) : (
+                  <div style={styles.grid}>
+                    {pastSearchResults.map((ev) => renderCard(ev, true))}
+                  </div>
+                )}
+              </>
             )}
           </div>
         ) : (
