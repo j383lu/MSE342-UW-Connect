@@ -7,14 +7,13 @@ import bodyParser from 'body-parser';
 import profileRoutes from "./profileRoutes.js";
 import multer from 'multer'; // For file uploads
 import fs from 'fs'; // For file system operations
-import cors from 'cors'
+import cors from 'cors';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 const port = process.env.PORT || 5000;
-const cors = require('cors');
 
 // Create database connection using your config (ONLY ONE DECLARATION)
 const db = mysql.createConnection({
@@ -25,22 +24,6 @@ const db = mysql.createConnection({
   port: config.port
 });
 
-app.use((req, res, next) => {
-
-    res.header("Access-Control-Allow-Origin", "*"); 
-    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    
-    if (req.method === 'OPTIONS') {
-        // ...send back a 200 (Success) instead of a 404!
-        return res.sendStatus(200);
-    }
-    next();
-});
-
-app.use(express.json());
-app.use(express.json());
-
 // Connect to database
 db.connect((err) => {
   if (err) {
@@ -50,8 +33,11 @@ db.connect((err) => {
   console.log('Connected to MySQL database');
 });
 
-app.use(bodyParser.json({ limit: '50mb' }));
+app.use(cors()); 
+app.use(express.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
+app.use('/uploads', express.static('uploads'));
+app.use(express.static(path.join(__dirname, "client/build")));
 
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -783,28 +769,18 @@ app.get('/api/posts/search', (req, res) => {
 
 // for registration
 app.post('/api/register', (req, res) => {
-    const { email, password, firstname, lastname, username, firebase_uid } = req.body;
-    const displayName = `${username}`;
-
-    // insert into User_Credentials
+    const { email, password, username, firebase_uid } = req.body;
     const sqlCredentials = "INSERT INTO User_Credentials (email, password_hash, firebase_uid) VALUES (?, ?, ?)";
     
     db.query(sqlCredentials, [email, password, firebase_uid], (err, result) => {
-        if (err) {
-            console.error("Error inserting credentials:", err);
-            return res.status(500).json({ message: "Database error" });
-        }
-
-        // capture the newly created user_id
+        if (err) return res.status(500).json({ error: "Database error during registration." });
+        
         const newUserId = result.insertId;
-
-        // insert into User_Profiles using that newUserId
         const sqlProfile = "INSERT INTO User_Profiles (user_id, display_name) VALUES (?, ?)";
         
-        db.query(sqlProfile, [newUserId, displayName], (profileErr) => {
-            if (profileErr) return res.status(500).json({ message: "Profile error" });
-
-            res.status(201).json({ message: "User and Profile linked successfully!" });
+        db.query(sqlProfile, [newUserId, username], (profileErr) => {
+            if (profileErr) return res.status(500).json({ error: "Profile creation failed." });
+            res.status(201).json({ message: "User created successfully!" });
         });
     });
 });

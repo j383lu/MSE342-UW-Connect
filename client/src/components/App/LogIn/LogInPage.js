@@ -12,7 +12,7 @@ import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {withFirebase} from '../../Firebase';
+import { withFirebase } from '../../Firebase';
 
 const LogInPage = ({ onSwitchPage, firebase }) => { 
 
@@ -29,8 +29,9 @@ const LogInPage = ({ onSwitchPage, firebase }) => {
         if (errors[name]) setErrors({ ...errors, [name]: '' });
     };
 
-    const handleSubmit = (event) => {
+    const handleSubmit = async(event) => {
         event.preventDefault();
+        setServerError('');
         let newErrors = {};
 
         if (!formData.email) newErrors.email = 'This field is required.';
@@ -39,16 +40,28 @@ const LogInPage = ({ onSwitchPage, firebase }) => {
         setErrors(newErrors);
 
         if (Object.keys(newErrors).length === 0) {
-            firebase
-                .doSignInWithEmailAndPassword(formData.email, formData.password)
-                .then(() => {
+            try {
+                await firebase.doSignInWithEmailAndPassword(formData.email, formData.password);
                     console.log('Successfully logged in with Firebase');
                     navigate('/feed'); 
-                })
-                .catch(error => {
-                    console.error("Firebase Login Error:", error.code, error.message);
-                    setServerError(error.message);
-                });
+            } catch (error) {
+                switch (error.code) {
+                case 'auth/invalid-email':
+                    setServerError('The email address is badly formatted.');
+                    break;
+                case 'auth/user-not-found':
+                    setServerError('No user found with this email.');
+                    break;
+                case 'auth/wrong-password':
+                    setServerError('Incorrect password. Please try again.');
+                    break;
+                case 'auth/invalid-credential':
+                    setServerError('Invalid email or password.');
+                    break;
+                default:
+                    setServerError('An unexpected error occurred. Please try again.');
+                }
+            }
         }
     };
 
