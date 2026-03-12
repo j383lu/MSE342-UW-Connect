@@ -16,6 +16,10 @@ export default function GroupDetailsPage() {
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [checkingMembership, setCheckingMembership] = useState(true);
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviting, setInviting] = useState(false);
+  const [inviteError, setInviteError] = useState("");
   
   // Add a ref to track if we've manually updated the state
   const manuallyUpdated = useRef(false);
@@ -246,6 +250,32 @@ export default function GroupDetailsPage() {
     return group && group.creator_id === CURRENT_USER_ID;
   }, [group]);
 
+  async function handleSendInvite(e) {
+    e.preventDefault();
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email) return;
+    setInviteError("");
+    setInviting(true);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emails: [email] })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setInviteError(data.error || "Failed to send invite");
+        return;
+      }
+      setInviteEmail("");
+      setInviteModalOpen(false);
+    } catch (err) {
+      setInviteError("Failed to send invite");
+    } finally {
+      setInviting(false);
+    }
+  }
+
   // Mock data for posts (keeping as is)
   const posts = useMemo(() => [
     {
@@ -417,9 +447,24 @@ export default function GroupDetailsPage() {
 
           {/* Members List - Now showing actual members with names and roles */}
           <div style={section}>
-            <h3 style={sectionTitle}>
-              Members ({membersCount})
-            </h3>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+              <h3 style={{ ...sectionTitle, margin: 0 }}>
+                Members ({membersCount})
+              </h3>
+              {isOwner && group.is_private === 1 && (
+                <button
+                  type="button"
+                  style={inviteButton}
+                  onClick={() => {
+                    setInviteModalOpen(true);
+                    setInviteEmail("");
+                    setInviteError("");
+                  }}
+                >
+                  + Invite
+                </button>
+              )}
+            </div>
 
             {loadingMembers ? (
               <p>Loading members...</p>
@@ -449,6 +494,49 @@ export default function GroupDetailsPage() {
               </div>
             )}
           </div>
+
+          {/* Invite modal (private groups, owner only) */}
+          {inviteModalOpen && (
+            <div style={modalOverlay} onClick={() => !inviting && setInviteModalOpen(false)}>
+              <div style={modalCard} onClick={(e) => e.stopPropagation()}>
+                <h3 style={{ marginTop: 0, marginBottom: 16 }}>Invite by email</h3>
+                <p style={{ color: "#666", fontSize: 14, marginBottom: 16 }}>
+                  Enter the email address of the person you want to invite to this group.
+                </p>
+                <form onSubmit={handleSendInvite}>
+                  <input
+                    type="email"
+                    placeholder="Email address"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    disabled={inviting}
+                    style={inviteEmailInput}
+                    autoFocus
+                  />
+                  {inviteError && (
+                    <p style={{ color: "#b00020", fontSize: 14, marginBottom: 8 }}>{inviteError}</p>
+                  )}
+                  <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+                    <button
+                      type="button"
+                      style={modalCancelBtn}
+                      onClick={() => !inviting && setInviteModalOpen(false)}
+                      disabled={inviting}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      style={inviteEmail.trim() ? modalSendBtn : modalSendBtnDisabled}
+                      disabled={!inviteEmail.trim() || inviting}
+                    >
+                      {inviting ? "Sending…" : "Send Invite"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
 
           {/* Posts Preview */}
           <div style={section}>
@@ -801,3 +889,79 @@ function btn(kind, disabled = false) {
   }
   return base;
 }
+
+const inviteButton = {
+  padding: "8px 16px",
+  borderRadius: 8,
+  fontSize: 14,
+  fontWeight: 600,
+  cursor: "pointer",
+  background: "#111",
+  color: "#fff",
+  border: "1px solid #111",
+};
+
+const modalOverlay = {
+  position: "fixed",
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  background: "rgba(0,0,0,0.5)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 1000,
+};
+
+const modalCard = {
+  background: "#fff",
+  borderRadius: 12,
+  padding: 24,
+  maxWidth: 400,
+  width: "90%",
+  boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+};
+
+const inviteEmailInput = {
+  width: "100%",
+  padding: "12px 14px",
+  fontSize: 16,
+  border: "1px solid #ddd",
+  borderRadius: 8,
+  outline: "none",
+  boxSizing: "border-box",
+};
+
+const modalCancelBtn = {
+  padding: "10px 18px",
+  borderRadius: 8,
+  fontSize: 14,
+  fontWeight: 600,
+  cursor: "pointer",
+  background: "#fff",
+  color: "#111",
+  border: "1px solid #bbb",
+};
+
+const modalSendBtn = {
+  padding: "10px 18px",
+  borderRadius: 8,
+  fontSize: 14,
+  fontWeight: 600,
+  cursor: "pointer",
+  background: "#111",
+  color: "#fff",
+  border: "1px solid #111",
+};
+
+const modalSendBtnDisabled = {
+  padding: "10px 18px",
+  borderRadius: 8,
+  fontSize: 14,
+  fontWeight: 600,
+  cursor: "not-allowed",
+  background: "#ccc",
+  color: "#666",
+  border: "1px solid #ccc",
+};
