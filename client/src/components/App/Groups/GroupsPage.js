@@ -19,8 +19,9 @@ export default function GroupsPage() {
   const [loadingTags, setLoadingTags] = useState(true);
   const [tagsError, setTagsError] = useState("");
 
-  // Hardcoded user ID for now (should come from auth context later)
-  const CURRENT_USER_ID = 1;
+  // Current app user id (set after login and stored in localStorage)
+  const storedUserIdRaw = localStorage.getItem('currentUserId');
+  const CURRENT_USER_ID = storedUserIdRaw ? Number(storedUserIdRaw) : null;
 
   // Add ref to prevent multiple simultaneous operations
   const isLeaving = useRef(false);
@@ -93,7 +94,14 @@ export default function GroupsPage() {
       console.log("Fresh groups data:", freshGroups);
       setGroups(freshGroups);
       
-      // Fetch fresh memberships - ONLY from Group_Members table
+      // If we don't know the current user yet, skip membership fetch
+      if (!CURRENT_USER_ID) {
+        console.warn("No CURRENT_USER_ID set; skipping membership fetch");
+        setMemberships([]);
+        return;
+      }
+
+      // Fetch fresh memberships - ONLY from Group_Members table for this user
       const membershipsRes = await fetch(`/api/users/${CURRENT_USER_ID}/groups/member`);
       let memberIds = [];
       
@@ -138,7 +146,10 @@ export default function GroupsPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify({
+          userId: CURRENT_USER_ID
+        })
       });
 
       console.log("Join response status:", res.status);
@@ -178,7 +189,13 @@ export default function GroupsPage() {
       console.log("Leaving group ID:", groupId);
       
       const res = await fetch(`/api/groups/${groupId}/leave`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          userId: CURRENT_USER_ID
+        })
       });
 
       console.log("Leave response status:", res.status);

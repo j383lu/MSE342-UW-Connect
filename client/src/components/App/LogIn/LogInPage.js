@@ -42,8 +42,28 @@ const LogInPage = ({ onSwitchPage, firebase }) => {
         if (Object.keys(newErrors).length === 0) {
             try {
                 await firebase.doSignInWithEmailAndPassword(formData.email, formData.password);
-                    console.log('Successfully logged in with Firebase');
-                    navigate('/feed'); 
+                console.log('Successfully logged in with Firebase');
+
+                // After Firebase login, fetch our app-specific user_id by email
+                try {
+                    const res = await fetch(`/api/users/by-email?email=${encodeURIComponent(formData.email)}`);
+                    if (!res.ok) {
+                        console.error('Failed to fetch user id from backend, status:', res.status);
+                    } else {
+                        const data = await res.json();
+                        if (data && data.userId) {
+                            // Persist current app user id for later use (e.g., Groups, Profile, etc.)
+                            localStorage.setItem('currentUserId', String(data.userId));
+                            console.log('Stored currentUserId in localStorage:', data.userId);
+                        } else {
+                            console.warn('No userId returned from /api/users/by-email');
+                        }
+                    }
+                } catch (lookupError) {
+                    console.error('Error looking up user id after login:', lookupError);
+                }
+
+                navigate('/feed'); 
             } catch (error) {
                 switch (error.code) {
                 case 'auth/invalid-email':

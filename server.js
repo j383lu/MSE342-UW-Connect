@@ -796,5 +796,29 @@ app.post('/api/register', (req, res) => {
     });
 });
 
+// Lookup app user_id by email (used after Firebase login)
+app.get('/api/users/by-email', (req, res) => {
+  const { email } = req.query;
+
+  if (!email) {
+    return res.status(400).json({ error: "Email is required" });
+  }
+
+  const sql = "SELECT user_id FROM User_Credentials WHERE email = ? LIMIT 1";
+
+  db.query(sql, [email], (err, rows) => {
+    if (err) {
+      console.error("GET /api/users/by-email error:", err);
+      return res.status(500).json({ error: "Failed to lookup user" });
+    }
+
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: "User not found for given email" });
+    }
+
+    return res.json({ userId: rows[0].user_id });
+  });
+});
+
 
 app.listen(port, () => console.log(`Listening on port ${port}`)); 

@@ -155,6 +155,12 @@ export default function CreateGroupForm() {
       formData.append('category', category);
       formData.append('isOpen', privacy === "public");
       formData.append('maxMembers', maxMembers || '');
+
+      // Attach current app user id so backend can set creator_id correctly
+      const currentUserId = localStorage.getItem('currentUserId');
+      if (currentUserId) {
+        formData.append('user_id', currentUserId);
+      }
       
       if (coverImage) {
         formData.append('coverImage', coverImage);
