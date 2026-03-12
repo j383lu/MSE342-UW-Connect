@@ -36,6 +36,7 @@ function Post() {
     try {
       const response = await fetch(`/api/posts/search?keyword=${encodeURIComponent(searchKeyword)}`);
       const data = await response.json();
+      console.log(data)
 
       if (data.posts) {
         setPosts(data.posts);
@@ -77,10 +78,31 @@ function Post() {
 
       setOpen(false);
 
-  } catch (error) {
-    console.error("Error creating post:", error);
-  }
-}
+    } catch (error) {
+      console.error("Error creating post:", error);
+    }
+  };
+
+  // handler for liking posts
+  const handleLikePost = async (postId) => {
+    try {
+        const response = await fetch(`/api/posts/${postId}/like`, { method: 'POST' });
+        const data = await response.json();
+
+        if (!response.ok) {
+            console.error(data.error);
+            return;
+        }
+
+        setPosts(prev => prev.map(p =>
+            p.post_id === postId
+                ? { ...p, like_count: data.like_count, liked_by_me: data.liked_by_me }
+                : p
+        ));
+    } catch (error) {
+        console.error("Error liking post:", error);
+    }
+  };
 
   const handleEditPost = async (updatedFields) => {
     try {
@@ -109,7 +131,7 @@ function Post() {
     } catch (error) {
         console.error("Error editing post:", error);
     }
-  }
+  };
 
    // to delete the post
   const handleDeletePost = async (postId) => {
@@ -182,6 +204,7 @@ function Post() {
         posts={posts}
         onDeletePost={handleDeletePost}
         onEditPost={(post) => { setEditingPost(post); setEditOpen(true); }}
+        onLikePost={handleLikePost}
         />
       </Grid>
 

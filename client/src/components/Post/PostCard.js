@@ -1,12 +1,14 @@
 import React, {useState} from "react";
 import { Card, CardContent, CardHeader, CardActions,
-  Typography, Stack, Chip, Button,
+  Typography, Stack, Chip, Button, IconButton,
   Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions 
 } from "@mui/material";
+import FavoriteIcon from "@mui/icons-material/Favorite";
+import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder"; 
 
 const currentUser = { id : 1};
 
-function PostCard({ post, onDeletePost, onEditPost }) {
+function PostCard({ post, onDeletePost, onEditPost, onLikePost }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const isAuthor = post.author_id === currentUser.id;
@@ -38,9 +40,21 @@ function PostCard({ post, onDeletePost, onEditPost }) {
           )}
         </CardContent>
 
+        <CardActions>
+          {/* Like button - visible to everyone */}
+          <IconButton onClick={() => onLikePost(post.post_id)} size="small">
+            {post.liked_by_me
+              ? <FavoriteIcon fontSize="small" color="error" />
+              : <FavoriteBorderIcon fontSize="small" />}
+          </IconButton>
+          <Typography variant="body2" sx={{ mr: 1 }}>
+            {post.like_count}
+          </Typography>
+
+
         {/*only show delete button if current user is the author */}
         {isAuthor && (
-          <CardActions>
+          <>
             <Button size="small" onClick={() => onEditPost(post)}>
               Edit
             </Button>
@@ -51,8 +65,9 @@ function PostCard({ post, onDeletePost, onEditPost }) {
             >
               Delete
             </Button>
-          </CardActions>
+          </>
         )}
+        </CardActions>
       </Card>
 
       {/* Confirmation Dialog */}
