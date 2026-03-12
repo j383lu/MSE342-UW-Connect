@@ -21,6 +21,7 @@ import CreateEventForm from "./Events/CreateEventForm";
 import ProfilePage from "./Profile/Profile";
 import EditProfile from "./Profile/EditProfile";  
 import ProgramStudents from "./Profile/ProgramStudents";
+import ProfileSearch from "./Profile/ProfileSearch";
 
 // placeholders (optional)
 const HomePage = () => <div>Home</div>;
@@ -54,6 +55,7 @@ export default function App() {
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/edit-profile" element={<EditProfile />} />
           <Route path="/programs/:programId/students" element={<ProgramStudents />} />
+          <Route path="/profile-search" element={<ProfileSearch />} />
         </Routes>
       </ThemeProvider>
     </BrowserRouter>

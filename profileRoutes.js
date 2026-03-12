@@ -387,4 +387,63 @@ router.get("/programs/:programId/students", (req, res) => {
   });
 });
 
+// GET /api/profile/search-users
+// Search users by name or return all users
+router.get("/search-users", (req, res) => {
+  const connection = mysql.createConnection(config);
+
+  const query = req.query.query?.trim() || "";
+
+  let sql;
+  let params = [];
+
+  if (query) {
+    sql = `
+      SELECT
+        up.user_id,
+        up.display_name,
+        up.bio,
+        up.department,
+        p.program_name,
+        uc.role
+      FROM User_Profiles up
+      LEFT JOIN Programs p ON p.program_id = up.program_id
+      LEFT JOIN User_Credentials uc ON uc.user_id = up.user_id
+      WHERE up.display_name LIKE ?
+      ORDER BY up.display_name ASC;
+    `;
+
+    params = [`%${query}%`];
+  } else {
+    sql = `
+      SELECT
+        up.user_id,
+        up.display_name,
+        up.bio,
+        up.department,
+        p.program_name,
+        uc.role
+      FROM User_Profiles up
+      LEFT JOIN Programs p ON p.program_id = up.program_id
+      LEFT JOIN User_Credentials uc ON uc.user_id = up.user_id
+      ORDER BY up.display_name ASC;
+    `;
+  }
+
+  console.log("Executing user search:", sql, "params:", params);
+
+  connection.query(sql, params, (error, results) => {
+    connection.end();
+
+    if (error) {
+      console.error("Database error:", error.message);
+      return res.status(500).json({ error: "Failed to search users" });
+    }
+
+    return res.json({
+      users: results || [],
+    });
+  });
+});
+
 export default router;

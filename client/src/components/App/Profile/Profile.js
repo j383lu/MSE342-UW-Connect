@@ -53,9 +53,16 @@ function Profile() {
 
   const formatBirthday = (birthday) => {
     if (!birthday) return "No birthday added yet.";
-    const date = new Date(birthday);
-    if (Number.isNaN(date.getTime())) return birthday;
-    return date.toLocaleDateString();
+
+    const raw = String(birthday).slice(0, 10);
+    const parts = raw.split("-");
+
+    if (parts.length === 3) {
+      const [year, month, day] = parts;
+      return `${Number(month)}/${Number(day)}/${year}`;
+    }
+
+    return birthday;
   };
 
   if (loading) {
@@ -136,13 +143,22 @@ function Profile() {
               )}
             </Box>
 
-            <Button
-              variant="contained"
-              onClick={() => navigate("/edit-profile")}
-              data-testid="edit-profile-btn"
-            >
-              Edit Profile
-            </Button>
+            <Stack direction="row" spacing={1}>
+              <Button
+                variant="outlined"
+                onClick={() => navigate("/profile-search")}
+              >
+                Profile Search
+              </Button>
+
+              <Button
+                variant="contained"
+                onClick={() => navigate("/edit-profile")}
+                data-testid="edit-profile-btn"
+              >
+                Edit Profile
+              </Button>
+            </Stack>
           </Stack>
 
           <Box sx={{ mt: 2 }}>
