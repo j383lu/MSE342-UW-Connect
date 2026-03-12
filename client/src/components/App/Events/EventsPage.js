@@ -1,10 +1,13 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import EventCard from "./EventCard";
 import styles from "./eventStyles";
 
 export default function EventsPage() {
   const navigate = useNavigate();
+  const searchBoxRef = useRef(null);
+
+  const USER_ID = 1;
 
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -16,6 +19,15 @@ export default function EventsPage() {
   const [detailsError, setDetailsError] = useState("");
 
   const [showPastEvents, setShowPastEvents] = useState(true);
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [recentSearches, setRecentSearches] = useState([]);
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchMessage, setSearchMessage] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
 
   const loadEvents = async () => {
     try {
@@ -98,6 +110,12 @@ export default function EventsPage() {
         )
       );
 
+      setSearchResults((prev) =>
+        prev.map((x) =>
+          x.id === ev.id ? { ...x, current_count: data.current_count } : x
+        )
+      );
+
       if (openDetailsId === ev.id) {
         await loadAttendees(ev.id);
       }
@@ -106,8 +124,204 @@ export default function EventsPage() {
     }
   };
 
+  const loadRecentSearches = async () => {
+    try {
+      const res = await fetch(`/api/events/search-history?user_id=${USER_ID}`);
+      const data = await res.json();
+
+      if (!res.ok) {
+        return;
+      }
+
+      setRecentSearches(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.log("Failed to load recent searches.");
+    }
+  };
+
+  const saveSearchHistory = async (term) => {
+    try {
+      await fetch("/api/events/search-history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: USER_ID,
+          search_term: term,
+        }),
+      });
+    } catch (e) {
+      console.log("Failed to save search history.");
+    }
+  };
+
+  const deleteSearchHistory = async (term) => {
+    try {
+      const res = await fetch("/api/events/search-history", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: USER_ID,
+          search_term: term,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        window.alert(data.error || "Failed to delete search history.");
+        return;
+      }
+
+      setRecentSearches((prev) =>
+        prev.filter((item) => item.search_term !== term)
+      );
+    } catch (e) {
+      window.alert("Cannot connect to backend.");
+    }
+  };
+
+  const loadSuggestions = async (keyword) => {
+    try {
+      const res = await fetch(
+        `/api/events/suggestions?keyword=${encodeURIComponent(keyword)}`
+      );
+      const data = await res.json();
+
+      if (!res.ok) {
+        setSuggestions([]);
+        return;
+      }
+
+      setSuggestions(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setSuggestions([]);
+    }
+  };
+
+  const handleSearch = async (rawTerm) => {
+    const term = String(rawTerm || "").trim();
+
+    if (!term) {
+      setIsSearching(false);
+      setSearchResults([]);
+      setSearchMessage("");
+      await loadEvents();
+      return;
+    }
+
+    try {
+      setSearchLoading(true);
+      setSearchMessage("");
+      setShowSearchDropdown(false);
+
+      const res = await fetch(
+        `/api/events/search?keyword=${encodeURIComponent(term)}`
+      );
+      const data = await res.json();
+
+      if (!res.ok) {
+        setSearchResults([]);
+        setIsSearching(true);
+        setSearchMessage(data.error || "Failed to search events.");
+        return;
+      }
+
+      setSearchResults(Array.isArray(data.events) ? data.events : []);
+      setIsSearching(true);
+
+      if (Array.isArray(data.events) && data.events.length === 0) {
+        setSearchMessage("No matching events found.");
+      } else {
+        setSearchMessage("");
+      }
+
+      await saveSearchHistory(term);
+      await loadRecentSearches();
+    } catch (e) {
+      setSearchResults([]);
+      setIsSearching(true);
+      setSearchMessage("Cannot connect to backend.");
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const handleSearchInputChange = async (e) => {
+    const value = e.target.value;
+    setSearchTerm(value);
+
+    const cleanValue = value.trim();
+
+    if (!cleanValue) {
+      setSuggestions([]);
+      await loadRecentSearches();
+      setShowSearchDropdown(true);
+      return;
+    }
+
+    await loadSuggestions(cleanValue);
+    setShowSearchDropdown(true);
+  };
+
+  const handleSearchFocus = async () => {
+    const cleanValue = searchTerm.trim();
+
+    if (!cleanValue) {
+      await loadRecentSearches();
+      setSuggestions([]);
+    } else {
+      await loadSuggestions(cleanValue);
+    }
+
+    setShowSearchDropdown(true);
+  };
+
+  const handleSearchSubmit = async (e) => {
+    e.preventDefault();
+    await handleSearch(searchTerm);
+  };
+
+  const handleRecentSearchClick = async (term) => {
+    setSearchTerm(term);
+    setShowSearchDropdown(false);
+    await handleSearch(term);
+  };
+
+  const handleSuggestionClick = async (value) => {
+    setSearchTerm(value);
+    setShowSearchDropdown(false);
+    await handleSearch(value);
+  };
+
+  const clearSearch = async () => {
+    setSearchTerm("");
+    setSuggestions([]);
+    setSearchResults([]);
+    setSearchMessage("");
+    setIsSearching(false);
+    setShowSearchDropdown(false);
+    await loadEvents();
+  };
+
   useEffect(() => {
     loadEvents();
+    loadRecentSearches();
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        searchBoxRef.current &&
+        !searchBoxRef.current.contains(event.target)
+      ) {
+        setShowSearchDropdown(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, []);
 
   const upcoming = events.filter((e) => Number(e.is_past) === 0);
@@ -166,6 +380,114 @@ export default function EventsPage() {
 
         {error ? <div style={styles.errorBanner}>{error}</div> : null}
 
+        <div style={styles.searchPanel}>
+          <div style={styles.searchHeaderBlock}>
+            <h2 style={styles.panelTitle}>Search Events</h2>
+            <p style={styles.panelSubtitle}>
+              Search by event title, category, or tags. Recent searches will
+              appear when the search bar is empty.
+            </p>
+          </div>
+
+          <form onSubmit={handleSearchSubmit} style={styles.searchForm}>
+            <div style={styles.searchBox} ref={searchBoxRef}>
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={handleSearchInputChange}
+                onFocus={handleSearchFocus}
+                placeholder="Search by title, category, or tag"
+                style={styles.searchInput}
+              />
+
+              {showSearchDropdown ? (
+                <div style={styles.searchDropdown}>
+                  {searchTerm.trim() === "" ? (
+                    <>
+                      <div style={styles.searchDropdownTitle}>
+                        Recent Searches
+                      </div>
+
+                      {recentSearches.length === 0 ? (
+                        <div style={styles.searchDropdownEmpty}>
+                          No recent searches yet.
+                        </div>
+                      ) : (
+                        recentSearches.map((item) => (
+                          <div
+                            key={item.search_term}
+                            style={styles.searchDropdownRow}
+                          >
+                            <button
+                              type="button"
+                              style={styles.searchDropdownItem}
+                              onClick={() =>
+                                handleRecentSearchClick(item.search_term)
+                              }
+                            >
+                              {item.search_term}
+                            </button>
+
+                            <button
+                              type="button"
+                              style={styles.searchDeleteBtn}
+                              onClick={() =>
+                                deleteSearchHistory(item.search_term)
+                              }
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div style={styles.searchDropdownTitle}>
+                        Suggested Results
+                      </div>
+
+                      {suggestions.length === 0 ? (
+                        <div style={styles.searchDropdownEmpty}>
+                          No suggestions found.
+                        </div>
+                      ) : (
+                        suggestions.map((item, index) => (
+                          <button
+                            key={`${item.type}-${item.value}-${index}`}
+                            type="button"
+                            style={styles.searchSuggestionBtn}
+                            onClick={() => handleSuggestionClick(item.value)}
+                          >
+                            <span style={styles.searchSuggestionType}>
+                              {item.type}
+                            </span>
+                            <span style={styles.searchSuggestionValue}>
+                              {item.value}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </>
+                  )}
+                </div>
+              ) : null}
+            </div>
+
+            <button type="submit" style={styles.searchBtn}>
+              Search
+            </button>
+
+            <button
+              type="button"
+              style={styles.clearSearchBtn}
+              onClick={clearSearch}
+            >
+              Clear
+            </button>
+          </form>
+        </div>
+
         <div style={styles.summaryGrid}>
           <div style={styles.summaryCard}>
             <div style={styles.summaryNumber}>{upcoming.length}</div>
@@ -183,60 +505,94 @@ export default function EventsPage() {
           </div>
         </div>
 
-        <div style={styles.panel}>
-          <div style={styles.panelTitleRow}>
-            <div>
-              <h2 style={styles.panelTitle}>Upcoming Events</h2>
+        {isSearching ? (
+          <div style={styles.panel}>
+            <div style={styles.sectionHeaderBlock}>
+              <h2 style={styles.panelTitle}>Search Results</h2>
               <p style={styles.panelSubtitle}>
-                Find what is happening next and join in quickly.
+                Results are sorted from newest to oldest based on search time.
               </p>
             </div>
 
-            <button
-              style={styles.toggleBtn}
-              onClick={() => setShowPastEvents((v) => !v)}
-            >
-              {showPastEvents ? "Hide Past Events" : "Show Past Events"}
-            </button>
-          </div>
-
-          {loading ? (
-            <p style={styles.infoText}>Loading...</p>
-          ) : upcoming.length === 0 ? (
-            <div style={styles.emptyStateCard}>
-              <div style={styles.emptyStateTitle}>No upcoming events</div>
-              <div style={styles.emptyStateText}>
-                Create a new event to get started.
+            {searchLoading ? (
+              <p style={styles.infoText}>Searching...</p>
+            ) : searchMessage ? (
+              <div style={styles.emptyStateCard}>
+                <div style={styles.emptyStateTitle}>{searchMessage}</div>
               </div>
-            </div>
-          ) : (
-            <div style={styles.grid}>{upcoming.map((ev) => renderCard(ev, false))}</div>
-          )}
-
-          {showPastEvents ? (
-            <>
-              <div style={styles.sectionDivider} />
-
-              <div style={styles.sectionHeaderBlock}>
-                <h2 style={styles.panelTitle}>Past Events</h2>
+            ) : searchResults.length === 0 ? (
+              <div style={styles.emptyStateCard}>
+                <div style={styles.emptyStateTitle}>No matching events</div>
+                <div style={styles.emptyStateText}>
+                  Try another keyword, category, or tag.
+                </div>
+              </div>
+            ) : (
+              <div style={styles.grid}>
+                {searchResults.map((ev) => renderCard(ev, Number(ev.is_past) === 1))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={styles.panel}>
+            <div style={styles.panelTitleRow}>
+              <div>
+                <h2 style={styles.panelTitle}>Upcoming Events</h2>
                 <p style={styles.panelSubtitle}>
-                  Review previous events and attendee details.
+                  Find what is happening next and join in quickly.
                 </p>
               </div>
 
-              {loading ? null : past.length === 0 ? (
-                <div style={styles.emptyStateCard}>
-                  <div style={styles.emptyStateTitle}>No past events</div>
-                  <div style={styles.emptyStateText}>
-                    Past events will appear here automatically.
-                  </div>
+              <button
+                style={styles.toggleBtn}
+                onClick={() => setShowPastEvents((v) => !v)}
+              >
+                {showPastEvents ? "Hide Past Events" : "Show Past Events"}
+              </button>
+            </div>
+
+            {loading ? (
+              <p style={styles.infoText}>Loading...</p>
+            ) : upcoming.length === 0 ? (
+              <div style={styles.emptyStateCard}>
+                <div style={styles.emptyStateTitle}>No upcoming events</div>
+                <div style={styles.emptyStateText}>
+                  Create a new event to get started.
                 </div>
-              ) : (
-                <div style={styles.grid}>{past.map((ev) => renderCard(ev, true))}</div>
-              )}
-            </>
-          ) : null}
-        </div>
+              </div>
+            ) : (
+              <div style={styles.grid}>
+                {upcoming.map((ev) => renderCard(ev, false))}
+              </div>
+            )}
+
+            {showPastEvents ? (
+              <>
+                <div style={styles.sectionDivider} />
+
+                <div style={styles.sectionHeaderBlock}>
+                  <h2 style={styles.panelTitle}>Past Events</h2>
+                  <p style={styles.panelSubtitle}>
+                    Review previous events and attendee details.
+                  </p>
+                </div>
+
+                {loading ? null : past.length === 0 ? (
+                  <div style={styles.emptyStateCard}>
+                    <div style={styles.emptyStateTitle}>No past events</div>
+                    <div style={styles.emptyStateText}>
+                      Past events will appear here automatically.
+                    </div>
+                  </div>
+                ) : (
+                  <div style={styles.grid}>
+                    {past.map((ev) => renderCard(ev, true))}
+                  </div>
+                )}
+              </>
+            ) : null}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -144,11 +144,177 @@ const eventStyles = {
     fontWeight: 600,
   },
 
+  searchPanel: {
+    border: "1px solid rgba(214,223,226,0.95)",
+    borderRadius: 26,
+    padding: 22,
+    background: "rgba(255,255,255,0.82)",
+    backdropFilter: "blur(14px)",
+    boxShadow: "0 18px 45px rgba(23,41,43,0.07)",
+    marginBottom: 22,
+    position: "relative",
+    zIndex: 50,
+  },
+
+  searchHeaderBlock: {
+    marginBottom: 16,
+  },
+
+  searchForm: {
+    display: "flex",
+    gap: 12,
+    alignItems: "flex-start",
+    flexWrap: "wrap",
+  },
+
+  searchBox: {
+    position: "relative",
+    flex: 1,
+    minWidth: 280,
+    zIndex: 60,
+  },
+
+  searchInput: {
+    width: "100%",
+    height: 48,
+    borderRadius: 16,
+    border: "1px solid #D6DFE2",
+    padding: "0 16px",
+    fontSize: 14,
+    color: "#17292B",
+    background: "rgba(255,255,255,0.96)",
+    outline: "none",
+    boxSizing: "border-box",
+    boxShadow: "inset 0 1px 2px rgba(23,41,43,0.03)",
+  },
+
+  searchBtn: {
+    height: 48,
+    borderRadius: 999,
+    border: "none",
+    background: "#17292B",
+    color: "#FDFDF6",
+    fontWeight: 700,
+    cursor: "pointer",
+    padding: "0 20px",
+    boxShadow: "0 8px 18px rgba(23,41,43,0.15)",
+    transition: "all 0.2s ease",
+  },
+
+  clearSearchBtn: {
+    height: 48,
+    borderRadius: 999,
+    border: "1px solid #D6DFE2",
+    background: "#FFFFFF",
+    color: "#17292B",
+    fontWeight: 700,
+    cursor: "pointer",
+    padding: "0 20px",
+    transition: "all 0.2s ease",
+  },
+
+  searchDropdown: {
+    position: "absolute",
+    top: 56,
+    left: 0,
+    right: 0,
+    background: "#FFFFFF",
+    border: "1px solid #D6DFE2",
+    borderRadius: 18,
+    boxShadow: "0 18px 40px rgba(23,41,43,0.12)",
+    overflow: "hidden",
+    zIndex: 999,
+  },
+
+  searchDropdownTitle: {
+    padding: "14px 16px 10px",
+    fontSize: 13,
+    fontWeight: 700,
+    color: "#686967",
+    background: "#FCFCF8",
+    borderBottom: "1px solid #EEF1F2",
+  },
+
+  searchDropdownEmpty: {
+    padding: "14px 16px",
+    fontSize: 14,
+    color: "#686967",
+  },
+
+  searchDropdownRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    borderBottom: "1px solid #F2F4F5",
+  },
+
+  searchDropdownItem: {
+    flex: 1,
+    textAlign: "left",
+    background: "transparent",
+    border: "none",
+    padding: "14px 16px",
+    fontSize: 14,
+    color: "#17292B",
+    cursor: "pointer",
+  },
+
+  searchDeleteBtn: {
+    width: 34,
+    height: 34,
+    marginRight: 10,
+    borderRadius: "50%",
+    border: "none",
+    background: "#F4EEE5",
+    color: "#17292B",
+    fontSize: 18,
+    cursor: "pointer",
+    lineHeight: 1,
+  },
+
+  searchSuggestionBtn: {
+    width: "100%",
+    border: "none",
+    background: "#FFFFFF",
+    cursor: "pointer",
+    textAlign: "left",
+    padding: "12px 16px",
+    display: "flex",
+    gap: 10,
+    alignItems: "center",
+    borderBottom: "1px solid #F2F4F5",
+  },
+
+  searchSuggestionType: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 72,
+    minHeight: 28,
+    padding: "0 10px",
+    borderRadius: 999,
+    background: "rgba(93,108,92,0.12)",
+    color: "#36513B",
+    border: "1px solid rgba(93,108,92,0.18)",
+    fontSize: 12,
+    fontWeight: 700,
+    textTransform: "capitalize",
+  },
+
+  searchSuggestionValue: {
+    fontSize: 14,
+    color: "#17292B",
+    fontWeight: 600,
+  },
+
   summaryGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
     gap: 16,
     marginBottom: 22,
+    position: "relative",
+    zIndex: 1,
   },
 
   summaryCard: {
@@ -258,16 +424,16 @@ const eventStyles = {
   },
 
   card: {
-  border: "1px solid #e6e6e6",
-  borderRadius: 18,
-  padding: 22,
-  background: "#FDFDF6",
-  transition: "all 0.25s ease",
+    border: "1px solid #e6e6e6",
+    borderRadius: 18,
+    padding: 22,
+    background: "#FDFDF6",
+    transition: "all 0.25s ease",
   },
 
   cardHover: {
-  transform: "translateY(-6px)",
-  boxShadow: "0 16px 40px rgba(0,0,0,0.15)",
+    transform: "translateY(-6px)",
+    boxShadow: "0 16px 40px rgba(0,0,0,0.15)",
   },
 
   cardPast: {
@@ -627,7 +793,7 @@ const eventStyles = {
     boxShadow: "inset 0 1px 2px rgba(23,41,43,0.03)",
     cursor: "pointer",
   },
-  
+
   categoryRow: {
     marginTop: 14,
     display: "flex",
@@ -656,10 +822,10 @@ const eventStyles = {
   },
 
   likesRow: {
-  marginTop: 10,
-  display: "flex",
-  alignItems: "center",
-  gap: 8
+    marginTop: 10,
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
   },
 
   likeBtn: {
@@ -668,22 +834,22 @@ const eventStyles = {
     borderRadius: 999,
     padding: "6px 12px",
     cursor: "pointer",
-    fontWeight: 600
+    fontWeight: 600,
   },
 
   likeBtnActive: {
-  background: "#F4EEE5",
-  color: "#17292B",
-  border: "1px solid #E0D2BE",
+    background: "#F4EEE5",
+    color: "#17292B",
+    border: "1px solid #E0D2BE",
   },
 
   likeCount: {
     fontSize: 14,
     color: "#686967",
-    fontWeight: 600
-  }
+    fontWeight: 600,
+  },
 
+  
 };
 
- 
 export default eventStyles;

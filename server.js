@@ -857,4 +857,158 @@ app.get("/api/categories", (req, res) => {
   });
 });
 
+app.get("/api/events/search-history", (req, res) => {
+  const userId = 1;
+
+  const sql = `
+    SELECT search_term
+    FROM Event_Search_History
+    WHERE user_id = ?
+    ORDER BY searched_at DESC
+    LIMIT 8
+  `;
+
+  db.query(sql, [userId], (err, rows) => {
+    if (err) {
+      console.log("GET search history error:", err);
+      return res.status(500).json({ error: "Failed to load search history." });
+    }
+
+    return res.json(rows);
+  });
+});
+
+app.post("/api/events/search-history", (req, res) => {
+  const userId = 1;
+  const term = String(req.body.search_term || "").trim();
+
+  if (!term) {
+    return res.status(400).json({ error: "Missing search term." });
+  }
+
+  const sql = `
+    INSERT INTO Event_Search_History (user_id, search_term, searched_at)
+    VALUES (?, ?, NOW())
+    ON DUPLICATE KEY UPDATE searched_at = NOW()
+  `;
+
+  db.query(sql, [userId, term], (err) => {
+    if (err) {
+      console.log("Insert search history error:", err);
+      return res.status(500).json({ error: "Failed to save search history." });
+    }
+
+    return res.json({ message: "Saved" });
+  });
+});
+
+app.get("/api/events/search", (req, res) => {
+  const keyword = String(req.query.keyword || "").trim();
+
+  if (!keyword) {
+    return res.json({ events: [] });
+  }
+
+  const like = `%${keyword}%`;
+
+  const sql = `
+    SELECT 
+      e.id,
+      e.title,
+      e.description,
+      DATE_FORMAT(e.event_date,'%Y-%m-%d') AS event_date,
+      TIME_FORMAT(e.event_time,'%H:%i') AS event_time,
+      e.location,
+      e.capacity,
+      e.likes,
+      e.category,
+      COUNT(DISTINCT a.id) AS current_count,
+      GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
+      (TIMESTAMP(e.event_date,e.event_time) < NOW()) AS is_past
+    FROM Events e
+    LEFT JOIN Event_Attendees a ON a.event_id = e.id
+    LEFT JOIN Event_Tags t ON t.event_id = e.id
+    WHERE 
+      e.title LIKE ?
+      OR e.category LIKE ?
+      OR t.tag_name LIKE ?
+    GROUP BY e.id
+    ORDER BY e.event_date DESC, e.event_time DESC
+    LIMIT 50
+  `;
+
+  db.query(sql, [like, like, like], (err, rows) => {
+    if (err) {
+      console.log("Search events error:", err);
+      return res.status(500).json({ error: "Search failed." });
+    }
+
+    return res.json({ events: rows });
+  });
+});
+
+app.delete("/api/events/search-history", (req, res) => {
+  const userId = 1;
+  const term = String(req.body.search_term || "").trim();
+
+  if (!term) {
+    return res.status(400).json({ error: "Missing search term." });
+  }
+
+  const sql = `
+    DELETE FROM Event_Search_History
+    WHERE user_id = ? AND search_term = ?
+  `;
+
+  db.query(sql, [userId, term], (err, result) => {
+    if (err) {
+      console.log("Delete search history error:", err);
+      return res.status(500).json({ error: "Failed to delete search history." });
+    }
+
+    return res.json({ message: "Deleted successfully." });
+  });
+});
+
+app.get("/api/events/suggestions", (req, res) => {
+  const keyword = String(req.query.keyword || "").trim();
+
+  if (!keyword) {
+    return res.json([]);
+  }
+
+  const like = `%${keyword}%`;
+
+  const sql = `
+    SELECT value, type
+    FROM (
+      SELECT DISTINCT e.title AS value, 'title' AS type
+      FROM Events e
+      WHERE e.title LIKE ?
+
+      UNION
+
+      SELECT DISTINCT e.category AS value, 'category' AS type
+      FROM Events e
+      WHERE e.category LIKE ?
+
+      UNION
+
+      SELECT DISTINCT t.tag_name AS value, 'tag' AS type
+      FROM Event_Tags t
+      WHERE t.tag_name LIKE ?
+    ) AS combined
+    LIMIT 10
+  `;
+
+  db.query(sql, [like, like, like], (err, rows) => {
+    if (err) {
+      console.log("Suggestions error:", err);
+      return res.status(500).json({ error: "Failed to load suggestions." });
+    }
+
+    return res.json(rows);
+  });
+});
+
 app.listen(port, () => console.log(`Listening on port ${port}`)); //for the dev version
