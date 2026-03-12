@@ -744,7 +744,8 @@ app.get('/api/posts', (req, res) => {
                p.is_anonymous, p.image_url, p.created_at AS createdAt,
                GROUP_CONCAT(t.tag_name) AS tags,
                COUNT(DISTINCT l.like_id) AS like_count,
-               MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me
+               MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me,
+               (SELECT COUNT(*) FROM Comments WHERE post_id = p.post_id) AS comment_count
         FROM Posts p
         LEFT JOIN post_tags pt ON p.post_id = pt.post_id
         LEFT JOIN Tags t ON pt.tag_id = t.tag_id
@@ -769,7 +770,8 @@ app.get('/api/posts', (req, res) => {
             tags: post.tags ? post.tags.split(',') : [],
             createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
             like_count: post.like_count,
-            liked_by_me: post.liked_by_me
+            liked_by_me: post.liked_by_me, 
+            comment_count: post.comment_count ?? 0
         }));
 
         res.json(formattedPosts);
@@ -791,7 +793,8 @@ app.get('/api/posts/search', (req, res) => {
         SELECT p.post_id, p.title, p.content AS description, p.author_id, p.created_at AS createdAt,
         GROUP_CONCAT(t.tag_name) AS tags,
         COUNT(DISTINCT l.like_id) AS like_count,
-        MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me
+        MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me,
+        (SELECT COUNT(*) FROM Comments WHERE post_id = p.post_id) AS comment_count
         FROM Posts p
         LEFT JOIN post_tags pt ON p.post_id = pt.post_id
         LEFT JOIN Tags t ON pt.tag_id = t.tag_id
@@ -819,7 +822,8 @@ app.get('/api/posts/search', (req, res) => {
             tags: post.tags ? post.tags.split(',') : [],
             createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
             like_count: post.like_count ?? 0,
-            liked_by_me: post.liked_by_me === 1
+            liked_by_me: post.liked_by_me === 1,
+            comment_count: post.comment_count ?? 0
         }));
 
         if (formattedPosts.length === 0) {
@@ -827,6 +831,102 @@ app.get('/api/posts/search', (req, res) => {
         }
 
         res.json({ posts: formattedPosts });
+    });
+});
+
+// GET /api/posts/:id - get a single post
+app.get('/api/posts/:id', (req, res) => {
+    const connection = mysql.createConnection(config);
+    const postId = req.params.id;
+    const currentUserId = 1; // placeholder
+
+    const sql = `
+        SELECT p.post_id, p.title, p.content, p.author_id, p.created_at AS createdAt,
+               GROUP_CONCAT(DISTINCT t.tag_name) AS tags,
+               COUNT(DISTINCT l.like_id) AS like_count,
+               MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me
+        FROM Posts p
+        LEFT JOIN post_tags pt ON p.post_id = pt.post_id
+        LEFT JOIN Tags t ON pt.tag_id = t.tag_id
+        LEFT JOIN Likes l ON p.post_id = l.post_id
+        WHERE p.post_id = ?
+        GROUP BY p.post_id
+    `;
+
+    connection.query(sql, [currentUserId, postId], (err, results) => {
+        connection.end();
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ error: 'Error retrieving post' });
+        }
+        if (results.length === 0) {
+            return res.status(404).json({ error: 'Post not found' });
+        }
+
+        const post = results[0];
+        res.json({
+            post_id: post.post_id,
+            author_id: post.author_id,
+            title: post.title,
+            description: post.content,
+            tags: post.tags ? post.tags.split(',') : [],
+            createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
+            like_count: post.like_count ?? 0,
+            liked_by_me: post.liked_by_me === 1
+        });
+    });
+});
+
+// GET /api/posts/:id/comments - get all comments for a post
+app.get('/api/posts/:id/comments', (req, res) => {
+    const connection = mysql.createConnection(config);
+    const postId = req.params.id;
+
+    const sql = `
+        SELECT c.comment_id, c.post_id, c.user_id, c.parent_comment_id,
+               c.content, c.created_at AS createdAt
+        FROM Comments c
+        WHERE c.post_id = ?
+        ORDER BY c.created_at ASC
+    `;
+
+    connection.query(sql, [postId], (err, results) => {
+        connection.end();
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ error: 'Error retrieving comments' });
+        }
+        res.json(results);
+    });
+});
+
+// POST /api/posts/:id/comments - add a comment or reply
+app.post('/api/posts/:id/comments', (req, res) => {
+    const connection = mysql.createConnection(config);
+    const postId = req.params.id;
+    const { content, parent_comment_id = null } = req.body;
+    const currentUserId = 1; // placeholder
+
+    if (!content || !content.trim()) {
+        connection.end();
+        return res.status(400).json({ error: 'Comment content is required' });
+    }
+
+    const sql = 'INSERT INTO Comments (post_id, user_id, parent_comment_id, content) VALUES (?, ?, ?, ?)';
+    connection.query(sql, [postId, currentUserId, parent_comment_id, content], (err, result) => {
+        connection.end();
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ error: 'Error creating comment' });
+        }
+        res.json({
+            comment_id: result.insertId,
+            post_id: parseInt(postId),
+            user_id: currentUserId,
+            parent_comment_id,
+            content,
+            createdAt: new Date().toISOString()
+        });
     });
 });
 
