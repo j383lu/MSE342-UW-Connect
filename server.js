@@ -252,19 +252,30 @@ app.post("/api/groups", upload.single('coverImage'), (req, res) => {
           details: err.message 
         });
       }
-      
-      // Return the created group with its new ID
-      return res.status(201).json({
-        id: result.insertId,
-        creator_id,
-        name,
-        description,
-        category,
-        is_private,
-        max_members,
-        image_url,
-        message: "Group created successfully"
-      });
+
+      const groupId = result.insertId;
+
+      // For both public and private: creator is automatically a member (shows in "My Groups")
+      db.query(
+        "INSERT INTO Group_Members (group_id, user_id) VALUES (?, ?)",
+        [groupId, creator_id],
+        (errMember) => {
+          if (errMember) {
+            console.error("POST /api/groups: auto-join creator failed:", errMember);
+          }
+          return res.status(201).json({
+            id: groupId,
+            creator_id,
+            name,
+            description,
+            category,
+            is_private,
+            max_members,
+            image_url,
+            message: "Group created successfully"
+          });
+        }
+      );
     }
   );
 });

@@ -363,10 +363,10 @@ export default function GroupDetailsPage() {
                 </button>
               ) : (
                 <button
-                  style={btn("primary", group.is_private)}
+                  style={btn("primary", group.is_private && !isOwner)}
                   onClick={handleJoin}
-                  disabled={group.is_private || isJoining}
-                  title={group.is_private ? "Private group - join by invitation only" : ""}
+                  disabled={(group.is_private && !isOwner) || isJoining}
+                  title={group.is_private && !isOwner ? "Private group - join by invitation only" : (group.is_private && isOwner ? "As the owner, you can join your private group" : "")}
                 >
                   {isJoining ? 'Joining...' : 'Join Group'}
                 </button>
