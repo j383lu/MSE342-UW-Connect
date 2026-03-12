@@ -229,8 +229,11 @@ app.get("/api/tags", (req, res) => {
 app.post("/api/groups", upload.single('coverImage'), (req, res) => {
   const { name, description, category, isOpen, maxMembers } = req.body;
   
-  // For now, hardcode user_id = 1
-  const creator_id = 1;
+  // Creator comes from the logged-in app user (sent by client)
+  const creator_id = Number(req.body.user_id);
+  if (!creator_id) {
+    return res.status(400).json({ error: "Missing or invalid user_id for group creator" });
+  }
   
   // Convert isOpen (public = true, private = false) to is_private (1 for private, 0 for public)
   const is_private = isOpen === 'true' ? 0 : 1;
@@ -394,7 +397,8 @@ app.get("/api/users/:userId/groups/member", (req, res) => {
 // JOIN GROUP:
 app.post("/api/groups/:groupId/join", (req, res) => {
   const groupId = req.params.groupId;
-  const userId = 1; // Hardcoded for now
+  // Prefer explicit userId from client, fallback to 1 for now
+  const userId = Number(req.body.userId) || 1;
   
   // First check if group exists and has space
   const checkSql = `
@@ -455,7 +459,8 @@ app.post("/api/groups/:groupId/join", (req, res) => {
 // LEAVE GROUP:
 app.delete("/api/groups/:groupId/leave", (req, res) => {
   const groupId = req.params.groupId;
-  const userId = 1; // Hardcoded for now
+  // Prefer explicit userId from client, fallback to 1 for now
+  const userId = Number(req.body.userId) || 1;
   
   const sql = "DELETE FROM Group_Members WHERE group_id = ? AND user_id = ?";
   
@@ -470,6 +475,229 @@ app.delete("/api/groups/:groupId/leave", (req, res) => {
     }
     
     return res.json({ message: "Successfully left group" });
+  });
+});
+
+// Create group invite(s) by email (owner only, matches existing Group_Invites schema: id, group_id, email, invited_by_user_id, status, created_at)
+app.post("/api/groups/:groupId/invite", (req, res) => {
+  const groupId = Number(req.params.groupId);
+  const { emails = [], inviterId } = req.body;
+
+  if (!groupId || !Array.isArray(emails) || emails.length === 0) {
+    return res.status(400).json({ error: "groupId and at least one email are required" });
+  }
+
+  const normalizedEmails = emails
+    .map(e => String(e || "").trim().toLowerCase())
+    .filter(e => e);
+
+  if (normalizedEmails.length === 0) {
+    return res.status(400).json({ error: "No valid email addresses provided" });
+  }
+
+  // Verify group exists and get creator
+  const groupSql = "SELECT group_id, creator_id, name FROM Social_Group WHERE group_id = ? LIMIT 1";
+  db.query(groupSql, [groupId], (groupErr, groupRows) => {
+    if (groupErr) {
+      console.error("Error fetching group for invite:", groupErr);
+      return res.status(500).json({ error: "Failed to load group for invite" });
+    }
+
+    if (!groupRows || groupRows.length === 0) {
+      return res.status(404).json({ error: "Group not found" });
+    }
+
+    const group = groupRows[0];
+    const resolvedInviterId = inviterId ? Number(inviterId) : group.creator_id;
+
+    // Optional: ensure only creator can invite for now
+    if (inviterId && resolvedInviterId !== group.creator_id) {
+      return res.status(403).json({ error: "Only the group owner can send invites" });
+    }
+
+    // Look up users & names for these emails
+    const placeholders = normalizedEmails.map(() => "?").join(", ");
+    const usersSql = `
+      SELECT uc.user_id, uc.email, up.display_name
+      FROM User_Credentials uc
+      LEFT JOIN User_Profiles up ON up.user_id = uc.user_id
+      WHERE LOWER(uc.email) IN (${placeholders})
+    `;
+
+    db.query(usersSql, normalizedEmails, (userErr, userRows) => {
+      if (userErr) {
+        console.error("Error looking up invitee users:", userErr);
+        return res.status(500).json({ error: "Failed to look up invitees" });
+      }
+
+      if (!userRows || userRows.length === 0) {
+        return res.status(404).json({ error: "No matching users found for provided emails" });
+      }
+
+      const targetUser = userRows[0];
+
+      // Check if already a member of this group
+      const memberSql = "SELECT 1 FROM Group_Members WHERE group_id = ? AND user_id = ? LIMIT 1";
+      db.query(memberSql, [groupId, targetUser.user_id], (memberErr, memberRows) => {
+        if (memberErr) {
+          console.error("Error checking membership before invite:", memberErr);
+          return res.status(500).json({ error: "Failed to check membership" });
+        }
+
+        if (memberRows && memberRows.length > 0) {
+          const name = targetUser.display_name || targetUser.email;
+          return res.status(400).json({
+            error: `${name} is already a member of the group`,
+            code: "already_member",
+            userName: name,
+          });
+        }
+
+        // Insert invites; Group_Invites stores email, not invitee_user_id
+        const values = normalizedEmails.map(email => [groupId, email, resolvedInviterId, "pending"]);
+
+        const insertSql = `
+          INSERT INTO Group_Invites (group_id, email, invited_by_user_id, status)
+          VALUES ?
+        `;
+
+        db.query(insertSql, [values], (inviteErr) => {
+          if (inviteErr) {
+            console.error("Error creating group invites:", inviteErr);
+            return res.status(500).json({ error: "Failed to create invites" });
+          }
+
+          const invitedName = targetUser.display_name || targetUser.email;
+          return res.status(201).json({
+            message: "Invites created successfully",
+            invitedCount: values.length,
+            invitedName,
+          });
+        });
+      });
+    });
+  });
+});
+
+// Get pending invites for a user, using email from User_Credentials
+app.get("/api/users/:userId/invites", (req, res) => {
+  const userId = Number(req.params.userId);
+  if (!userId) {
+    return res.status(400).json({ error: "Invalid userId" });
+  }
+
+  const sql = `
+    SELECT 
+      gi.id AS invite_id,
+      gi.group_id,
+      gi.status,
+      gi.created_at,
+      sg.name AS group_name,
+      up.display_name AS inviter_name
+    FROM Group_Invites gi
+    JOIN Social_Group sg ON sg.group_id = gi.group_id
+    LEFT JOIN User_Profiles up ON up.user_id = gi.invited_by_user_id
+    JOIN User_Credentials uc ON LOWER(uc.email) = LOWER(gi.email)
+    WHERE uc.user_id = ? AND gi.status = 'pending'
+    ORDER BY gi.created_at DESC
+  `;
+
+  db.query(sql, [userId], (err, rows) => {
+    if (err) {
+      console.error("GET /api/users/:userId/invites error:", err);
+      return res.status(500).json({ error: "Failed to fetch invites" });
+    }
+    return res.json(rows || []);
+  });
+});
+
+// Respond to an invite (accept / decline) using existing Group_Invites schema
+app.post("/api/invites/:inviteId/respond", (req, res) => {
+  const inviteId = Number(req.params.inviteId);
+  const { action, userId } = req.body;
+
+  if (!inviteId || !userId) {
+    return res.status(400).json({ error: "inviteId and userId are required" });
+  }
+
+  if (action !== "accept" && action !== "decline") {
+    return res.status(400).json({ error: "action must be 'accept' or 'decline'" });
+  }
+
+  const getInviteSql = `
+    SELECT gi.id, gi.group_id, gi.email, gi.status
+    FROM Group_Invites gi
+    JOIN User_Credentials uc ON LOWER(uc.email) = LOWER(gi.email)
+    WHERE gi.id = ? AND uc.user_id = ?
+    LIMIT 1
+  `;
+
+  db.query(getInviteSql, [inviteId, userId], (inviteErr, inviteRows) => {
+    if (inviteErr) {
+      console.error("Error fetching invite:", inviteErr);
+      return res.status(500).json({ error: "Failed to load invite" });
+    }
+
+    if (!inviteRows || inviteRows.length === 0) {
+      return res.status(404).json({ error: "Invite not found" });
+    }
+
+    const invite = inviteRows[0];
+    if (invite.status !== "pending") {
+      return res.status(400).json({ error: "Invite is no longer pending" });
+    }
+
+    // Helper to delete the invite row
+    const deleteSql = "DELETE FROM Group_Invites WHERE id = ?";
+
+    if (action === "decline") {
+      db.query(deleteSql, [inviteId], (delErr) => {
+        if (delErr) {
+          console.error("Error deleting invite on decline:", delErr);
+          return res.status(500).json({ error: "Failed to update invite" });
+        }
+        return res.json({ message: "Invite declined" });
+      });
+      return;
+    }
+
+    // If accepting, also add to Group_Members (if not already a member)
+    const memberCheckSql = "SELECT * FROM Group_Members WHERE group_id = ? AND user_id = ?";
+    db.query(memberCheckSql, [invite.group_id, userId], (memberErr, memberRows) => {
+      if (memberErr) {
+        console.error("Error checking group membership on accept:", memberErr);
+        return res.status(500).json({ error: "Failed to update membership" });
+      }
+
+      if (memberRows && memberRows.length > 0) {
+        // Already a member; just delete invite
+        db.query(deleteSql, [inviteId], (delErr) => {
+          if (delErr) {
+            console.error("Error deleting invite after accept (already member):", delErr);
+            return res.status(500).json({ error: "Failed to update invite" });
+          }
+          return res.json({ message: "Invite accepted; already a member" });
+        });
+        return;
+      }
+
+      const addMemberSql = "INSERT INTO Group_Members (group_id, user_id) VALUES (?, ?)";
+      db.query(addMemberSql, [invite.group_id, userId], (addErr) => {
+        if (addErr) {
+          console.error("Error adding member on invite accept:", addErr);
+          return res.status(500).json({ error: "Failed to add member to group" });
+        }
+
+        // After successful membership, delete invite
+        db.query(deleteSql, [inviteId], (delErr) => {
+          if (delErr) {
+            console.error("Error deleting invite after accept:", delErr);
+            return res.status(500).json({ error: "Failed to update invite" });
+          }
+          return res.json({ message: "Invite accepted and membership granted" });
+        });
+      });
+    });
   });
 });
 

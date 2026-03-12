@@ -20,12 +20,14 @@ export default function GroupDetailsPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState("");
+  const [inviteFeedback, setInviteFeedback] = useState("");
   
   // Add a ref to track if we've manually updated the state
   const manuallyUpdated = useRef(false);
 
-  // Hardcoded user ID for now (should come from auth context later)
-  const CURRENT_USER_ID = 1;
+  // Current app user id (set after login and stored in localStorage)
+  const storedUserIdRaw = localStorage.getItem('currentUserId');
+  const CURRENT_USER_ID = storedUserIdRaw ? Number(storedUserIdRaw) : null;
 
   useEffect(() => {
     loadGroup();
@@ -102,7 +104,7 @@ export default function GroupDetailsPage() {
       }
       
       // First check if user is the owner
-      if (group.creator_id === CURRENT_USER_ID) {
+      if (CURRENT_USER_ID && group.creator_id === CURRENT_USER_ID) {
         console.log("User is the owner");
         // Check if owner is also a member (from Group_Members)
         const res = await fetch(`/api/users/${CURRENT_USER_ID}/groups/member`);
@@ -148,7 +150,9 @@ export default function GroupDetailsPage() {
   }
 
   async function handleJoin() {
-    if (!group || group.is_private) return;
+    // Allow owner to join even if the group is private
+    if (!group) return;
+    if (group.is_private && group.creator_id !== CURRENT_USER_ID) return;
     
     setIsJoining(true);
     try {
@@ -157,7 +161,8 @@ export default function GroupDetailsPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify({ userId: CURRENT_USER_ID })
       });
 
       const responseData = await res.json();
@@ -204,7 +209,11 @@ export default function GroupDetailsPage() {
     try {
       console.log(`Leaving group ${groupId}`);
       const res = await fetch(`/api/groups/${groupId}/leave`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ userId: CURRENT_USER_ID })
       });
 
       const responseData = await res.json();
@@ -247,8 +256,8 @@ export default function GroupDetailsPage() {
   }
 
   const isOwner = useMemo(() => {
-    return group && group.creator_id === CURRENT_USER_ID;
-  }, [group]);
+    return group && CURRENT_USER_ID && group.creator_id === CURRENT_USER_ID;
+  }, [group, CURRENT_USER_ID]);
 
   async function handleSendInvite(e) {
     e.preventDefault();
@@ -260,15 +269,24 @@ export default function GroupDetailsPage() {
       const res = await fetch(`/api/groups/${groupId}/invite`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emails: [email] })
+        body: JSON.stringify({ emails: [email], inviterId: CURRENT_USER_ID })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setInviteError(data.error || "Failed to send invite");
+        if (data.code === "already_member" && data.userName) {
+          setInviteFeedback(`${data.userName} is already a member of the group`);
+        } else {
+          setInviteError(data.error || "Failed to send invite");
+        }
         return;
       }
       setInviteEmail("");
       setInviteModalOpen(false);
+      if (data.invitedName) {
+        setInviteFeedback(`Invitation sent to ${data.invitedName}`);
+      } else {
+        setInviteFeedback(`Invitation sent to ${email}`);
+      }
     } catch (err) {
       setInviteError("Failed to send invite");
     } finally {
@@ -336,6 +354,22 @@ export default function GroupDetailsPage() {
   return (
     <div style={page}>
       <div style={container}>
+        {/* Invite feedback popup */}
+        {inviteFeedback && (
+          <div style={feedbackOverlay}>
+            <div style={feedbackCard}>
+              <button
+                type="button"
+                onClick={() => setInviteFeedback("")}
+                style={feedbackClose}
+                aria-label="Close"
+              >
+                ×
+              </button>
+              <div style={feedbackText}>{inviteFeedback}</div>
+            </div>
+          </div>
+        )}
         {/* Navigation */}
         <div style={navBar}>
           <button style={backLink} onClick={() => navigate("/groups")}>
@@ -363,10 +397,14 @@ export default function GroupDetailsPage() {
                 </button>
               ) : (
                 <button
-                  style={btn("primary", group.is_private && !isOwner)}
+                  style={btn("primary", isJoining)}
                   onClick={handleJoin}
-                  disabled={(group.is_private && !isOwner) || isJoining}
-                  title={group.is_private && !isOwner ? "Private group - join by invitation only" : (group.is_private && isOwner ? "As the owner, you can join your private group" : "")}
+                  disabled={isJoining}
+                  title={
+                    group.is_private && !isOwner
+                      ? "Private group - join by invitation only"
+                      : ""
+                  }
                 >
                   {isJoining ? 'Joining...' : 'Join Group'}
                 </button>
@@ -899,6 +937,51 @@ const inviteButton = {
   background: "#111",
   color: "#fff",
   border: "1px solid #111",
+};
+
+// Reuse same feedback styles as GroupsPage
+const feedbackOverlay = {
+  position: "fixed",
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "center",
+  pointerEvents: "none",
+  zIndex: 1300,
+};
+
+const feedbackCard = {
+  pointerEvents: "auto",
+  marginTop: 40,
+  background: "#fff",
+  borderRadius: 12,
+  boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+  padding: "16px 20px",
+  minWidth: 280,
+  maxWidth: 420,
+  border: "1px solid #D6DFE2",
+  position: "relative",
+};
+
+const feedbackClose = {
+  position: "absolute",
+  top: 8,
+  right: 10,
+  border: "none",
+  background: "transparent",
+  cursor: "pointer",
+  fontSize: 18,
+  fontWeight: 700,
+  color: "#666",
+};
+
+const feedbackText = {
+  fontSize: 14,
+  color: "#17292B",
+  paddingRight: 16,
 };
 
 const modalOverlay = {

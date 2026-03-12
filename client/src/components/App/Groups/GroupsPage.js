@@ -11,6 +11,8 @@ export default function GroupsPage() {
   const [error, setError] = useState("");
   
   const [memberships, setMemberships] = useState([]);
+  const [invites, setInvites] = useState([]);
+  const [feedback, setFeedback] = useState("");
   const [filter, setFilter] = useState("Any");
   const [search, setSearch] = useState("");
   
@@ -113,6 +115,17 @@ export default function GroupsPage() {
       
       console.log("Final member IDs (from Group_Members only):", memberIds);
       setMemberships(memberIds);
+
+      // Fetch pending group invites for this user
+      const invitesRes = await fetch(`/api/users/${CURRENT_USER_ID}/invites`);
+      if (invitesRes.ok) {
+        const invitesData = await invitesRes.json();
+        console.log("Pending invites:", invitesData);
+        setInvites(invitesData);
+      } else {
+        console.warn("Failed to load invites, status:", invitesRes.status);
+        setInvites([]);
+      }
       
     } catch (err) {
       console.error("Error fetching fresh data:", err);
@@ -268,23 +281,110 @@ export default function GroupsPage() {
     });
   }, [groups, filter, search]);
 
-  if (loading && groups.length === 0) {
-    return (
-      <div style={pageContainer}>
-        <p>Loading groups...</p>
-      </div>
-    );
-  }
-
   return (
     <div style={pageContainer}>
+      {/* Simple feedback popup */}
+      {feedback && (
+        <div style={feedbackOverlay}>
+          <div style={feedbackCard}>
+            <button
+              type="button"
+              onClick={() => setFeedback("")}
+              style={feedbackClose}
+              aria-label="Close"
+            >
+              ×
+            </button>
+            <div style={feedbackText}>{feedback}</div>
+          </div>
+        </div>
+      )}
+
+      {loading && groups.length === 0 && (
+        <div>
+          <p>Loading groups...</p>
+        </div>
+      )}
       {/* Header with frame */}
       <div style={headerFrame}>
-        <h1 style={pageTitle}>Groups</h1>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <h1 style={pageTitle}>Groups</h1>
+          {CURRENT_USER_ID && invites.length > 0 && (
+            <div style={notifBadge}>
+              {invites.length}
+            </div>
+          )}
+        </div>
         <button style={createBtn} onClick={() => navigate("/groups/new")}>
           + Create Group
         </button>
       </div>
+
+      {/* Global invitation banner area, directly under Groups header */}
+      {CURRENT_USER_ID && invites.length > 0 && (
+        <div style={{ marginBottom: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+          {invites.map(invite => (
+            <div key={invite.invite_id} style={inviteBanner}>
+              <span>
+                <strong>{invite.inviter_name || "Someone"}</strong> invited you to join{" "}
+                <strong>{invite.group_name}</strong>
+              </span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  style={inviteAcceptBtn}
+                  onClick={async () => {
+                    if (!CURRENT_USER_ID) return;
+                    try {
+                      const res = await fetch(`/api/invites/${invite.invite_id}/respond`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ action: "accept", userId: CURRENT_USER_ID })
+                      });
+                      await res.json().catch(() => ({}));
+                      // Optimistically remove this invite from UI
+                      setInvites((prev) => prev.filter(i => i.invite_id !== invite.invite_id));
+                      await fetchFreshData();
+                      setFeedback(`You have accepted the invitation to join group "${invite.group_name}"`);
+                    } catch (err) {
+                      console.error("Error accepting invite:", err);
+                      alert("Failed to accept invite");
+                    }
+                  }}
+                >
+                  Accept
+                </button>
+                <button
+                  style={inviteDeclineBtn}
+                  onClick={async () => {
+                    if (!CURRENT_USER_ID) return;
+                    try {
+                      const res = await fetch(`/api/invites/${invite.invite_id}/respond`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ action: "decline", userId: CURRENT_USER_ID })
+                      });
+                      const data = await res.json().catch(() => ({}));
+                      if (!res.ok) {
+                        console.error("Decline invite failed:", data);
+                        alert(data.error || "Failed to decline invite");
+                        return;
+                      }
+                      // Refresh from server so declined invite is no longer returned
+                      await fetchFreshData();
+                      setFeedback(`You have declined the invitation to join group "${invite.group_name}"`);
+                    } catch (err) {
+                      console.error("Error declining invite:", err);
+                      alert("Failed to decline invite");
+                    }
+                  }}
+                >
+                  Decline
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {error && (
         <div style={errorBanner}>
@@ -295,7 +395,6 @@ export default function GroupsPage() {
       {/* Owned Groups Section with frame */}
       <div style={sectionFrame}>
         <h2 style={sectionTitle}>Owned Groups</h2>
-
         {ownedGroups.length === 0 ? (
           <p style={emptyMessage}>
             You haven't created any groups yet. Click "Create Group" to make one!
@@ -360,6 +459,7 @@ export default function GroupsPage() {
                 key={g.group_id}
                 group={g}
                 isMember={true}
+                currentUserId={CURRENT_USER_ID}
                 onJoin={handleJoin}
                 onLeave={handleLeave}
                 onOpen={() => navigate(`/groups/${g.group_id}`)}
@@ -418,6 +518,7 @@ export default function GroupsPage() {
                   key={g.group_id}
                   group={g}
                   isMember={isMember}
+                  currentUserId={CURRENT_USER_ID}
                   onJoin={handleJoin}
                   onLeave={handleLeave}
                   onOpen={() => navigate(`/groups/${g.group_id}`)}
@@ -432,9 +533,10 @@ export default function GroupsPage() {
 }
 
 /** Group Card Component */
-function GroupCard({ group, isMember, onJoin, onLeave, onOpen }) {
+function GroupCard({ group, isMember, currentUserId, onJoin, onLeave, onOpen }) {
   console.log(`Rendering GroupCard for ${group.name} (ID: ${group.group_id}), isMember: ${isMember}`);
   
+  const isOwner = currentUserId && Number(group.creator_id) === currentUserId;
   // Check if group is full
   const isFull = group.max_members && group.member_count >= group.max_members;
   
@@ -457,7 +559,7 @@ function GroupCard({ group, isMember, onJoin, onLeave, onOpen }) {
           ) : (
             <button
               style={solidBtn}
-              disabled={group.is_private || isFull}
+              disabled={(group.is_private && !isOwner) || isFull}
               onClick={(e) => {
                 e.stopPropagation();
                 console.log("Join button clicked for group:", group.group_id);
@@ -465,7 +567,9 @@ function GroupCard({ group, isMember, onJoin, onLeave, onOpen }) {
               }}
               title={
                 group.is_private 
-                  ? "Private group - join by invitation only" 
+                  ? (isOwner
+                      ? "As the owner, you can join your private group"
+                      : "Private group - join by invitation only")
                   : isFull 
                     ? "Group is full" 
                     : ""
@@ -531,6 +635,19 @@ const pageTitle = {
   fontSize: "2.5rem",
   fontWeight: 700,
   color: "#17292B",
+};
+
+const notifBadge = {
+  minWidth: 22,
+  height: 22,
+  borderRadius: "999px",
+  backgroundColor: "#b00020",
+  color: "#fff",
+  fontSize: 12,
+  fontWeight: 700,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
 };
 
 const headerFrame = {
@@ -709,6 +826,85 @@ const errorBanner = {
   marginBottom: "16px",
   width: "100%",
   boxSizing: "border-box",
+};
+
+const feedbackOverlay = {
+  position: "fixed",
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "center",
+  pointerEvents: "none",
+  zIndex: 1300,
+};
+
+const feedbackCard = {
+  pointerEvents: "auto",
+  marginTop: 40,
+  backgroundColor: "#FFFFFF",
+  borderRadius: 12,
+  boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+  padding: "16px 20px",
+  minWidth: 280,
+  maxWidth: 420,
+  border: "1px solid #D6DFE2",
+  position: "relative",
+};
+
+const feedbackClose = {
+  position: "absolute",
+  top: 8,
+  right: 10,
+  border: "none",
+  background: "transparent",
+  cursor: "pointer",
+  fontSize: 18,
+  fontWeight: 700,
+  color: "#666",
+};
+
+const feedbackText = {
+  fontSize: 14,
+  color: "#17292B",
+  paddingRight: 16,
+};
+
+const inviteBanner = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  padding: "10px 14px",
+  borderRadius: 999,
+  backgroundColor: "#e3f2fd",
+  border: "1px solid #90caf9",
+  fontSize: 14,
+  color: "#0d47a1",
+};
+
+const inviteAcceptBtn = {
+  padding: "6px 12px",
+  borderRadius: 16,
+  border: "none",
+  backgroundColor: "#0d47a1",
+  color: "#fff",
+  fontWeight: 700,
+  cursor: "pointer",
+  fontSize: 13,
+};
+
+const inviteDeclineBtn = {
+  padding: "6px 12px",
+  borderRadius: 16,
+  border: "1px solid #0d47a1",
+  backgroundColor: "#fff",
+  color: "#0d47a1",
+  fontWeight: 700,
+  cursor: "pointer",
+  fontSize: 13,
 };
 
 const emptyMessage = {
