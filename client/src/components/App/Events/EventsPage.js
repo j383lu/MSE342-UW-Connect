@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import EventCard from "./EventCard";
 import styles from "./eventStyles";
@@ -28,6 +28,9 @@ export default function EventsPage() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchMessage, setSearchMessage] = useState("");
   const [isSearching, setIsSearching] = useState(false);
+
+  // mostUpcoming | mostRecentPublished | mostLiked
+  const [sortBy, setSortBy] = useState("mostUpcoming");
 
   const loadEvents = async () => {
     try {
@@ -129,9 +132,7 @@ export default function EventsPage() {
       const res = await fetch(`/api/events/search-history?user_id=${USER_ID}`);
       const data = await res.json();
 
-      if (!res.ok) {
-        return;
-      }
+      if (!res.ok) return;
 
       setRecentSearches(Array.isArray(data) ? data : []);
     } catch (e) {
@@ -198,14 +199,13 @@ export default function EventsPage() {
     }
   };
 
-  const handleSearch = async (rawTerm) => {
+  const handleSearch = async (rawTerm, customSort = sortBy) => {
     const term = String(rawTerm || "").trim();
 
     if (!term) {
       setIsSearching(false);
       setSearchResults([]);
       setSearchMessage("");
-      await loadEvents();
       return;
     }
 
@@ -215,7 +215,9 @@ export default function EventsPage() {
       setShowSearchDropdown(false);
 
       const res = await fetch(
-        `/api/events/search?keyword=${encodeURIComponent(term)}`
+        `/api/events/search?keyword=${encodeURIComponent(
+          term
+        )}&sort=${encodeURIComponent(customSort)}`
       );
       const data = await res.json();
 
@@ -243,6 +245,46 @@ export default function EventsPage() {
       setSearchMessage("Cannot connect to backend.");
     } finally {
       setSearchLoading(false);
+    }
+  };
+
+  const handleSortChange = async (e) => {
+    const newSort = e.target.value;
+    setSortBy(newSort);
+
+    const currentTerm = searchTerm.trim();
+
+    if (currentTerm) {
+      await handleSearch(currentTerm, newSort);
+    }
+  };
+
+  const reloadSearchResultsIfNeeded = async () => {
+    const currentTerm = searchTerm.trim();
+
+    if (!currentTerm || !isSearching) return;
+
+    try {
+      const res = await fetch(
+        `/api/events/search?keyword=${encodeURIComponent(
+          currentTerm
+        )}&sort=${encodeURIComponent(sortBy)}`
+      );
+      const data = await res.json();
+
+      if (!res.ok) return;
+
+      setSearchResults(Array.isArray(data.events) ? data.events : []);
+    } catch (e) {
+      console.log("Failed to reload search results.");
+    }
+  };
+
+  const handleLikeRefresh = async () => {
+    if (isSearching && searchTerm.trim()) {
+      await reloadSearchResultsIfNeeded();
+    } else {
+      await loadEvents();
     }
   };
 
@@ -278,6 +320,14 @@ export default function EventsPage() {
 
   const handleSearchSubmit = async (e) => {
     e.preventDefault();
+
+    if (!searchTerm.trim()) {
+      setIsSearching(false);
+      setSearchResults([]);
+      setSearchMessage("");
+      return;
+    }
+
     await handleSearch(searchTerm);
   };
 
@@ -324,8 +374,41 @@ export default function EventsPage() {
     };
   }, []);
 
-  const upcoming = events.filter((e) => Number(e.is_past) === 0);
-  const past = events.filter((e) => Number(e.is_past) === 1);
+  const sortedEvents = useMemo(() => {
+    const copied = [...events];
+
+    if (sortBy === "mostLiked") {
+      copied.sort((a, b) => {
+        const likeDiff = Number(b.likes || 0) - Number(a.likes || 0);
+        if (likeDiff !== 0) return likeDiff;
+
+        const bTime = new Date(`${b.published_time}`);
+        const aTime = new Date(`${a.published_time}`);
+        return bTime - aTime;
+      });
+      return copied;
+    }
+
+    if (sortBy === "mostRecentPublished") {
+      copied.sort((a, b) => {
+        const bTime = new Date(`${b.published_time}`);
+        const aTime = new Date(`${a.published_time}`);
+        return bTime - aTime;
+      });
+      return copied;
+    }
+
+    copied.sort((a, b) => {
+      const aTime = new Date(`${a.event_date}T${a.event_time}`);
+      const bTime = new Date(`${b.event_date}T${b.event_time}`);
+      return aTime - bTime;
+    });
+
+    return copied;
+  }, [events, sortBy]);
+
+  const upcoming = sortedEvents.filter((e) => Number(e.is_past) === 0);
+  const past = sortedEvents.filter((e) => Number(e.is_past) === 1);
 
   const renderCard = (ev, isPast) => {
     const isOpen = openDetailsId === ev.id;
@@ -341,9 +424,17 @@ export default function EventsPage() {
         detailsError={detailsError}
         toggleAttendees={toggleAttendees}
         handleJoin={handleJoin}
+        onLikeSuccess={handleLikeRefresh}
       />
     );
   };
+
+  const searchSubtitleText =
+    sortBy === "mostLiked"
+      ? "Results are sorted from highest to lowest number of likes."
+      : sortBy === "mostRecentPublished"
+      ? "Results are sorted from most recently published to least recently published."
+      : "Results are sorted from earliest upcoming event to latest upcoming event.";
 
   return (
     <div style={styles.pageBackground}>
@@ -474,6 +565,16 @@ export default function EventsPage() {
               ) : null}
             </div>
 
+            <select
+              value={sortBy}
+              onChange={handleSortChange}
+              style={styles.sortSelect}
+            >
+              <option value="mostUpcoming">Most Upcoming</option>
+              <option value="mostRecentPublished">Most Recent Published</option>
+              <option value="mostLiked">Sort by Likes</option>
+            </select>
+
             <button type="submit" style={styles.searchBtn}>
               Search
             </button>
@@ -509,9 +610,7 @@ export default function EventsPage() {
           <div style={styles.panel}>
             <div style={styles.sectionHeaderBlock}>
               <h2 style={styles.panelTitle}>Search Results</h2>
-              <p style={styles.panelSubtitle}>
-                Results are sorted from newest to oldest based on search time.
-              </p>
+              <p style={styles.panelSubtitle}>{searchSubtitleText}</p>
             </div>
 
             {searchLoading ? (
@@ -529,7 +628,9 @@ export default function EventsPage() {
               </div>
             ) : (
               <div style={styles.grid}>
-                {searchResults.map((ev) => renderCard(ev, Number(ev.is_past) === 1))}
+                {searchResults.map((ev) =>
+                  renderCard(ev, Number(ev.is_past) === 1)
+                )}
               </div>
             )}
           </div>
@@ -539,7 +640,11 @@ export default function EventsPage() {
               <div>
                 <h2 style={styles.panelTitle}>Upcoming Events</h2>
                 <p style={styles.panelSubtitle}>
-                  Find what is happening next and join in quickly.
+                  {sortBy === "mostLiked"
+                    ? "Events are currently sorted by likes."
+                    : sortBy === "mostRecentPublished"
+                    ? "Events are currently sorted by publish time."
+                    : "Events are currently sorted by upcoming event time."}
                 </p>
               </div>
 

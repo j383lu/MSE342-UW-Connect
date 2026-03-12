@@ -78,7 +78,9 @@ app.use("/api/profile", profileRoutes);
 // if includePast=true: return all events
 app.get("/api/events", (req, res) => {
   const includePast = String(req.query.includePast).toLowerCase() === "true";
-  const whereClause = includePast ? "" : "WHERE TIMESTAMP(e.event_date, e.event_time) >= NOW()";
+  const whereClause = includePast
+    ? ""
+    : "WHERE TIMESTAMP(e.event_date, e.event_time) >= NOW()";
 
   const sql = `
     SELECT 
@@ -91,6 +93,7 @@ app.get("/api/events", (req, res) => {
       e.capacity,
       e.likes,
       e.category,
+      DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
       COUNT(DISTINCT a.id) AS current_count,
       GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
       (TIMESTAMP(e.event_date, e.event_time) < NOW()) AS is_past
@@ -832,7 +835,9 @@ app.post("/api/events/:id/like", (req, res) => {
     db.query(selectSql, [eventId], (err2, rows) => {
       if (err2) {
         console.log("Reload likes error:", err2);
-        return res.status(500).json({ error: "Liked event, but failed to reload likes." });
+        return res.status(500).json({
+          error: "Liked event, but failed to reload likes.",
+        });
       }
 
       return res.json({ likes: Number(rows[0].likes || 0) });
@@ -904,12 +909,27 @@ app.post("/api/events/search-history", (req, res) => {
 
 app.get("/api/events/search", (req, res) => {
   const keyword = String(req.query.keyword || "").trim();
+  const sort = String(req.query.sort || "mostUpcoming").trim();
 
   if (!keyword) {
     return res.json({ events: [] });
   }
 
   const like = `%${keyword}%`;
+
+  let orderClause = `
+    ORDER BY e.event_date ASC, e.event_time ASC
+  `;
+
+  if (sort === "mostRecentPublished") {
+    orderClause = `
+      ORDER BY e.published_time DESC
+    `;
+  } else if (sort === "mostLiked") {
+    orderClause = `
+      ORDER BY e.likes DESC, e.published_time DESC
+    `;
+  }
 
   const sql = `
     SELECT 
@@ -922,6 +942,7 @@ app.get("/api/events/search", (req, res) => {
       e.capacity,
       e.likes,
       e.category,
+      DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
       COUNT(DISTINCT a.id) AS current_count,
       GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
       (TIMESTAMP(e.event_date,e.event_time) < NOW()) AS is_past
@@ -933,7 +954,7 @@ app.get("/api/events/search", (req, res) => {
       OR e.category LIKE ?
       OR t.tag_name LIKE ?
     GROUP BY e.id
-    ORDER BY e.event_date DESC, e.event_time DESC
+    ${orderClause}
     LIMIT 50
   `;
 
@@ -960,7 +981,7 @@ app.delete("/api/events/search-history", (req, res) => {
     WHERE user_id = ? AND search_term = ?
   `;
 
-  db.query(sql, [userId, term], (err, result) => {
+  db.query(sql, [userId, term], (err) => {
     if (err) {
       console.log("Delete search history error:", err);
       return res.status(500).json({ error: "Failed to delete search history." });
@@ -982,19 +1003,19 @@ app.get("/api/events/suggestions", (req, res) => {
   const sql = `
     SELECT value, type
     FROM (
-      SELECT DISTINCT e.title AS value, 'title' AS type
+      SELECT DISTINCT e.title AS value, 'Title' AS type
       FROM Events e
       WHERE e.title LIKE ?
 
       UNION
 
-      SELECT DISTINCT e.category AS value, 'category' AS type
+      SELECT DISTINCT e.category AS value, 'Category' AS type
       FROM Events e
       WHERE e.category LIKE ?
 
       UNION
 
-      SELECT DISTINCT t.tag_name AS value, 'tag' AS type
+      SELECT DISTINCT t.tag_name AS value, 'Tag' AS type
       FROM Event_Tags t
       WHERE t.tag_name LIKE ?
     ) AS combined

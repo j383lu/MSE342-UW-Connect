@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import styles from "./eventStyles";
 
 // Sprint 2 limitation:
@@ -15,11 +15,16 @@ export default function EventCard({
   detailsError,
   toggleAttendees,
   handleJoin,
+  onLikeSuccess,
 }) {
   const [hover, setHover] = useState(false);
   const [likes, setLikes] = useState(Number(ev.likes || 0));
   const [liked, setLiked] = useState(false);
   const [likeLoading, setLikeLoading] = useState(false);
+
+  useEffect(() => {
+    setLikes(Number(ev.likes || 0));
+  }, [ev.likes]);
 
   const current = Number(ev.current_count || 0);
   const max = Number(ev.capacity || 0);
@@ -53,6 +58,10 @@ export default function EventCard({
 
       setLikes(Number(data.likes || 0));
       setLiked(true);
+
+      if (onLikeSuccess) {
+        onLikeSuccess();
+      }
     } catch (e) {
       window.alert("Cannot connect to backend.");
     } finally {
@@ -88,6 +97,11 @@ export default function EventCard({
             <div style={styles.metaLine}>
               <span style={styles.metaLabel}>Location</span>
               <span style={styles.metaValue}>{ev.location}</span>
+            </div>
+
+            <div style={styles.metaLine}>
+              <span style={styles.metaLabel}>Published</span>
+              <span style={styles.metaValue}>{ev.published_time || "N/A"}</span>
             </div>
           </div>
         </div>

@@ -156,6 +156,7 @@ const eventStyles = {
     zIndex: 50,
   },
 
+
   searchHeaderBlock: {
     marginBottom: 16,
   },
@@ -849,6 +850,17 @@ const eventStyles = {
     fontWeight: 600,
   },
 
+  sortSelect: {
+    height: 48,
+    borderRadius: 999,
+    border: "1px solid #D6DFE2",
+    background: "#FFFFFF",
+    color: "#17292B",
+    fontWeight: 600,
+    padding: "0 16px",
+    cursor: "pointer",
+    outline: "none",
+  },
   
 };
 
