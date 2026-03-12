@@ -1,14 +1,17 @@
 import React, {useState} from "react";
 import { Card, CardContent, CardHeader, CardActions,
   Typography, Stack, Chip, Button, IconButton,
-  Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions 
+  Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions
 } from "@mui/material";
 import FavoriteIcon from "@mui/icons-material/Favorite";
 import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder"; 
+import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
+import { useNavigate } from "react-router-dom";
 
 const currentUser = { id : 1};
 
 function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter }) {
+  const navigate = useNavigate();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const isAuthor = post.author_id === currentUser.id;
@@ -83,6 +86,13 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter }) {
             {post.like_count}
           </Typography>
 
+          <IconButton size="small" onClick={() => navigate(`/feed/${post.post_id}`)}>
+            <ChatBubbleOutlineIcon fontSize="small" />
+          </IconButton>
+          <Typography variant="body2" sx={{ mr: 1 }}>
+              {post.comment_count ?? 0}
+          </Typography>
+
 
         {/*only show delete button if current user is the author */}
         {isAuthor && (
@@ -102,7 +112,7 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter }) {
         </CardActions>
       </Card>
 
-      {/* Confirmation Dialog */}
+      {/* Confirmation message */}
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
         <DialogTitle>Delete Post?</DialogTitle>
         <DialogContent>

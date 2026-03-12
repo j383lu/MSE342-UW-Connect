@@ -186,7 +186,7 @@ function Post() {
 };
 
   return (
-    <Grid container spacing={3}>
+    <Grid container spacing={3} sx={{ maxWidth: 800, margin: '0 auto', px:2}}>
 
       {/* Header Section */}
       <Grid item xs={12}>
