@@ -8,7 +8,7 @@ import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder";
 
 const currentUser = { id : 1};
 
-function PostCard({ post, onDeletePost, onEditPost, onLikePost }) {
+function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const isAuthor = post.author_id === currentUser.id;
@@ -60,7 +60,13 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost }) {
           {post.tags && post.tags.length > 0 && (
             <Stack direction="row" spacing={1} flexWrap="wrap">
               {post.tags.map((tag, index) => (
-                <Chip key={index} label={tag} size="small" sx={{ mb: 1 }} />
+                <Chip 
+                  key={index} 
+                  label={tag} 
+                  size="small" 
+                  sx={{ mb: 1 }} 
+                  onClick={() => onTagFilter(tag)}
+                  />
               ))}
             </Stack>
           )}

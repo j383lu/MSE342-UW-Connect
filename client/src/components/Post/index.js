@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Grid, Button, Typography, TextField, Stack } from "@mui/material";
+import { Grid, Button, Typography, TextField, Stack, Chip } from "@mui/material";
 import PostList from "./PostList";
 import CreatePostForm from "./CreatePostForm";
 import EditPostForm from "./EditPostForm";
@@ -11,6 +11,7 @@ function Post() {
   const [searchError, setSearchError] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   const [editingPost, setEditingPost] = useState(null);
+  const [activeTag, setActiveTag] = useState(null);
 
    useEffect(() => {
     fetchPosts();
@@ -25,6 +26,14 @@ function Post() {
       console.error("Error fetching posts:", error);
     }
   };
+
+  // to update the reset button
+  const handleReset = () => {
+    fetchPosts();
+    setActiveTag(null);
+    setSearchKeyword("");
+    setSearchError("");
+};
 
   // Search function
   const handleSearch = async () => {
@@ -52,6 +61,7 @@ function Post() {
   };
 
 
+  // create post
   const handleCreatePost = async (newPost) => {
     try {
       const response = await fetch('/api/posts', {
@@ -104,6 +114,7 @@ function Post() {
     }
   };
 
+  // edit post handler
   const handleEditPost = async (updatedFields) => {
     try {
         const response = await fetch(`/api/posts/${editingPost.post_id}`, {
@@ -153,6 +164,26 @@ function Post() {
     }
   };  
 
+  // for tag filtering
+  const handleTagFilter = async (tagName) => {
+    try {
+        const response = await fetch(`/api/posts/tag/${encodeURIComponent(tagName)}`);
+        const data = await response.json();
+
+        if (data.posts && data.posts.length > 0) {
+            setPosts(data.posts);
+            setActiveTag(tagName);
+            setSearchError("");
+        } else {
+            setPosts([]);
+            setActiveTag(tagName);
+            setSearchError(`No posts found for #${tagName}`);
+        }
+    } catch (err) {
+        console.error("Error filtering by tag:", err);
+        setSearchError("Error occurred while filtering.");
+    }
+};
 
   return (
     <Grid container spacing={3}>
@@ -182,10 +213,25 @@ function Post() {
           <Button variant="contained" onClick={handleSearch}>
             Search
           </Button>
-          <Button variant="outlined" onClick={fetchPosts}>
+          <Button variant="outlined" onClick={handleReset}>
             Reset
           </Button>
         </Stack>
+        {/* Active tag indicator */}
+        {activeTag && (
+          <Stack direction="row" justifyContent="center" sx={{ mt: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+            Filtering by:
+            </Typography>
+            <Chip
+                label={`#${activeTag}`}
+                onDelete={handleReset}
+                color="primary"
+                size="small"
+            />
+        </Stack>
+      )}
+
       </Grid>
 
       {/* Create Button */}
@@ -205,6 +251,7 @@ function Post() {
         onDeletePost={handleDeletePost}
         onEditPost={(post) => { setEditingPost(post); setEditOpen(true); }}
         onLikePost={handleLikePost}
+        onTagFilter={handleTagFilter}
         />
       </Grid>
 

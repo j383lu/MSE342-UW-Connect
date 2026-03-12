@@ -685,6 +685,56 @@ app.post('/api/posts', (req, res) => {
     });
 });
 
+// GET /api/posts/tag/:tagName - filter posts by tag
+app.get('/api/posts/tag/:tagName', (req, res) => {
+    const connection = mysql.createConnection(config);
+    const tagName = req.params.tagName;
+    const currentUserId = 1; // placeholder
+
+    const sql = `
+        SELECT p.post_id, p.title, p.content, p.author_id, p.created_at AS createdAt,
+               GROUP_CONCAT(DISTINCT t.tag_name) AS tags,
+               COUNT(DISTINCT l.like_id) AS like_count,
+               MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me
+        FROM Posts p
+        LEFT JOIN post_tags pt ON p.post_id = pt.post_id
+        LEFT JOIN Tags t ON pt.tag_id = t.tag_id
+        LEFT JOIN Likes l ON p.post_id = l.post_id
+        WHERE p.post_id IN (
+            SELECT pt2.post_id FROM post_tags pt2
+            JOIN Tags t2 ON pt2.tag_id = t2.tag_id
+            WHERE LOWER(t2.tag_name) = LOWER(?)
+        )
+        GROUP BY p.post_id
+        ORDER BY p.created_at DESC
+    `;
+
+    connection.query(sql, [currentUserId, tagName], (err, results) => {
+        connection.end();
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ error: 'Error filtering posts by tag' });
+        }
+
+        const formattedPosts = results.map(post => ({
+            post_id: post.post_id,
+            author_id: post.author_id,
+            title: post.title,
+            description: post.content,
+            tags: post.tags ? post.tags.split(',') : [],
+            createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
+            like_count: post.like_count ?? 0,
+            liked_by_me: post.liked_by_me === 1
+        }));
+
+        if (formattedPosts.length === 0) {
+            return res.json({ message: "No posts found for this tag.", posts: [] });
+        }
+
+        res.json({ posts: formattedPosts });
+    });
+});
+
 // GET API for posts
 app.get('/api/posts', (req, res) => {
     let connection = mysql.createConnection(config);

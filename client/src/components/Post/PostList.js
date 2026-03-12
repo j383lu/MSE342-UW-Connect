@@ -4,7 +4,7 @@ import { Grid } from "@mui/material";
 
 
 
-function PostList({ posts, onDeletePost, onEditPost, onLikePost }) {
+function PostList({ posts, onDeletePost, onEditPost, onLikePost, onTagFilter }) {
   return (
     <Grid container spacing={2}>
       {posts.map((post, index) => (
@@ -14,6 +14,7 @@ function PostList({ posts, onDeletePost, onEditPost, onLikePost }) {
             onDeletePost={onDeletePost}
             onEditPost={onEditPost}
             onLikePost={onLikePost}
+            onTagFilter={onTagFilter}
             />
         </Grid>
       ))}
