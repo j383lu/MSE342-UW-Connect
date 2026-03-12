@@ -1,10 +1,12 @@
 import * as React from "react";
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
 import { ThemeProvider } from '@mui/material/styles';
 import theme from './Theme';
 import Navbar from './Navbar';
 import LogInAndRegister from './LogIn/LogInAndRegister';
 import Post from '../Post'
+import { FirebaseContext } from '../Firebase';
+import { useState, useEffect, useContext } from 'react';
 
 // Import groups components
 import GroupsPage from "./Groups/GroupsPage";
@@ -23,41 +25,63 @@ import EditProfile from "./Profile/EditProfile";
 // placeholders (optional)
 const HomePage = () => <div>Home</div>;
 
-function AppContent() {
+function AppContent({ authUser }) {
   const location = useLocation();
-
+  
   const isLoginPage = location.pathname === "/";
+  const authenticated = !!authUser;
 
   return (
     <ThemeProvider theme={theme}>
-      {!isLoginPage && <Navbar />}
-      
+      {!isLoginPage && authenticated && <Navbar authUser={authUser} />}
       <Routes>
         {/* login is the default page */}
         <Route path="/" element={<LogInAndRegister />} />
         
         {/* when authenticated */}
-        <Route path="/feed" element={<Post />} />
-        <Route path="/groups" element={<GroupsPage />} />
-        <Route path="/groups/new" element={<CreateGroupForm />} />
-        <Route path="/groups/:groupId" element={<GroupDetailsPage />} />
-        <Route path="/groups/:groupId/edit" element={<EditGroupForm />} />
-        <Route path="/events" element={<EventsPage />} />
-        <Route path="/events/new" element={<CreateEventForm />} />
-        <Route path="/profile" element={<ProfilePage />} />
-        <Route path="/edit-profile" element={<EditProfile />} />
+        <Route path="/feed" element={authenticated ? <Post /> : <Navigate to="/" />} />
+        <Route path="/profile" element={authenticated ? <ProfilePage /> : <Navigate to="/" />} />
+        <Route path="/edit-profile" element={authenticated ? <EditProfile /> : <Navigate to="/" />} />
+        <Route path="/groups" element={authenticated ? <GroupsPage /> : <Navigate to="/" />} />
+        <Route path="/groups/new" element={authenticated ? <CreateGroupForm /> : <Navigate to="/" />} />
+        <Route path="/groups/:groupId" element={authenticated ? <GroupDetailsPage /> : <Navigate to="/" />} />
+        <Route path="/groups/:groupId/edit" element={authenticated ? <EditGroupForm /> : <Navigate to="/" />} />
+        <Route path="/events" element={authenticated ? <EventsPage /> : <Navigate to="/" />} />
+        <Route path="/events/new" element={authenticated ? <CreateEventForm /> : <Navigate to="/" />} />
       </Routes>
     </ThemeProvider>
   );
 }
 
-export default function App() {
+const App = () => {
+  const [authUser, setAuthUser] = useState(null);
+  const firebase = useContext(FirebaseContext);
+
+  useEffect(() => {
+    if (firebase) {
+      const unsubscribe = firebase.auth.onAuthStateChanged(user => {
+        user ? setAuthUser(user) : setAuthUser(null);
+      });
+      return () => unsubscribe();
+    }
+  }, [firebase]);
+
   return (
     <BrowserRouter>
-      <AppContent />
+      <AppContent authUser={authUser} />
     </BrowserRouter>
   );
-}
+};
+
+export default App;
+
+// export default function App() {
+//   return (
+//     <BrowserRouter>
+//       <AppContent />
+//     </BrowserRouter>
+//   );
+// }
 
 // export default function App() {
 //   return (

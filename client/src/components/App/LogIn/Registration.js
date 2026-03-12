@@ -8,9 +8,10 @@ import { InputAdornment, IconButton } from '@mui/material';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import { useNavigate } from 'react-router-dom';
+import { withFirebase } from '../../Firebase';
 
 
-const Registration = ({ onSwitchPage }) => { 
+const Registration = ({ onSwitchPage, firebase }) => { 
 
     const navigate = useNavigate();
 
@@ -61,11 +62,11 @@ const Registration = ({ onSwitchPage }) => {
         setShowPassword(!showPassword);
     };
 
-    const handleSubmit = (event) => {
+    const handleSubmit = async(event) => {
         event.preventDefault();
         let newErrors = {};
 
-        // Validation 1: All fields required
+        // validation 1: All fields required
         Object.keys(formData).forEach((key) => {
             if (!formData[key]) {
                 newErrors[key] = 'This field is required.' ;
@@ -96,8 +97,36 @@ const Registration = ({ onSwitchPage }) => {
         if (Object.keys(newErrors).length > 0) {
             setErrors(newErrors);
         } else {
-            console.log('Form Submitted successfully', formData);
-            navigate('./Post/index.js');
+            try {
+                // create user in Firebase
+                const authUser = await firebase.doCreateUserWithEmailAndPassword(
+                    formData.email, 
+                    formData.password
+                );
+                
+                const dataToSave = {
+                    ...formData,
+                    firebase_uid: authUser.user.uid
+                };
+
+                //if Firebase succeeds, save to your MySQL API
+                const response = await fetch('https://urban-doodle-699q9xp7xgx4394r-5000.app.github.dev/api/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dataToSave) 
+                });
+
+                if (response.ok) {
+                    console.log('Successfully registered in both Firebase and MySQL');
+                    navigate('/feed'); 
+                } else {
+                    const errorData = await response.json();
+                    setErrors({ email: errorData.message || 'Database registration failed.' });
+                }
+
+            } catch (error) {
+                setErrors({ email: error.message });
+            }
         }
     };
 
@@ -267,4 +296,4 @@ const Registration = ({ onSwitchPage }) => {
     );
 }
 
-export default Registration;
+export default withFirebase(Registration);

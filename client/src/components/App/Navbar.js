@@ -15,15 +15,6 @@ function Navbar() {
 
           <Grid item xs={6} container justifyContent="flex-end" spacing={2}>
             <Grid item>
-              <Button 
-                color="inherit"
-                component={RouterLink}
-                to="/login"
-                >
-                Log In
-              </Button>
-            </Grid>
-            <Grid item>
               <Button color="inherit" component={RouterLink} to="/feed">
                 Home
               </Button>

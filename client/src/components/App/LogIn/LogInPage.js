@@ -12,13 +12,15 @@ import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {withFirebase} from '../../Firebase';
 
-const LogInPage = ({ onSwitchPage }) => { 
+const LogInPage = ({ onSwitchPage, firebase }) => { 
 
     const navigate = useNavigate();
 
     const [formData, setFormData] = React.useState({ email: '', password: '' });
     const [errors, setErrors] = React.useState({});
+    const [serverError, setServerError] = useState('');
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -31,15 +33,22 @@ const LogInPage = ({ onSwitchPage }) => {
         event.preventDefault();
         let newErrors = {};
 
-        // this creates the "This field is required." messages your test looks for
         if (!formData.email) newErrors.email = 'This field is required.';
         if (!formData.password) newErrors.password = 'This field is required.';
 
         setErrors(newErrors);
 
         if (Object.keys(newErrors).length === 0) {
-            console.log('Logging in...', formData);
-            navigate('./Post/index.js');
+            firebase
+                .doSignInWithEmailAndPassword(formData.email, formData.password)
+                .then(() => {
+                    console.log('Successfully logged in with Firebase');
+                    navigate('/feed'); 
+                })
+                .catch(error => {
+                    console.error("Firebase Login Error:", error.code, error.message);
+                    setServerError(error.message);
+                });
         }
     };
 
@@ -150,4 +159,4 @@ const LogInPage = ({ onSwitchPage }) => {
     );
 }
 
-export default LogInPage;
+export default withFirebase(LogInPage);
