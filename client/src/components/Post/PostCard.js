@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardActions,
 
 const currentUser = { id : 1};
 
-function PostCard({ post, onDeletePost }) {
+function PostCard({ post, onDeletePost, onEditPost }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const isAuthor = post.author_id === currentUser.id;
@@ -38,15 +38,18 @@ function PostCard({ post, onDeletePost }) {
           )}
         </CardContent>
 
-        {/* Only show delete button if current user is the author */}
+        {/*only show delete button if current user is the author */}
         {isAuthor && (
           <CardActions>
+            <Button size="small" onClick={() => onEditPost(post)}>
+              Edit
+            </Button>
             <Button
               size="small"
               color="error"
               onClick={() => setConfirmOpen(true)}
             >
-              Delete Post
+              Delete
             </Button>
           </CardActions>
         )}

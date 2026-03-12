@@ -2,12 +2,15 @@ import React, { useState, useEffect } from "react";
 import { Grid, Button, Typography, TextField, Stack } from "@mui/material";
 import PostList from "./PostList";
 import CreatePostForm from "./CreatePostForm";
+import EditPostForm from "./EditPostForm";
 
 function Post() {
   const [posts, setPosts] = useState([]);
   const [open, setOpen] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState("");
   const [searchError, setSearchError] = useState("");
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingPost, setEditingPost] = useState(null);
 
    useEffect(() => {
     fetchPosts();
@@ -22,29 +25,6 @@ function Post() {
       console.error("Error fetching posts:", error);
     }
   };
-
-  // Add this handler in Post.jsx
-  const handleDeletePost = async (postId) => {
-    try {
-        const response = await fetch(`/api/posts/${postId}`, {
-            method: 'DELETE',
-        });
-
-        if (!response.ok) {
-            const data = await response.json();
-            console.error("Delete failed:", data.error);
-            return;
-        }
-
-        // Remove deleted post from state without refetching
-        setPosts(prev => prev.filter(p => p.post_id !== postId));
-    } catch (error) {
-        console.error("Error deleting post:", error);
-    }
-  };
-
-  // Then update your PostList render to pass it down:
-  <PostList posts={posts} onDeletePost={handleDeletePost} />
 
   // Search function
   const handleSearch = async () => {
@@ -70,8 +50,6 @@ function Post() {
     }
   };
 
-
- 
 
   const handleCreatePost = async (newPost) => {
     try {
@@ -102,7 +80,57 @@ function Post() {
   } catch (error) {
     console.error("Error creating post:", error);
   }
-};
+}
+
+  const handleEditPost = async (updatedFields) => {
+    try {
+        const response = await fetch(`/api/posts/${editingPost.post_id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                title: updatedFields.title,
+                content: updatedFields.description, // backend expects "content"
+                tags: updatedFields.tags
+            })
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+            console.error(data.error);
+            return;
+        }
+
+        // Update just that post in state
+        setPosts(prev => prev.map(p =>
+            p.post_id === editingPost.post_id ? { ...p, ...data.post } : p
+        ));
+        setEditOpen(false);
+        setEditingPost(null);
+    } catch (error) {
+        console.error("Error editing post:", error);
+    }
+  }
+
+   // to delete the post
+  const handleDeletePost = async (postId) => {
+    try {
+        const response = await fetch(`/api/posts/${postId}`, {
+            method: 'DELETE',
+        });
+
+        if (!response.ok) {
+            const data = await response.json();
+            console.error("Delete failed:", data.error);
+            return;
+        }
+
+        //remove deleted post from state
+        setPosts(prev => prev.filter(p => p.post_id !== postId));
+    } catch (error) {
+        console.error("Error deleting post:", error);
+    }
+  };  
+
 
   return (
     <Grid container spacing={3}>
@@ -150,13 +178,24 @@ function Post() {
 
       {/* Post List */}
       <Grid item xs={12}>
-        <PostList posts={posts} />
+        <PostList 
+        posts={posts}
+        onDeletePost={handleDeletePost}
+        onEditPost={(post) => { setEditingPost(post); setEditOpen(true); }}
+        />
       </Grid>
 
       <CreatePostForm
         open={open}
         onClose={() => setOpen(false)}
         onSubmit={handleCreatePost}
+      />
+
+      <EditPostForm
+        open={editOpen}
+        onClose={() => { setEditOpen(false); setEditingPost(null); }}
+        onSubmit={handleEditPost}
+        post={editingPost}
       />
     </Grid>
   );

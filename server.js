@@ -607,6 +607,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || "Internal server error" });
 });
 
+// FEED PAGE APIs
+
 // Post /api/posts - create a new post
 app.post('/api/posts', (req, res) => {
     let connection = mysql.createConnection(config);
@@ -808,6 +810,91 @@ app.delete('/api/posts/:id', (req, res) => {
                     return res.status(500).json({ error: 'Error deleting post' });
                 }
                 res.json({ message: 'Post deleted successfully', post_id: postId });
+            });
+        });
+    });
+});
+
+// PUT /api/posts/:id - edit a post (only by author)
+app.put('/api/posts/:id', (req, res) => {
+    let connection = mysql.createConnection(config);
+    const postId = req.params.id;
+    const requestingUserId = 1; // Placeholder - replace with real auth user ID later
+    const { title, content, tags = [] } = req.body;
+
+    // Verify the post exists and requester is the author
+    const checkSql = 'SELECT author_id FROM Posts WHERE post_id = ?';
+    connection.query(checkSql, [postId], (err, results) => {
+        if (err) {
+            connection.end();
+            return res.status(500).json({ error: 'Error finding post' });
+        }
+        if (results.length === 0) {
+            connection.end();
+            return res.status(404).json({ error: 'Post not found' });
+        }
+        if (results[0].author_id !== requestingUserId) {
+            connection.end();
+            return res.status(403).json({ error: 'Not authorized to edit this post' });
+        }
+
+        // Update the post
+        const updateSql = 'UPDATE Posts SET title = ?, content = ? WHERE post_id = ?';
+        connection.query(updateSql, [title, content, postId], (err) => {
+            if (err) {
+                connection.end();
+                return res.status(500).json({ error: 'Error updating post' });
+            }
+
+            // Delete old tags then re-insert new ones
+            const deleteTagsSql = 'DELETE FROM post_tags WHERE post_id = ?';
+            connection.query(deleteTagsSql, [postId], (err) => {
+                if (err) {
+                    connection.end();
+                    return res.status(500).json({ error: 'Error updating tags' });
+                }
+
+                if (tags.length === 0) {
+                    connection.end();
+                    return res.json({
+                        post: { post_id: parseInt(postId), title, description: content, tags: [] },
+                        message: 'Post updated successfully'
+                    });
+                }
+
+                const tagSql = 'SELECT tag_id, tag_name FROM Tags WHERE tag_name IN (' + tags.map(() => '?').join(', ') + ')';
+                connection.query(tagSql, tags, (err, tagResults) => {
+                    if (err) {
+                        connection.end();
+                        return res.status(500).json({ error: 'Error finding tags' });
+                    }
+
+                    const postTagData = tagResults.map(tag => [postId, tag.tag_id]);
+                    if (postTagData.length === 0) {
+                        connection.end();
+                        return res.json({
+                            post: { post_id: parseInt(postId), title, description: content, tags: [] },
+                            message: 'Post updated successfully but no valid tags found'
+                        });
+                    }
+
+                    const postTagSql = 'INSERT INTO post_tags (post_id, tag_id) VALUES ?';
+                    connection.query(postTagSql, [postTagData], (err) => {
+                        connection.end();
+                        if (err) {
+                            return res.status(500).json({ error: 'Error inserting tags' });
+                        }
+                        res.json({
+                            post: {
+                                post_id: parseInt(postId),
+                                title,
+                                description: content,
+                                tags: tagResults.map(t => t.tag_name)
+                            },
+                            message: 'Post updated successfully'
+                        });
+                    });
+                });
             });
         });
     });
