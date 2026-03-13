@@ -7,6 +7,7 @@ import bodyParser from 'body-parser';
 import profileRoutes from "./profileRoutes.js";
 import multer from 'multer'; // For file uploads
 import fs from 'fs'; // For file system operations
+import cors from 'cors';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,8 +33,11 @@ db.connect((err) => {
   console.log('Connected to MySQL database');
 });
 
-app.use(bodyParser.json({ limit: '50mb' }));
+app.use(cors()); 
+app.use(express.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
+app.use('/uploads', express.static('uploads'));
+app.use(express.static(path.join(__dirname, "client/build")));
 
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -1032,4 +1036,22 @@ app.get("/api/events/suggestions", (req, res) => {
   });
 });
 
-app.listen(port, () => console.log(`Listening on port ${port}`)); //for the dev version
+// for registration
+app.post('/api/register', (req, res) => {
+    const { email, password, username, firebase_uid } = req.body;
+    const sqlCredentials = "INSERT INTO User_Credentials (email, password_hash, firebase_uid) VALUES (?, ?, ?)";
+    
+    db.query(sqlCredentials, [email, password, firebase_uid], (err, result) => {
+        if (err) return res.status(500).json({ error: "Database error during registration." });
+        
+        const newUserId = result.insertId;
+        const sqlProfile = "INSERT INTO User_Profiles (user_id, display_name) VALUES (?, ?)";
+        
+        db.query(sqlProfile, [newUserId, username], (profileErr) => {
+            if (profileErr) return res.status(500).json({ error: "Profile creation failed." });
+            res.status(201).json({ message: "User created successfully!" });
+        });
+    });
+});
+
+app.listen(port, () => console.log(`Listening on port ${port}`)); 
