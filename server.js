@@ -82,7 +82,9 @@ app.use("/api/profile", profileRoutes);
 // if includePast=true: return all events
 app.get("/api/events", (req, res) => {
   const includePast = String(req.query.includePast).toLowerCase() === "true";
-  const whereClause = includePast ? "" : "WHERE TIMESTAMP(e.event_date, e.event_time) >= NOW()";
+  const whereClause = includePast
+    ? ""
+    : "WHERE TIMESTAMP(e.event_date, e.event_time) >= NOW()";
 
   const sql = `
     SELECT 
@@ -93,10 +95,15 @@ app.get("/api/events", (req, res) => {
       TIME_FORMAT(e.event_time, '%H:%i') AS event_time,
       e.location,
       e.capacity,
-      COUNT(a.id) AS current_count,
+      e.likes,
+      e.category,
+      DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
+      COUNT(DISTINCT a.id) AS current_count,
+      GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
       (TIMESTAMP(e.event_date, e.event_time) < NOW()) AS is_past
     FROM Events e
     LEFT JOIN Event_Attendees a ON a.event_id = e.id
+    LEFT JOIN Event_Tags t ON t.event_id = e.id
     ${whereClause}
     GROUP BY e.id
     ORDER BY e.event_date ASC, e.event_time ASC
@@ -113,9 +120,11 @@ app.get("/api/events", (req, res) => {
 
 // POST /api/events (create event)
 app.post("/api/events", (req, res) => {
-  const { title, description, event_date, event_time, location, capacity } = req.body;
+  const {title, description, event_date, event_time, location, capacity, category, tags,
+  } = req.body;
 
-  if (!title || !description || !event_date || !event_time || !location || capacity === undefined) {
+  if (!title || !description || !event_date || !event_time || !location || capacity === undefined || !category
+  ) {
     return res.status(400).json({ error: "Missing required fields." });
   }
 
@@ -124,18 +133,56 @@ app.post("/api/events", (req, res) => {
     return res.status(400).json({ error: "Capacity must be a positive integer." });
   }
 
-  const sql = `
-    INSERT INTO Events (title, description, event_date, event_time, location, capacity)
-    VALUES (?, ?, ?, ?, ?, ?)
+  const safeTags = Array.isArray(tags) ? tags : [];
+
+  const insertEventSql = `
+    INSERT INTO Events (title, description, event_date, event_time, location, capacity, category)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `;
 
-  db.query(sql, [title, description, event_date, event_time, location, capNum], (err, result) => {
-    if (err) {
-      console.log("POST /api/events error:", err);
-      return res.status(500).json({ error: "Failed to create event." });
+  db.query(
+    insertEventSql,
+    [title, description, event_date, event_time, location, capNum, category],
+    (err, result) => {
+      if (err) {
+        console.log("POST /api/events error:", err);
+        return res.status(500).json({ error: "Failed to create event." });
+      }
+
+      const eventId = result.insertId;
+
+      if (safeTags.length === 0) {
+        return res.status(201).json({ id: eventId, message: "Event created successfully." });
+      }
+
+      const uniqueTags = [...new Set(safeTags.map((tag) => String(tag).trim()).filter(Boolean))];
+
+      if (uniqueTags.length === 0) {
+        return res.status(201).json({ id: eventId, message: "Event created successfully." });
+      }
+
+      const values = uniqueTags.map((tag) => [eventId, tag]);
+
+      const insertTagsSql = `
+        INSERT INTO Event_Tags (event_id, tag_name)
+        VALUES ?
+      `;
+
+      db.query(insertTagsSql, [values], (tagErr) => {
+        if (tagErr) {
+          console.log("Insert Event_Tags error:", tagErr);
+          return res.status(500).json({
+            error: "Event was created, but failed to save tags.",
+          });
+        }
+
+        return res.status(201).json({
+          id: eventId,
+          message: "Event created successfully.",
+        });
+      });
     }
-    return res.status(201).json({ id: result.insertId });
-  });
+  );
 });
 
 // POST /api/events/:id/join
@@ -1179,7 +1226,6 @@ app.delete('/api/posts/:id', (req, res) => {
     const postId = req.params.id;
     const requestingUserId = 1; // Placeholder need to replace with real auth user ID later
 
-    // First verify the post exists and the requester is the author
     const checkSql = 'SELECT author_id FROM Posts WHERE post_id = ?';
     connection.query(checkSql, [postId], (err, results) => {
         if (err) {
@@ -1198,7 +1244,6 @@ app.delete('/api/posts/:id', (req, res) => {
             return res.status(403).json({ error: 'Not authorized to delete this post' });
         }
 
-        // Delete post_tags first, then the post
         const deleteTagsSql = 'DELETE FROM post_tags WHERE post_id = ?';
         connection.query(deleteTagsSql, [postId], (err) => {
             if (err) {
@@ -1227,7 +1272,6 @@ app.put('/api/posts/:id', (req, res) => {
     const requestingUserId = 1; // Placeholder - replace with real auth user ID later
     const { title, content, tags = [] } = req.body;
 
-    // Verify the post exists and requester is the author
     const checkSql = 'SELECT author_id FROM Posts WHERE post_id = ?';
     connection.query(checkSql, [postId], (err, results) => {
         if (err) {
@@ -1243,7 +1287,6 @@ app.put('/api/posts/:id', (req, res) => {
             return res.status(403).json({ error: 'Not authorized to edit this post' });
         }
 
-        // Update the post
         const updateSql = 'UPDATE Posts SET title = ?, content = ? WHERE post_id = ?';
         connection.query(updateSql, [title, content, postId], (err) => {
             if (err) {
@@ -1251,7 +1294,6 @@ app.put('/api/posts/:id', (req, res) => {
                 return res.status(500).json({ error: 'Error updating post' });
             }
 
-            // Delete old tags then re-insert new ones
             const deleteTagsSql = 'DELETE FROM post_tags WHERE post_id = ?';
             connection.query(deleteTagsSql, [postId], (err) => {
                 if (err) {
@@ -1319,7 +1361,6 @@ app.post('/api/posts/:id/like', (req, res) => {
         }
 
         if (results.length > 0) {
-            // Already liked — unlike it
             const deleteSql = 'DELETE FROM Likes WHERE post_id = ? AND user_id = ?';
             connection.query(deleteSql, [postId, currentUserId], (err) => {
                 if (err) {
@@ -1334,7 +1375,6 @@ app.post('/api/posts/:id/like', (req, res) => {
                 });
             });
         } else {
-            //Not liked yet, so like it
             const insertSql = 'INSERT INTO Likes (post_id, user_id) VALUES (?, ?)';
             connection.query(insertSql, [postId, currentUserId], (err) => {
                 if (err) {
@@ -1350,6 +1390,228 @@ app.post('/api/posts/:id/like', (req, res) => {
             });
         }
     });
+});
+
+// Post API for "Like an Event"
+app.post("/api/events/:id/like", (req, res) => {
+  const eventId = Number(req.params.id);
+
+  if (!eventId) {
+    return res.status(400).json({ error: "Invalid event id." });
+  }
+
+  const updateSql = `UPDATE Events SET likes = likes + 1 WHERE id = ?`;
+
+  db.query(updateSql, [eventId], (err, result) => {
+    if (err) {
+      console.log("POST /api/events/:id/like error:", err);
+      return res.status(500).json({ error: "Failed to like event." });
+    }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "Event not found." });
+    }
+
+    const selectSql = `SELECT likes FROM Events WHERE id = ?`;
+
+    db.query(selectSql, [eventId], (err2, rows) => {
+      if (err2) {
+        console.log("Reload likes error:", err2);
+        return res.status(500).json({
+          error: "Liked event, but failed to reload likes.",
+        });
+      }
+
+      return res.json({ likes: Number(rows[0].likes || 0) });
+    });
+  });
+});
+
+app.get("/api/categories", (req, res) => {
+  const sql = `
+    SELECT tag_name
+    FROM Tags
+    ORDER BY tag_name ASC
+  `;
+
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.log("GET /api/categories error:", err);
+      return res.status(500).json({ error: "Failed to load categories." });
+    }
+
+    return res.json(results);
+  });
+});
+
+app.get("/api/events/search-history", (req, res) => {
+  const userId = 1;
+
+  const sql = `
+    SELECT search_term
+    FROM Event_Search_History
+    WHERE user_id = ?
+    ORDER BY searched_at DESC
+    LIMIT 8
+  `;
+
+  db.query(sql, [userId], (err, rows) => {
+    if (err) {
+      console.log("GET search history error:", err);
+      return res.status(500).json({ error: "Failed to load search history." });
+    }
+
+    return res.json(rows);
+  });
+});
+
+app.post("/api/events/search-history", (req, res) => {
+  const userId = 1;
+  const term = String(req.body.search_term || "").trim();
+
+  if (!term) {
+    return res.status(400).json({ error: "Missing search term." });
+  }
+
+  const sql = `
+    INSERT INTO Event_Search_History (user_id, search_term, searched_at)
+    VALUES (?, ?, NOW())
+    ON DUPLICATE KEY UPDATE searched_at = NOW()
+  `;
+
+  db.query(sql, [userId, term], (err) => {
+    if (err) {
+      console.log("Insert search history error:", err);
+      return res.status(500).json({ error: "Failed to save search history." });
+    }
+
+    return res.json({ message: "Saved" });
+  });
+});
+
+app.get("/api/events/search", (req, res) => {
+  const keyword = String(req.query.keyword || "").trim();
+  const sort = String(req.query.sort || "mostUpcoming").trim();
+
+  if (!keyword) {
+    return res.json({ events: [] });
+  }
+
+  const like = `%${keyword}%`;
+
+  let orderClause = `
+    ORDER BY e.event_date ASC, e.event_time ASC
+  `;
+
+  if (sort === "mostRecentPublished") {
+    orderClause = `
+      ORDER BY e.published_time DESC
+    `;
+  } else if (sort === "mostLiked") {
+    orderClause = `
+      ORDER BY e.likes DESC, e.published_time DESC
+    `;
+  }
+
+  const sql = `
+    SELECT 
+      e.id,
+      e.title,
+      e.description,
+      DATE_FORMAT(e.event_date,'%Y-%m-%d') AS event_date,
+      TIME_FORMAT(e.event_time,'%H:%i') AS event_time,
+      e.location,
+      e.capacity,
+      e.likes,
+      e.category,
+      DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
+      COUNT(DISTINCT a.id) AS current_count,
+      GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
+      (TIMESTAMP(e.event_date,e.event_time) < NOW()) AS is_past
+    FROM Events e
+    LEFT JOIN Event_Attendees a ON a.event_id = e.id
+    LEFT JOIN Event_Tags t ON t.event_id = e.id
+    WHERE 
+      e.title LIKE ?
+      OR e.category LIKE ?
+      OR t.tag_name LIKE ?
+    GROUP BY e.id
+    ${orderClause}
+    LIMIT 50
+  `;
+
+  db.query(sql, [like, like, like], (err, rows) => {
+    if (err) {
+      console.log("Search events error:", err);
+      return res.status(500).json({ error: "Search failed." });
+    }
+
+    return res.json({ events: rows });
+  });
+});
+
+app.delete("/api/events/search-history", (req, res) => {
+  const userId = 1;
+  const term = String(req.body.search_term || "").trim();
+
+  if (!term) {
+    return res.status(400).json({ error: "Missing search term." });
+  }
+
+  const sql = `
+    DELETE FROM Event_Search_History
+    WHERE user_id = ? AND search_term = ?
+  `;
+
+  db.query(sql, [userId, term], (err) => {
+    if (err) {
+      console.log("Delete search history error:", err);
+      return res.status(500).json({ error: "Failed to delete search history." });
+    }
+
+    return res.json({ message: "Deleted successfully." });
+  });
+});
+
+app.get("/api/events/suggestions", (req, res) => {
+  const keyword = String(req.query.keyword || "").trim();
+
+  if (!keyword) {
+    return res.json([]);
+  }
+
+  const like = `%${keyword}%`;
+
+  const sql = `
+    SELECT value, type
+    FROM (
+      SELECT DISTINCT e.title AS value, 'Title' AS type
+      FROM Events e
+      WHERE e.title LIKE ?
+
+      UNION
+
+      SELECT DISTINCT e.category AS value, 'Category' AS type
+      FROM Events e
+      WHERE e.category LIKE ?
+
+      UNION
+
+      SELECT DISTINCT t.tag_name AS value, 'Tag' AS type
+      FROM Event_Tags t
+      WHERE t.tag_name LIKE ?
+    ) AS combined
+    LIMIT 10
+  `;
+
+  db.query(sql, [like, like, like], (err, rows) => {
+    if (err) {
+      console.log("Suggestions error:", err);
+      return res.status(500).json({ error: "Failed to load suggestions." });
+    }
+
+    return res.json(rows);
+  });
 });
 
 // for registration
@@ -1397,3 +1659,4 @@ app.get('/api/users/by-email', (req, res) => {
 
 
 app.listen(port, () => console.log(`Listening on port ${port}`)); 
+
