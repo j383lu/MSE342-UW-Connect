@@ -7,6 +7,7 @@ import bodyParser from 'body-parser';
 import profileRoutes from "./profileRoutes.js";
 import multer from 'multer'; // For file uploads
 import fs from 'fs'; // For file system operations
+import cors from 'cors';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,8 +33,11 @@ db.connect((err) => {
   console.log('Connected to MySQL database');
 });
 
-app.use(bodyParser.json({ limit: '50mb' }));
+app.use(cors()); 
+app.use(express.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
+app.use('/uploads', express.static('uploads'));
+app.use(express.static(path.join(__dirname, "client/build")));
 
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -225,8 +229,11 @@ app.get("/api/tags", (req, res) => {
 app.post("/api/groups", upload.single('coverImage'), (req, res) => {
   const { name, description, category, isOpen, maxMembers } = req.body;
   
-  // For now, hardcode user_id = 1
-  const creator_id = 1;
+  // Creator comes from the logged-in app user (sent by client)
+  const creator_id = Number(req.body.user_id);
+  if (!creator_id) {
+    return res.status(400).json({ error: "Missing or invalid user_id for group creator" });
+  }
   
   // Convert isOpen (public = true, private = false) to is_private (1 for private, 0 for public)
   const is_private = isOpen === 'true' ? 0 : 1;
@@ -252,19 +259,30 @@ app.post("/api/groups", upload.single('coverImage'), (req, res) => {
           details: err.message 
         });
       }
-      
-      // Return the created group with its new ID
-      return res.status(201).json({
-        id: result.insertId,
-        creator_id,
-        name,
-        description,
-        category,
-        is_private,
-        max_members,
-        image_url,
-        message: "Group created successfully"
-      });
+
+      const groupId = result.insertId;
+
+      // For both public and private: creator is automatically a member (shows in "My Groups")
+      db.query(
+        "INSERT INTO Group_Members (group_id, user_id) VALUES (?, ?)",
+        [groupId, creator_id],
+        (errMember) => {
+          if (errMember) {
+            console.error("POST /api/groups: auto-join creator failed:", errMember);
+          }
+          return res.status(201).json({
+            id: groupId,
+            creator_id,
+            name,
+            description,
+            category,
+            is_private,
+            max_members,
+            image_url,
+            message: "Group created successfully"
+          });
+        }
+      );
     }
   );
 });
@@ -379,7 +397,8 @@ app.get("/api/users/:userId/groups/member", (req, res) => {
 // JOIN GROUP:
 app.post("/api/groups/:groupId/join", (req, res) => {
   const groupId = req.params.groupId;
-  const userId = 1; // Hardcoded for now
+  // Prefer explicit userId from client, fallback to 1 for now
+  const userId = Number(req.body.userId) || 1;
   
   // First check if group exists and has space
   const checkSql = `
@@ -440,7 +459,8 @@ app.post("/api/groups/:groupId/join", (req, res) => {
 // LEAVE GROUP:
 app.delete("/api/groups/:groupId/leave", (req, res) => {
   const groupId = req.params.groupId;
-  const userId = 1; // Hardcoded for now
+  // Prefer explicit userId from client, fallback to 1 for now
+  const userId = Number(req.body.userId) || 1;
   
   const sql = "DELETE FROM Group_Members WHERE group_id = ? AND user_id = ?";
   
@@ -455,6 +475,229 @@ app.delete("/api/groups/:groupId/leave", (req, res) => {
     }
     
     return res.json({ message: "Successfully left group" });
+  });
+});
+
+// Create group invite(s) by email (owner only, matches existing Group_Invites schema: id, group_id, email, invited_by_user_id, status, created_at)
+app.post("/api/groups/:groupId/invite", (req, res) => {
+  const groupId = Number(req.params.groupId);
+  const { emails = [], inviterId } = req.body;
+
+  if (!groupId || !Array.isArray(emails) || emails.length === 0) {
+    return res.status(400).json({ error: "groupId and at least one email are required" });
+  }
+
+  const normalizedEmails = emails
+    .map(e => String(e || "").trim().toLowerCase())
+    .filter(e => e);
+
+  if (normalizedEmails.length === 0) {
+    return res.status(400).json({ error: "No valid email addresses provided" });
+  }
+
+  // Verify group exists and get creator
+  const groupSql = "SELECT group_id, creator_id, name FROM Social_Group WHERE group_id = ? LIMIT 1";
+  db.query(groupSql, [groupId], (groupErr, groupRows) => {
+    if (groupErr) {
+      console.error("Error fetching group for invite:", groupErr);
+      return res.status(500).json({ error: "Failed to load group for invite" });
+    }
+
+    if (!groupRows || groupRows.length === 0) {
+      return res.status(404).json({ error: "Group not found" });
+    }
+
+    const group = groupRows[0];
+    const resolvedInviterId = inviterId ? Number(inviterId) : group.creator_id;
+
+    // Optional: ensure only creator can invite for now
+    if (inviterId && resolvedInviterId !== group.creator_id) {
+      return res.status(403).json({ error: "Only the group owner can send invites" });
+    }
+
+    // Look up users & names for these emails
+    const placeholders = normalizedEmails.map(() => "?").join(", ");
+    const usersSql = `
+      SELECT uc.user_id, uc.email, up.display_name
+      FROM User_Credentials uc
+      LEFT JOIN User_Profiles up ON up.user_id = uc.user_id
+      WHERE LOWER(uc.email) IN (${placeholders})
+    `;
+
+    db.query(usersSql, normalizedEmails, (userErr, userRows) => {
+      if (userErr) {
+        console.error("Error looking up invitee users:", userErr);
+        return res.status(500).json({ error: "Failed to look up invitees" });
+      }
+
+      if (!userRows || userRows.length === 0) {
+        return res.status(404).json({ error: "No matching users found for provided emails" });
+      }
+
+      const targetUser = userRows[0];
+
+      // Check if already a member of this group
+      const memberSql = "SELECT 1 FROM Group_Members WHERE group_id = ? AND user_id = ? LIMIT 1";
+      db.query(memberSql, [groupId, targetUser.user_id], (memberErr, memberRows) => {
+        if (memberErr) {
+          console.error("Error checking membership before invite:", memberErr);
+          return res.status(500).json({ error: "Failed to check membership" });
+        }
+
+        if (memberRows && memberRows.length > 0) {
+          const name = targetUser.display_name || targetUser.email;
+          return res.status(400).json({
+            error: `${name} is already a member of the group`,
+            code: "already_member",
+            userName: name,
+          });
+        }
+
+        // Insert invites; Group_Invites stores email, not invitee_user_id
+        const values = normalizedEmails.map(email => [groupId, email, resolvedInviterId, "pending"]);
+
+        const insertSql = `
+          INSERT INTO Group_Invites (group_id, email, invited_by_user_id, status)
+          VALUES ?
+        `;
+
+        db.query(insertSql, [values], (inviteErr) => {
+          if (inviteErr) {
+            console.error("Error creating group invites:", inviteErr);
+            return res.status(500).json({ error: "Failed to create invites" });
+          }
+
+          const invitedName = targetUser.display_name || targetUser.email;
+          return res.status(201).json({
+            message: "Invites created successfully",
+            invitedCount: values.length,
+            invitedName,
+          });
+        });
+      });
+    });
+  });
+});
+
+// Get pending invites for a user, using email from User_Credentials
+app.get("/api/users/:userId/invites", (req, res) => {
+  const userId = Number(req.params.userId);
+  if (!userId) {
+    return res.status(400).json({ error: "Invalid userId" });
+  }
+
+  const sql = `
+    SELECT 
+      gi.id AS invite_id,
+      gi.group_id,
+      gi.status,
+      gi.created_at,
+      sg.name AS group_name,
+      up.display_name AS inviter_name
+    FROM Group_Invites gi
+    JOIN Social_Group sg ON sg.group_id = gi.group_id
+    LEFT JOIN User_Profiles up ON up.user_id = gi.invited_by_user_id
+    JOIN User_Credentials uc ON LOWER(uc.email) = LOWER(gi.email)
+    WHERE uc.user_id = ? AND gi.status = 'pending'
+    ORDER BY gi.created_at DESC
+  `;
+
+  db.query(sql, [userId], (err, rows) => {
+    if (err) {
+      console.error("GET /api/users/:userId/invites error:", err);
+      return res.status(500).json({ error: "Failed to fetch invites" });
+    }
+    return res.json(rows || []);
+  });
+});
+
+// Respond to an invite (accept / decline) using existing Group_Invites schema
+app.post("/api/invites/:inviteId/respond", (req, res) => {
+  const inviteId = Number(req.params.inviteId);
+  const { action, userId } = req.body;
+
+  if (!inviteId || !userId) {
+    return res.status(400).json({ error: "inviteId and userId are required" });
+  }
+
+  if (action !== "accept" && action !== "decline") {
+    return res.status(400).json({ error: "action must be 'accept' or 'decline'" });
+  }
+
+  const getInviteSql = `
+    SELECT gi.id, gi.group_id, gi.email, gi.status
+    FROM Group_Invites gi
+    JOIN User_Credentials uc ON LOWER(uc.email) = LOWER(gi.email)
+    WHERE gi.id = ? AND uc.user_id = ?
+    LIMIT 1
+  `;
+
+  db.query(getInviteSql, [inviteId, userId], (inviteErr, inviteRows) => {
+    if (inviteErr) {
+      console.error("Error fetching invite:", inviteErr);
+      return res.status(500).json({ error: "Failed to load invite" });
+    }
+
+    if (!inviteRows || inviteRows.length === 0) {
+      return res.status(404).json({ error: "Invite not found" });
+    }
+
+    const invite = inviteRows[0];
+    if (invite.status !== "pending") {
+      return res.status(400).json({ error: "Invite is no longer pending" });
+    }
+
+    // Helper to delete the invite row
+    const deleteSql = "DELETE FROM Group_Invites WHERE id = ?";
+
+    if (action === "decline") {
+      db.query(deleteSql, [inviteId], (delErr) => {
+        if (delErr) {
+          console.error("Error deleting invite on decline:", delErr);
+          return res.status(500).json({ error: "Failed to update invite" });
+        }
+        return res.json({ message: "Invite declined" });
+      });
+      return;
+    }
+
+    // If accepting, also add to Group_Members (if not already a member)
+    const memberCheckSql = "SELECT * FROM Group_Members WHERE group_id = ? AND user_id = ?";
+    db.query(memberCheckSql, [invite.group_id, userId], (memberErr, memberRows) => {
+      if (memberErr) {
+        console.error("Error checking group membership on accept:", memberErr);
+        return res.status(500).json({ error: "Failed to update membership" });
+      }
+
+      if (memberRows && memberRows.length > 0) {
+        // Already a member; just delete invite
+        db.query(deleteSql, [inviteId], (delErr) => {
+          if (delErr) {
+            console.error("Error deleting invite after accept (already member):", delErr);
+            return res.status(500).json({ error: "Failed to update invite" });
+          }
+          return res.json({ message: "Invite accepted; already a member" });
+        });
+        return;
+      }
+
+      const addMemberSql = "INSERT INTO Group_Members (group_id, user_id) VALUES (?, ?)";
+      db.query(addMemberSql, [invite.group_id, userId], (addErr) => {
+        if (addErr) {
+          console.error("Error adding member on invite accept:", addErr);
+          return res.status(500).json({ error: "Failed to add member to group" });
+        }
+
+        // After successful membership, delete invite
+        db.query(deleteSql, [inviteId], (delErr) => {
+          if (delErr) {
+            console.error("Error deleting invite after accept:", delErr);
+            return res.status(500).json({ error: "Failed to update invite" });
+          }
+          return res.json({ message: "Invite accepted and membership granted" });
+        });
+      });
+    });
   });
 });
 
@@ -607,6 +850,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || "Internal server error" });
 });
 
+// FEED PAGE APIs
+
 // Post /api/posts - create a new post
 app.post('/api/posts', (req, res) => {
     let connection = mysql.createConnection(config);
@@ -653,10 +898,13 @@ app.post('/api/posts', (req, res) => {
                         res.json({
                             post: {
                                 post_id: postId,
+                                author_id: author_id,
                                 title,
                                 description: content,
                                 tags: tagResult.map(t => t.tag_name),
-                                createdAt: new Date().toISOString()
+                                createdAt: new Date().toISOString(),
+                                like_count: 0,
+                                liked_by_me: false
                             },
                             message: 'Post created successfully with tags'  
                         });                  
@@ -664,7 +912,7 @@ app.post('/api/posts', (req, res) => {
                 } else {
                     connection.end();
                     res.json({
-                        post: { post_id: postId, title, description: content, tags: [], createdAt: new Date().toISOString() },
+                        post: { post_id: postId, author_id: author_id, title, description: content, tags: [], createdAt: new Date().toISOString(), like_count: 0, liked_by_me: false },
                         message: 'Post created successfully but no valid tags found'
                     });                
                 }
@@ -672,7 +920,7 @@ app.post('/api/posts', (req, res) => {
         } else {
             connection.end();
             res.json({
-                post: { post_id: postId, title, description: content, tags: [], createdAt: new Date().toISOString() },
+                post: { post_id: postId, author_id: author_id, title, description: content, tags: [], createdAt: new Date().toISOString(), like_count: 0, liked_by_me: false },
                 message: 'Post created successfully without tags'
             });
         }
@@ -680,22 +928,76 @@ app.post('/api/posts', (req, res) => {
     });
 });
 
-// GET API for posts
-app.get('/api/posts', (req, res) => {
-    let connection = mysql.createConnection(config);
+// GET /api/posts/tag/:tagName - filter posts by tag
+app.get('/api/posts/tag/:tagName', (req, res) => {
+    const connection = mysql.createConnection(config);
+    const tagName = req.params.tagName;
+    const currentUserId = 1; // placeholder
 
-    let sql = `
-         SELECT p.post_id, p.title, p.content, p.author_id, p.group_id,
-               p.is_anonymous, p.image_url, p.created_at AS createdAt,
-               GROUP_CONCAT(t.tag_name) AS tags
+    const sql = `
+        SELECT p.post_id, p.title, p.content, p.author_id, p.created_at AS createdAt,
+               GROUP_CONCAT(DISTINCT t.tag_name) AS tags,
+               COUNT(DISTINCT l.like_id) AS like_count,
+               MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me
         FROM Posts p
         LEFT JOIN post_tags pt ON p.post_id = pt.post_id
         LEFT JOIN Tags t ON pt.tag_id = t.tag_id
+        LEFT JOIN Likes l ON p.post_id = l.post_id
+        WHERE p.post_id IN (
+            SELECT pt2.post_id FROM post_tags pt2
+            JOIN Tags t2 ON pt2.tag_id = t2.tag_id
+            WHERE LOWER(t2.tag_name) = LOWER(?)
+        )
+        GROUP BY p.post_id
+        ORDER BY p.created_at DESC
+    `;
+
+    connection.query(sql, [currentUserId, tagName], (err, results) => {
+        connection.end();
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ error: 'Error filtering posts by tag' });
+        }
+
+        const formattedPosts = results.map(post => ({
+            post_id: post.post_id,
+            author_id: post.author_id,
+            title: post.title,
+            description: post.content,
+            tags: post.tags ? post.tags.split(',') : [],
+            createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
+            like_count: post.like_count ?? 0,
+            liked_by_me: post.liked_by_me === 1
+        }));
+
+        if (formattedPosts.length === 0) {
+            return res.json({ message: "No posts found for this tag.", posts: [] });
+        }
+
+        res.json({ posts: formattedPosts });
+    });
+});
+
+// GET API for posts
+app.get('/api/posts', (req, res) => {
+    let connection = mysql.createConnection(config);
+    const currentUserId = 1 //Placeholde, need to replace with actually user id later
+    let sql = `
+         SELECT p.post_id, p.title, p.content, p.author_id, p.group_id,
+               p.is_anonymous, p.image_url, p.created_at AS createdAt,
+               GROUP_CONCAT(t.tag_name) AS tags,
+               COUNT(DISTINCT l.like_id) AS like_count,
+               MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me,
+               (SELECT COUNT(*) FROM Comments WHERE post_id = p.post_id) AS comment_count
+        FROM Posts p
+        LEFT JOIN post_tags pt ON p.post_id = pt.post_id
+        LEFT JOIN Tags t ON pt.tag_id = t.tag_id
+        LEFT JOIN Likes l ON p.post_id = l.post_id
         GROUP BY p.post_id
         ORDER BY p.post_id DESC
     `;
 
-    connection.query(sql, (err, results) => {
+    connection.query(sql, [currentUserId], (err, results) => {
         connection.end();
 
         if (err) {
@@ -705,11 +1007,14 @@ app.get('/api/posts', (req, res) => {
 
         const formattedPosts = results.map(post => ({
             post_id: post.post_id,
+            author_id: post.author_id,
             title: post.title,
-            description: post.content, // <-- map content to description
+            description: post.content, // map content to description
             tags: post.tags ? post.tags.split(',') : [],
-            createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null
-
+            createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
+            like_count: post.like_count,
+            liked_by_me: post.liked_by_me, 
+            comment_count: post.comment_count ?? 0
         }));
 
         res.json(formattedPosts);
@@ -725,13 +1030,18 @@ app.get('/api/posts/search', (req, res) => {
     }
 
     const connection = mysql.createConnection(config);
+    const currentUserId = 1 // placeholder
 
     const searchSql = `
-        SELECT p.post_id, p.title, p.content AS description, p.created_at AS createdAt,
-        GROUP_CONCAT(t.tag_name) AS tags
+        SELECT p.post_id, p.title, p.content AS description, p.author_id, p.created_at AS createdAt,
+        GROUP_CONCAT(t.tag_name) AS tags,
+        COUNT(DISTINCT l.like_id) AS like_count,
+        MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me,
+        (SELECT COUNT(*) FROM Comments WHERE post_id = p.post_id) AS comment_count
         FROM Posts p
         LEFT JOIN post_tags pt ON p.post_id = pt.post_id
         LEFT JOIN Tags t ON pt.tag_id = t.tag_id
+        LEFT JOIN Likes l ON p.post_id = l.post_id
         WHERE LOWER(p.title) LIKE ? OR LOWER(p.content) LIKE ?
         GROUP BY p.post_id
         ORDER BY p.created_at DESC
@@ -740,7 +1050,7 @@ app.get('/api/posts/search', (req, res) => {
 
     const keywordParam = `%${keyword.toLowerCase()}%`;
 
-    connection.query(searchSql, [keywordParam, keywordParam], (err, results) => {
+    connection.query(searchSql, [currentUserId, keywordParam, keywordParam], (err, results) => {
         connection.end();
         if (err) {
             console.error(err);
@@ -749,10 +1059,14 @@ app.get('/api/posts/search', (req, res) => {
 
         const formattedPosts = results.map(post => ({
             post_id: post.post_id,
+            author_id: post.author_id,
             title: post.title,
             description: post.description,
             tags: post.tags ? post.tags.split(',') : [],
-            createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null
+            createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
+            like_count: post.like_count ?? 0,
+            liked_by_me: post.liked_by_me === 1,
+            comment_count: post.comment_count ?? 0
         }));
 
         if (formattedPosts.length === 0) {
@@ -763,5 +1077,323 @@ app.get('/api/posts/search', (req, res) => {
     });
 });
 
+// GET /api/posts/:id - get a single post
+app.get('/api/posts/:id', (req, res) => {
+    const connection = mysql.createConnection(config);
+    const postId = req.params.id;
+    const currentUserId = 1; // placeholder
 
-app.listen(port, () => console.log(`Listening on port ${port}`)); //for the dev version
+    const sql = `
+        SELECT p.post_id, p.title, p.content, p.author_id, p.created_at AS createdAt,
+               GROUP_CONCAT(DISTINCT t.tag_name) AS tags,
+               COUNT(DISTINCT l.like_id) AS like_count,
+               MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me
+        FROM Posts p
+        LEFT JOIN post_tags pt ON p.post_id = pt.post_id
+        LEFT JOIN Tags t ON pt.tag_id = t.tag_id
+        LEFT JOIN Likes l ON p.post_id = l.post_id
+        WHERE p.post_id = ?
+        GROUP BY p.post_id
+    `;
+
+    connection.query(sql, [currentUserId, postId], (err, results) => {
+        connection.end();
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ error: 'Error retrieving post' });
+        }
+        if (results.length === 0) {
+            return res.status(404).json({ error: 'Post not found' });
+        }
+
+        const post = results[0];
+        res.json({
+            post_id: post.post_id,
+            author_id: post.author_id,
+            title: post.title,
+            description: post.content,
+            tags: post.tags ? post.tags.split(',') : [],
+            createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
+            like_count: post.like_count ?? 0,
+            liked_by_me: post.liked_by_me === 1
+        });
+    });
+});
+
+// GET /api/posts/:id/comments - get all comments for a post
+app.get('/api/posts/:id/comments', (req, res) => {
+    const connection = mysql.createConnection(config);
+    const postId = req.params.id;
+
+    const sql = `
+        SELECT c.comment_id, c.post_id, c.user_id, c.parent_comment_id,
+               c.content, c.created_at AS createdAt
+        FROM Comments c
+        WHERE c.post_id = ?
+        ORDER BY c.created_at ASC
+    `;
+
+    connection.query(sql, [postId], (err, results) => {
+        connection.end();
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ error: 'Error retrieving comments' });
+        }
+        res.json(results);
+    });
+});
+
+// POST /api/posts/:id/comments - add a comment or reply
+app.post('/api/posts/:id/comments', (req, res) => {
+    const connection = mysql.createConnection(config);
+    const postId = req.params.id;
+    const { content, parent_comment_id = null } = req.body;
+    const currentUserId = 1; // placeholder
+
+    if (!content || !content.trim()) {
+        connection.end();
+        return res.status(400).json({ error: 'Comment content is required' });
+    }
+
+    const sql = 'INSERT INTO Comments (post_id, user_id, parent_comment_id, content) VALUES (?, ?, ?, ?)';
+    connection.query(sql, [postId, currentUserId, parent_comment_id, content], (err, result) => {
+        connection.end();
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ error: 'Error creating comment' });
+        }
+        res.json({
+            comment_id: result.insertId,
+            post_id: parseInt(postId),
+            user_id: currentUserId,
+            parent_comment_id,
+            content,
+            createdAt: new Date().toISOString()
+        });
+    });
+});
+
+// DELETE /api/posts/:id - delete a post (only by author)
+app.delete('/api/posts/:id', (req, res) => {
+    let connection = mysql.createConnection(config);
+    const postId = req.params.id;
+    const requestingUserId = 1; // Placeholder need to replace with real auth user ID later
+
+    // First verify the post exists and the requester is the author
+    const checkSql = 'SELECT author_id FROM Posts WHERE post_id = ?';
+    connection.query(checkSql, [postId], (err, results) => {
+        if (err) {
+            console.error(err);
+            connection.end();
+            return res.status(500).json({ error: 'Error finding post' });
+        }
+
+        if (results.length === 0) {
+            connection.end();
+            return res.status(404).json({ error: 'Post not found' });
+        }
+
+        if (results[0].author_id !== requestingUserId) {
+            connection.end();
+            return res.status(403).json({ error: 'Not authorized to delete this post' });
+        }
+
+        // Delete post_tags first, then the post
+        const deleteTagsSql = 'DELETE FROM post_tags WHERE post_id = ?';
+        connection.query(deleteTagsSql, [postId], (err) => {
+            if (err) {
+                console.error(err);
+                connection.end();
+                return res.status(500).json({ error: 'Error deleting post tags' });
+            }
+
+            const deletePostSql = 'DELETE FROM Posts WHERE post_id = ?';
+            connection.query(deletePostSql, [postId], (err) => {
+                connection.end();
+                if (err) {
+                    console.error(err);
+                    return res.status(500).json({ error: 'Error deleting post' });
+                }
+                res.json({ message: 'Post deleted successfully', post_id: postId });
+            });
+        });
+    });
+});
+
+// PUT /api/posts/:id - edit a post (only by author)
+app.put('/api/posts/:id', (req, res) => {
+    let connection = mysql.createConnection(config);
+    const postId = req.params.id;
+    const requestingUserId = 1; // Placeholder - replace with real auth user ID later
+    const { title, content, tags = [] } = req.body;
+
+    // Verify the post exists and requester is the author
+    const checkSql = 'SELECT author_id FROM Posts WHERE post_id = ?';
+    connection.query(checkSql, [postId], (err, results) => {
+        if (err) {
+            connection.end();
+            return res.status(500).json({ error: 'Error finding post' });
+        }
+        if (results.length === 0) {
+            connection.end();
+            return res.status(404).json({ error: 'Post not found' });
+        }
+        if (results[0].author_id !== requestingUserId) {
+            connection.end();
+            return res.status(403).json({ error: 'Not authorized to edit this post' });
+        }
+
+        // Update the post
+        const updateSql = 'UPDATE Posts SET title = ?, content = ? WHERE post_id = ?';
+        connection.query(updateSql, [title, content, postId], (err) => {
+            if (err) {
+                connection.end();
+                return res.status(500).json({ error: 'Error updating post' });
+            }
+
+            // Delete old tags then re-insert new ones
+            const deleteTagsSql = 'DELETE FROM post_tags WHERE post_id = ?';
+            connection.query(deleteTagsSql, [postId], (err) => {
+                if (err) {
+                    connection.end();
+                    return res.status(500).json({ error: 'Error updating tags' });
+                }
+
+                if (tags.length === 0) {
+                    connection.end();
+                    return res.json({
+                        post: { post_id: parseInt(postId), title, description: content, tags: [] },
+                        message: 'Post updated successfully'
+                    });
+                }
+
+                const tagSql = 'SELECT tag_id, tag_name FROM Tags WHERE tag_name IN (' + tags.map(() => '?').join(', ') + ')';
+                connection.query(tagSql, tags, (err, tagResults) => {
+                    if (err) {
+                        connection.end();
+                        return res.status(500).json({ error: 'Error finding tags' });
+                    }
+
+                    const postTagData = tagResults.map(tag => [postId, tag.tag_id]);
+                    if (postTagData.length === 0) {
+                        connection.end();
+                        return res.json({
+                            post: { post_id: parseInt(postId), title, description: content, tags: [] },
+                            message: 'Post updated successfully but no valid tags found'
+                        });
+                    }
+
+                    const postTagSql = 'INSERT INTO post_tags (post_id, tag_id) VALUES ?';
+                    connection.query(postTagSql, [postTagData], (err) => {
+                        connection.end();
+                        if (err) {
+                            return res.status(500).json({ error: 'Error inserting tags' });
+                        }
+                        res.json({
+                            post: {
+                                post_id: parseInt(postId),
+                                title,
+                                description: content,
+                                tags: tagResults.map(t => t.tag_name)
+                            },
+                            message: 'Post updated successfully'
+                        });
+                    });
+                });
+            });
+        });
+    });
+});
+
+// POST /api/posts/:id/like - toggle like/unlike
+app.post('/api/posts/:id/like', (req, res) => {
+    let connection = mysql.createConnection(config);
+    const postId = req.params.id;
+    const currentUserId = 1; // Placeholder - replace with real auth user ID later
+
+    const checkSql = 'SELECT like_id FROM Likes WHERE post_id = ? AND user_id = ?';
+    connection.query(checkSql, [postId, currentUserId], (err, results) => {
+        if (err) {
+            connection.end();
+            return res.status(500).json({ error: 'Error checking like status' });
+        }
+
+        if (results.length > 0) {
+            // Already liked — unlike it
+            const deleteSql = 'DELETE FROM Likes WHERE post_id = ? AND user_id = ?';
+            connection.query(deleteSql, [postId, currentUserId], (err) => {
+                if (err) {
+                    connection.end();
+                    return res.status(500).json({ error: 'Error unliking post' });
+                }
+                const countSql = 'SELECT COUNT(*) AS like_count FROM Likes WHERE post_id = ?';
+                connection.query(countSql, [postId], (err, countResult) => {
+                    connection.end();
+                    if (err) return res.status(500).json({ error: 'Error getting like count' });
+                    res.json({ liked_by_me: false, like_count: countResult[0].like_count });
+                });
+            });
+        } else {
+            //Not liked yet, so like it
+            const insertSql = 'INSERT INTO Likes (post_id, user_id) VALUES (?, ?)';
+            connection.query(insertSql, [postId, currentUserId], (err) => {
+                if (err) {
+                    connection.end();
+                    return res.status(500).json({ error: 'Error liking post' });
+                }
+                const countSql = 'SELECT COUNT(*) AS like_count FROM Likes WHERE post_id = ?';
+                connection.query(countSql, [postId], (err, countResult) => {
+                    connection.end();
+                    if (err) return res.status(500).json({ error: 'Error getting like count' });
+                    res.json({ liked_by_me: true, like_count: countResult[0].like_count });
+                });
+            });
+        }
+    });
+});
+
+// for registration
+app.post('/api/register', (req, res) => {
+    const { email, password, username, firebase_uid } = req.body;
+    const sqlCredentials = "INSERT INTO User_Credentials (email, password_hash, firebase_uid) VALUES (?, ?, ?)";
+    
+    db.query(sqlCredentials, [email, password, firebase_uid], (err, result) => {
+        if (err) return res.status(500).json({ error: "Database error during registration." });
+        
+        const newUserId = result.insertId;
+        const sqlProfile = "INSERT INTO User_Profiles (user_id, display_name) VALUES (?, ?)";
+        
+        db.query(sqlProfile, [newUserId, username], (profileErr) => {
+            if (profileErr) return res.status(500).json({ error: "Profile creation failed." });
+            res.status(201).json({ message: "User created successfully!" });
+        });
+    });
+});
+
+// Lookup app user_id by email (used after Firebase login)
+app.get('/api/users/by-email', (req, res) => {
+  const { email } = req.query;
+
+  if (!email) {
+    return res.status(400).json({ error: "Email is required" });
+  }
+
+  const sql = "SELECT user_id FROM User_Credentials WHERE email = ? LIMIT 1";
+
+  db.query(sql, [email], (err, rows) => {
+    if (err) {
+      console.error("GET /api/users/by-email error:", err);
+      return res.status(500).json({ error: "Failed to lookup user" });
+    }
+
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: "User not found for given email" });
+    }
+
+    return res.json({ userId: rows[0].user_id });
+  });
+});
+
+
+
+app.listen(port, () => console.log(`Listening on port ${port}`)); 

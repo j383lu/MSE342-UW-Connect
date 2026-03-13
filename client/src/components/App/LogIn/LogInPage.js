@@ -11,11 +11,16 @@ import { InputAdornment, IconButton } from '@mui/material';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { withFirebase } from '../../Firebase';
 
-const LogInPage = ({ onSwitchPage }) => { 
+const LogInPage = ({ onSwitchPage, firebase }) => { 
 
-    const [formData, setFormData] = React.useState({ username: '', password: '' });
+    const navigate = useNavigate();
+
+    const [formData, setFormData] = React.useState({ email: '', password: '' });
     const [errors, setErrors] = React.useState({});
+    const [serverError, setServerError] = useState('');
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -24,18 +29,59 @@ const LogInPage = ({ onSwitchPage }) => {
         if (errors[name]) setErrors({ ...errors, [name]: '' });
     };
 
-    const handleSubmit = (event) => {
+    const handleSubmit = async(event) => {
         event.preventDefault();
+        setServerError('');
         let newErrors = {};
 
-        // this creates the "This field is required." messages your test looks for
-        if (!formData.username) newErrors.username = 'This field is required.';
+        if (!formData.email) newErrors.email = 'This field is required.';
         if (!formData.password) newErrors.password = 'This field is required.';
 
         setErrors(newErrors);
 
         if (Object.keys(newErrors).length === 0) {
-            console.log('Logging in...', formData);
+            try {
+                await firebase.doSignInWithEmailAndPassword(formData.email, formData.password);
+                console.log('Successfully logged in with Firebase');
+
+                // After Firebase login, fetch our app-specific user_id by email
+                try {
+                    const res = await fetch(`/api/users/by-email?email=${encodeURIComponent(formData.email)}`);
+                    if (!res.ok) {
+                        console.error('Failed to fetch user id from backend, status:', res.status);
+                    } else {
+                        const data = await res.json();
+                        if (data && data.userId) {
+                            // Persist current app user id for later use (e.g., Groups, Profile, etc.)
+                            localStorage.setItem('currentUserId', String(data.userId));
+                            console.log('Stored currentUserId in localStorage:', data.userId);
+                        } else {
+                            console.warn('No userId returned from /api/users/by-email');
+                        }
+                    }
+                } catch (lookupError) {
+                    console.error('Error looking up user id after login:', lookupError);
+                }
+
+                navigate('/feed'); 
+            } catch (error) {
+                switch (error.code) {
+                case 'auth/invalid-email':
+                    setServerError('The email address is poorly formatted.');
+                    break;
+                case 'auth/user-not-found':
+                    setServerError('No user found with this email.');
+                    break;
+                case 'auth/wrong-password':
+                    setServerError('Incorrect password. Please try again.');
+                    break;
+                case 'auth/invalid-credential':
+                    setServerError('Invalid email or password.');
+                    break;
+                default:
+                    setServerError('An unexpected error occurred. Please try again.');
+                }
+            }
         }
     };
 
@@ -81,18 +127,33 @@ const LogInPage = ({ onSwitchPage }) => {
                             </Typography>
 
                             <Box component="form" onSubmit={handleSubmit} noValidate sx={{ mt: 1 }}>
+                                {serverError && (
+                                    <Typography 
+                                        color="error" 
+                                        variant="body2" 
+                                        sx={{ 
+                                            mb: 2, 
+                                            textAlign: 'center', 
+                                            backgroundColor: '#ffebee', // Light red background
+                                            padding: '8px', 
+                                            borderRadius: '4px' 
+                                        }}
+                                    >
+                                        {serverError}
+                                    </Typography>
+                                )}
                                 <TextField
                                     margin="normal"
                                     required
                                     fullWidth
-                                    id="username"
-                                    label="Username"
-                                    name="username"
+                                    id="email"
+                                    label="Email"
+                                    name="email"
                                     autoFocus
-                                    value={formData.username}
+                                    value={formData.email}
                                     onChange={handleChange}
-                                    error={!!errors.username}
-                                    helperText={errors.username}
+                                    error={!!errors.email}
+                                    helperText={errors.email}
                                 />
                                 <TextField
                                     margin="normal"
@@ -146,4 +207,4 @@ const LogInPage = ({ onSwitchPage }) => {
     );
 }
 
-export default LogInPage;
+export default withFirebase(LogInPage);
