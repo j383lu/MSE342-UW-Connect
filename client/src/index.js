@@ -5,12 +5,16 @@ import CssBaseline from "@mui/material/CssBaseline";
 import "./index.css";
 import theme from "./components/App/Theme";
 import App from "./components/App";
-import Post from "./components/Post"
+import Firebase, {FirebaseContext} from './components/Firebase';
 
+const container = document.getElementById('root');
 const root = createRoot(document.getElementById("root"));
+
 root.render(
-  <ThemeProvider theme={theme}>
-    <CssBaseline />
-    <App />
-  </ThemeProvider>
+  <FirebaseContext.Provider value={new Firebase()}>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <App />
+    </ThemeProvider>
+  </FirebaseContext.Provider>
 );

@@ -9,7 +9,6 @@ describe('Login Component', () => {
         const formData = { username: '', password: '' };
         const errors = {};
 
-        // click without entering anything
         if (!formData.username) errors.username = 'This field is required.';
         
         expect(errors.username).toBeDefined();

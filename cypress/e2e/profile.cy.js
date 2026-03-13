@@ -1,6 +1,6 @@
 describe('Profile and EditProfile flows', () => {
   beforeEach(() => {
-    // stub profile data
+  // stub profile data
     cy.intercept('GET', '/api/profile', {
       statusCode: 200,
       body: {
@@ -32,6 +32,15 @@ describe('Profile and EditProfile flows', () => {
       statusCode: 200,
       body: [{ course_id: 1, course_code: 'MATH101' }],
     }).as('getUserCourses');
+
+    cy.visit('/')
+
+    cy.get('input[name="email"]').type('jc@uwaterloo.ca')
+    cy.get('input[name="password"]').type('Password')
+
+    cy.contains('button', 'Log In').click()
+
+    cy.contains('Home', { timeout: 10000 }).should('be.visible')
   });
 
   it('displays profile information', () => {
