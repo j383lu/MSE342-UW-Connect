@@ -10,7 +10,7 @@ The platform serves as a digital hub for students to find each other and connect
 ## Additional Information:
 Jes/Cypress tests: The recording of the Jest and Cypress tests passing will be included at the end of the demo video.
 
-Login/Registration Feature: This feature is not fully functioning yet due to the authentication lesson not being taught yet. For now, this feature includes data input validation, and page switching between the registation and login page. As a group, we have also decided to add the login page to the NavBar, as we wait for the next sprint to implement firebase.
+Login/Registration Feature: Please log in with email: jc@uwaterloo.ca, and password: Password, to test. Also turn the 5000 port to public visibility.
 
 Groups Features: This feature currently uses a default user (user_id = 1) to create, edit, join and leave groups. 
 
