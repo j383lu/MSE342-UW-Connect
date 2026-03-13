@@ -1,8 +1,19 @@
 describe("Post Feed - Create, Search, Filter by Tag", () => {
 
   beforeEach(() => {
-    cy.visit("/feed");
-  });
+    cy.visit("/");
+
+    // login
+    cy.get('input[name="email"]').type('jc@uwaterloo.ca');
+    cy.get('input[name="password"]').type('Password');
+
+    cy.contains('button', 'Log In').click();
+
+    // wait for Firebase login
+    cy.contains('Home', { timeout: 10000 }).should('be.visible');
+
+    cy.url().should('include', '/feed');
+});
 
   // CREATE
   it("opens create post form when Create Post is clicked", () => {
