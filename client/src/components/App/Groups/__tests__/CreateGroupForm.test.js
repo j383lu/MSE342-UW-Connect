@@ -15,19 +15,17 @@ jest.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate
 }));
 
-// Silence act warnings
-const originalError = console.error;
+// Silence act warnings, React Router warnings, and other console noise
+const originalConsole = { log: console.log, warn: console.warn, error: console.error };
 beforeAll(() => {
-  console.error = (...args) => {
-    if (/Warning.*not wrapped in act/.test(args[0])) {
-      return;
-    }
-    originalError.call(console, ...args);
-  };
+  console.log = jest.fn();
+  console.warn = jest.fn();
+  console.error = jest.fn();
 });
-
 afterAll(() => {
-  console.error = originalError;
+  console.log = originalConsole.log;
+  console.warn = originalConsole.warn;
+  console.error = originalConsole.error;
 });
 
 global.fetch = jest.fn();

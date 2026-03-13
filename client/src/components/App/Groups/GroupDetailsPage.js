@@ -16,12 +16,18 @@ export default function GroupDetailsPage() {
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [checkingMembership, setCheckingMembership] = useState(true);
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviting, setInviting] = useState(false);
+  const [inviteError, setInviteError] = useState("");
+  const [inviteFeedback, setInviteFeedback] = useState("");
   
   // Add a ref to track if we've manually updated the state
   const manuallyUpdated = useRef(false);
 
-  // Hardcoded user ID for now (should come from auth context later)
-  const CURRENT_USER_ID = 1;
+  // Current app user id (set after login and stored in localStorage)
+  const storedUserIdRaw = localStorage.getItem('currentUserId');
+  const CURRENT_USER_ID = storedUserIdRaw ? Number(storedUserIdRaw) : null;
 
   useEffect(() => {
     loadGroup();
@@ -98,7 +104,7 @@ export default function GroupDetailsPage() {
       }
       
       // First check if user is the owner
-      if (group.creator_id === CURRENT_USER_ID) {
+      if (CURRENT_USER_ID && group.creator_id === CURRENT_USER_ID) {
         console.log("User is the owner");
         // Check if owner is also a member (from Group_Members)
         const res = await fetch(`/api/users/${CURRENT_USER_ID}/groups/member`);
@@ -144,7 +150,9 @@ export default function GroupDetailsPage() {
   }
 
   async function handleJoin() {
-    if (!group || group.is_private) return;
+    // Allow owner to join even if the group is private
+    if (!group) return;
+    if (group.is_private && group.creator_id !== CURRENT_USER_ID) return;
     
     setIsJoining(true);
     try {
@@ -153,7 +161,8 @@ export default function GroupDetailsPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify({ userId: CURRENT_USER_ID })
       });
 
       const responseData = await res.json();
@@ -200,7 +209,11 @@ export default function GroupDetailsPage() {
     try {
       console.log(`Leaving group ${groupId}`);
       const res = await fetch(`/api/groups/${groupId}/leave`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ userId: CURRENT_USER_ID })
       });
 
       const responseData = await res.json();
@@ -243,8 +256,43 @@ export default function GroupDetailsPage() {
   }
 
   const isOwner = useMemo(() => {
-    return group && group.creator_id === CURRENT_USER_ID;
-  }, [group]);
+    return group && CURRENT_USER_ID && group.creator_id === CURRENT_USER_ID;
+  }, [group, CURRENT_USER_ID]);
+
+  async function handleSendInvite(e) {
+    e.preventDefault();
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email) return;
+    setInviteError("");
+    setInviting(true);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emails: [email], inviterId: CURRENT_USER_ID })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (data.code === "already_member" && data.userName) {
+          setInviteFeedback(`${data.userName} is already a member of the group`);
+        } else {
+          setInviteError(data.error || "Failed to send invite");
+        }
+        return;
+      }
+      setInviteEmail("");
+      setInviteModalOpen(false);
+      if (data.invitedName) {
+        setInviteFeedback(`Invitation sent to ${data.invitedName}`);
+      } else {
+        setInviteFeedback(`Invitation sent to ${email}`);
+      }
+    } catch (err) {
+      setInviteError("Failed to send invite");
+    } finally {
+      setInviting(false);
+    }
+  }
 
   // Mock data for posts (keeping as is)
   const posts = useMemo(() => [
@@ -306,6 +354,22 @@ export default function GroupDetailsPage() {
   return (
     <div style={page}>
       <div style={container}>
+        {/* Invite feedback popup */}
+        {inviteFeedback && (
+          <div style={feedbackOverlay}>
+            <div style={feedbackCard}>
+              <button
+                type="button"
+                onClick={() => setInviteFeedback("")}
+                style={feedbackClose}
+                aria-label="Close"
+              >
+                ×
+              </button>
+              <div style={feedbackText}>{inviteFeedback}</div>
+            </div>
+          </div>
+        )}
         {/* Navigation */}
         <div style={navBar}>
           <button style={backLink} onClick={() => navigate("/groups")}>
@@ -333,10 +397,14 @@ export default function GroupDetailsPage() {
                 </button>
               ) : (
                 <button
-                  style={btn("primary", group.is_private)}
+                  style={btn("primary", isJoining)}
                   onClick={handleJoin}
-                  disabled={group.is_private || isJoining}
-                  title={group.is_private ? "Private group - join by invitation only" : ""}
+                  disabled={isJoining}
+                  title={
+                    group.is_private && !isOwner
+                      ? "Private group - join by invitation only"
+                      : ""
+                  }
                 >
                   {isJoining ? 'Joining...' : 'Join Group'}
                 </button>
@@ -417,9 +485,24 @@ export default function GroupDetailsPage() {
 
           {/* Members List - Now showing actual members with names and roles */}
           <div style={section}>
-            <h3 style={sectionTitle}>
-              Members ({membersCount})
-            </h3>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+              <h3 style={{ ...sectionTitle, margin: 0 }}>
+                Members ({membersCount})
+              </h3>
+              {isOwner && group.is_private === 1 && (
+                <button
+                  type="button"
+                  style={inviteButton}
+                  onClick={() => {
+                    setInviteModalOpen(true);
+                    setInviteEmail("");
+                    setInviteError("");
+                  }}
+                >
+                  + Invite
+                </button>
+              )}
+            </div>
 
             {loadingMembers ? (
               <p>Loading members...</p>
@@ -449,6 +532,49 @@ export default function GroupDetailsPage() {
               </div>
             )}
           </div>
+
+          {/* Invite modal (private groups, owner only) */}
+          {inviteModalOpen && (
+            <div style={modalOverlay} onClick={() => !inviting && setInviteModalOpen(false)}>
+              <div style={modalCard} onClick={(e) => e.stopPropagation()}>
+                <h3 style={{ marginTop: 0, marginBottom: 16 }}>Invite by email</h3>
+                <p style={{ color: "#666", fontSize: 14, marginBottom: 16 }}>
+                  Enter the email address of the person you want to invite to this group.
+                </p>
+                <form onSubmit={handleSendInvite}>
+                  <input
+                    type="email"
+                    placeholder="Email address"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    disabled={inviting}
+                    style={inviteEmailInput}
+                    autoFocus
+                  />
+                  {inviteError && (
+                    <p style={{ color: "#b00020", fontSize: 14, marginBottom: 8 }}>{inviteError}</p>
+                  )}
+                  <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+                    <button
+                      type="button"
+                      style={modalCancelBtn}
+                      onClick={() => !inviting && setInviteModalOpen(false)}
+                      disabled={inviting}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      style={inviteEmail.trim() ? modalSendBtn : modalSendBtnDisabled}
+                      disabled={!inviteEmail.trim() || inviting}
+                    >
+                      {inviting ? "Sending…" : "Send Invite"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
 
           {/* Posts Preview */}
           <div style={section}>
@@ -801,3 +927,124 @@ function btn(kind, disabled = false) {
   }
   return base;
 }
+
+const inviteButton = {
+  padding: "8px 16px",
+  borderRadius: 8,
+  fontSize: 14,
+  fontWeight: 600,
+  cursor: "pointer",
+  background: "#111",
+  color: "#fff",
+  border: "1px solid #111",
+};
+
+// Reuse same feedback styles as GroupsPage
+const feedbackOverlay = {
+  position: "fixed",
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "center",
+  pointerEvents: "none",
+  zIndex: 1300,
+};
+
+const feedbackCard = {
+  pointerEvents: "auto",
+  marginTop: 40,
+  background: "#fff",
+  borderRadius: 12,
+  boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+  padding: "16px 20px",
+  minWidth: 280,
+  maxWidth: 420,
+  border: "1px solid #D6DFE2",
+  position: "relative",
+};
+
+const feedbackClose = {
+  position: "absolute",
+  top: 8,
+  right: 10,
+  border: "none",
+  background: "transparent",
+  cursor: "pointer",
+  fontSize: 18,
+  fontWeight: 700,
+  color: "#666",
+};
+
+const feedbackText = {
+  fontSize: 14,
+  color: "#17292B",
+  paddingRight: 16,
+};
+
+const modalOverlay = {
+  position: "fixed",
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  background: "rgba(0,0,0,0.5)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 1000,
+};
+
+const modalCard = {
+  background: "#fff",
+  borderRadius: 12,
+  padding: 24,
+  maxWidth: 400,
+  width: "90%",
+  boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+};
+
+const inviteEmailInput = {
+  width: "100%",
+  padding: "12px 14px",
+  fontSize: 16,
+  border: "1px solid #ddd",
+  borderRadius: 8,
+  outline: "none",
+  boxSizing: "border-box",
+};
+
+const modalCancelBtn = {
+  padding: "10px 18px",
+  borderRadius: 8,
+  fontSize: 14,
+  fontWeight: 600,
+  cursor: "pointer",
+  background: "#fff",
+  color: "#111",
+  border: "1px solid #bbb",
+};
+
+const modalSendBtn = {
+  padding: "10px 18px",
+  borderRadius: 8,
+  fontSize: 14,
+  fontWeight: 600,
+  cursor: "pointer",
+  background: "#111",
+  color: "#fff",
+  border: "1px solid #111",
+};
+
+const modalSendBtnDisabled = {
+  padding: "10px 18px",
+  borderRadius: 8,
+  fontSize: 14,
+  fontWeight: 600,
+  cursor: "not-allowed",
+  background: "#ccc",
+  color: "#666",
+  border: "1px solid #ccc",
+};
