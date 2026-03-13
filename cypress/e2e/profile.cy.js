@@ -1,6 +1,13 @@
 describe('Profile and EditProfile flows', () => {
+  const goToProfile = () => {
+    cy.contains('Profile', { timeout: 10000 }).click();
+    cy.wait('@getProfile');
+    cy.wait('@getUserCourses');
+    cy.url().should('include', '/profile');
+  };
+
   beforeEach(() => {
-  // stub profile data
+    // stub profile data
     cy.intercept('GET', '/api/profile', {
       statusCode: 200,
       body: {
@@ -116,20 +123,20 @@ describe('Profile and EditProfile flows', () => {
         },
       });
     }).as('searchUsers');
-    cy.visit('/')
 
-    cy.get('input[name="email"]').type('jc@uwaterloo.ca')
-    cy.get('input[name="password"]').type('Password')
+    // login first
+    cy.visit('/');
 
-    cy.contains('button', 'Log In').click()
+    cy.get('input[name="email"]').type('jc@uwaterloo.ca');
+    cy.get('input[name="password"]').type('Password');
 
-    cy.contains('Home', { timeout: 10000 }).should('be.visible')
+    cy.contains('button', 'Log In').click();
+
+    cy.contains('Home', { timeout: 10000 }).should('be.visible');
   });
 
   it('displays profile information', () => {
-    cy.visit('/profile');
-    cy.wait('@getProfile');
-    cy.wait('@getUserCourses');
+    goToProfile();
 
     cy.contains('Alice');
     cy.contains('Management Engineering', { timeout: 10000 });
@@ -146,10 +153,12 @@ describe('Profile and EditProfile flows', () => {
       req.reply({ statusCode: 200, body: { ok: true } });
     }).as('putProfile');
 
-    cy.visit('/edit-profile');
-    cy.wait('@getProfile');
+    goToProfile();
+
+    cy.contains('Edit Profile').click();
     cy.wait('@getPrograms');
     cy.wait('@getCourses');
+    cy.url().should('include', '/edit-profile');
 
     cy.get('[data-testid="display-name-input"]').clear().type('Bob');
 
@@ -167,9 +176,7 @@ describe('Profile and EditProfile flows', () => {
   });
 
   it('displays gender, birthday, and phone number on the profile page', () => {
-    cy.visit('/profile');
-    cy.wait('@getProfile');
-    cy.wait('@getUserCourses');
+    goToProfile();
 
     cy.contains('Alice');
     cy.contains('Woman');
@@ -195,9 +202,10 @@ describe('Profile and EditProfile flows', () => {
       },
     }).as('getProfileNoGender');
 
-    cy.visit('/profile');
+    cy.contains('Profile', { timeout: 10000 }).click();
     cy.wait('@getProfileNoGender');
     cy.wait('@getUserCourses');
+    cy.url().should('include', '/profile');
 
     cy.contains('Alice');
     cy.contains('Birthday: 12/19/2005');
@@ -211,16 +219,14 @@ describe('Profile and EditProfile flows', () => {
       body: { error: 'Failed to fetch profile' },
     }).as('getProfileFail');
 
-    cy.visit('/profile');
+    cy.contains('Profile', { timeout: 10000 }).click();
     cy.wait('@getProfileFail');
 
     cy.contains('Profile failed to load.');
   });
 
   it('routes to the program students page when the program chip is clicked', () => {
-    cy.visit('/profile');
-    cy.wait('@getProfile');
-    cy.wait('@getUserCourses');
+    goToProfile();
 
     cy.contains('Management Engineering').click();
 
@@ -231,7 +237,10 @@ describe('Profile and EditProfile flows', () => {
   });
 
   it('shows people and their current courses on the program students page', () => {
-    cy.visit('/programs/1/students');
+    goToProfile();
+
+    cy.contains('Management Engineering').click();
+    cy.url().should('include', '/programs/1/students');
     cy.wait('@getProgramStudents');
 
     cy.contains('Alice');
@@ -244,7 +253,10 @@ describe('Profile and EditProfile flows', () => {
   });
 
   it('shows all users on the profile search page when the search bar is empty', () => {
-    cy.visit('/profile-search');
+    goToProfile();
+
+    cy.contains('Profile Search').click();
+    cy.url().should('include', '/profile-search');
     cy.wait('@searchUsers');
 
     cy.contains('Search Users');
@@ -254,7 +266,10 @@ describe('Profile and EditProfile flows', () => {
   });
 
   it('filters the profile search list when text is entered', () => {
-    cy.visit('/profile-search');
+    goToProfile();
+
+    cy.contains('Profile Search').click();
+    cy.url().should('include', '/profile-search');
     cy.wait('@searchUsers');
 
     cy.get('[data-testid="user-search-input"]').type('Alice');
@@ -266,7 +281,10 @@ describe('Profile and EditProfile flows', () => {
   });
 
   it('shows staff department in profile search results for staff users', () => {
-    cy.visit('/profile-search');
+    goToProfile();
+
+    cy.contains('Profile Search').click();
+    cy.url().should('include', '/profile-search');
     cy.wait('@searchUsers');
 
     cy.contains('Jordan Lee');
