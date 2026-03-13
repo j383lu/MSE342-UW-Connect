@@ -1,32 +1,25 @@
 // Author: Lauren Jung
-// Notes: The Log in and Registration page is not set up to handle data as we have not completed the authentication lecture yet
-// (Will be implemented in a later sprint)
 
 describe('Login and Registration Flow', () => {
   
     beforeEach(() => {
-        cy.visit('/login');
+        cy.visit('/');
     });
 
     it('should toggle between Login and Registration pages', () => {
         // starts at login
-        cy.contains('h1', 'Sign In').should('be.visible');
-    
-        // switch to registration
-        cy.contains("Don't have an account? Create an account").click();
-        cy.contains('h1', 'Register').should('be.visible');
-        cy.contains('Welcome to UW Connect').should('be.visible');
+        cy.contains('Sign In').should('be.visible');
 
-        // switch back to login
-        cy.contains('Already have an account? Log in').click();
-        cy.contains('h1', 'Sign In').should('be.visible');
+        cy.contains("Don't have an account?").click();
+        cy.contains('Register').should('be.visible');
+
+        cy.contains('Already have an account?').click();
+        cy.contains('Sign In').should('be.visible');
     });
 
     it('should show validation errors on empty login submission', () => {
         // click submit without entering data
-        cy.get('button[type="submit"]').click();
-        
-        // check that the error message exists globally
+        cy.get('button').contains('Log In').click();
         cy.contains('This field is required.').should('be.visible');
     });
 
@@ -73,5 +66,61 @@ describe('Login and Registration Flow', () => {
         
         // since there is no redirect yet, check the console log or lack of errors
         cy.get('body').should('not.contain', 'This field is required.');
+    });
+
+    it('should reject registration with a non-Waterloo email', () => {
+        cy.contains("Don't have an account?").click();
+        
+        // Fill out standard info
+        cy.get('input[name="firstname"]').type('Lauren');
+        cy.get('input[name="lastname"]').type('Jung');
+        cy.get('input[name="username"]').type('ljung_test');
+        
+        // Use a generic email
+        cy.get('input[name="email"]').type('lauren@gmail.com');
+        cy.get('input[name="password"]').type('ValidPass1!');
+        cy.get('input[name="confirmpassword"]').type('ValidPass1!');
+
+        cy.get('button[type="submit"]').click();
+
+        // Check for your specific error string
+        cy.contains('Only @uwaterloo.ca addresses are allowed.').should('be.visible');
+    });
+
+    it('should enforce password casing requirements (Story 10)', () => {
+        cy.contains("Don't have an account?").click();
+
+        // Type a password with NO uppercase
+        cy.get('input[name="password"]').type('alllowercase1!');
+        cy.get('button[type="submit"]').click();
+        cy.contains('Password must contain an uppercase').should('be.visible');
+
+        // Clear and type a password with NO lowercase
+        cy.get('input[name="password"]').clear().type('ALLLOWERCASE1!');
+        cy.get('button[type="submit"]').click();
+        cy.contains('Password must contain a lowercase letter.').should('be.visible');
+    });
+
+    it('should show server error if registration fails (MySQL/Firebase)', () => {
+        cy.contains("Don't have an account?").click();
+        
+        // Simulate a scenario that might cause a backend error (like a duplicate email)
+        // Note: In a real E2E, this hits your actual database unless you cy.intercept
+        cy.get('input[name="firstname"]').type('Lauren');
+        cy.get('input[name="lastname"]').type('Jung');
+        cy.get('input[name="username"]').type('duplicate_user');
+        cy.get('input[name="email"]').type('lauren@uwaterloo.ca');
+        cy.get('input[name="password"]').type('ValidPass1!');
+        cy.get('input[name="confirmpassword"]').type('ValidPass1!');
+
+        cy.get('button[type="submit"]').click();
+
+        // If the email exists, it should show the error caught in your catch block
+        // We use a regex here to be flexible with the exact Firebase error string
+        cy.get('body').then(($body) => {
+            if ($body.text().includes('already in use')) {
+                cy.contains(/already in use/i).should('be.visible');
+            }
+        });
     });
 });

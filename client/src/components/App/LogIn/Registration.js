@@ -7,9 +7,13 @@ import { Typography, Button, TextField, Box, Container, Link, Card, CardContent 
 import { InputAdornment, IconButton } from '@mui/material';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
+import { useNavigate } from 'react-router-dom';
+import { withFirebase } from '../../Firebase';
 
 
-const Registration = ({ onSwitchPage }) => { 
+const Registration = ({ onSwitchPage, firebase }) => { 
+
+    const navigate = useNavigate();
 
     const [formData, setFormData] = useState({
             firstname: '',
@@ -58,11 +62,11 @@ const Registration = ({ onSwitchPage }) => {
         setShowPassword(!showPassword);
     };
 
-    const handleSubmit = (event) => {
+    const handleSubmit = async(event) => {
         event.preventDefault();
         let newErrors = {};
 
-        // Validation 1: All fields required
+        // validation 1: All fields required
         Object.keys(formData).forEach((key) => {
             if (!formData[key]) {
                 newErrors[key] = 'This field is required.' ;
@@ -76,10 +80,63 @@ const Registration = ({ onSwitchPage }) => {
             }
         }
 
+        if (!formData.email) {
+            newErrors.email = 'Email is required.';
+        } else {
+        // uwaterloo address restriction
+        const emailLower = formData.email.toLowerCase();
+        if (!emailLower.endsWith('@uwaterloo.ca')) {
+            newErrors.email = 'Only @uwaterloo.ca addresses are allowed.';
+        }
+    }
+
+        if (formData.password) {
+        const password = formData.password;
+
+            if (password.length < 8) {
+                newErrors.password = 'Password doesn’t meet minimum character length.'; // AC 1
+            } else if (password.length > 32) {
+                newErrors.password = 'Password has exceeded the maximum character length'; // AC 2
+            } else if (!/[A-Z]/.test(password)) {
+                newErrors.password = 'Password must contain an uppercase'; // AC 3
+            } else if (!/[a-z]/.test(password)) {
+                newErrors.password = 'Password must contain a lowercase letter.'; // AC 4
+            }
+        }
+
         if (Object.keys(newErrors).length > 0) {
             setErrors(newErrors);
         } else {
-            console.log('Form Submitted successfully', formData);
+            try {
+                // create user in Firebase
+                const authUser = await firebase.doCreateUserWithEmailAndPassword(
+                    formData.email, 
+                    formData.password
+                );
+                
+                const dataToSave = {
+                    ...formData,
+                    firebase_uid: authUser.user.uid
+                };
+
+                //if Firebase succeeds, save to your MySQL API
+                const response = await fetch('https://urban-doodle-699q9xp7xgx4394r-5000.app.github.dev/api/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dataToSave) 
+                });
+
+                if (response.ok) {
+                    console.log('Successfully registered in both Firebase and MySQL');
+                    navigate('/feed'); 
+                } else {
+                    const errorData = await response.json();
+                    setErrors({ email: errorData.message || 'Database registration failed.' });
+                }
+
+            } catch (error) {
+                setErrors({ email: error.message });
+            }
         }
     };
 
@@ -126,7 +183,6 @@ const Registration = ({ onSwitchPage }) => {
                                     id="firstname"
                                     label="First Name"
                                     name="firstname"
-                                    autoFocus
                                     value={formData.firstname}
                                     onChange={handleChange}
                                     error={!!errors.firstname}
@@ -139,7 +195,6 @@ const Registration = ({ onSwitchPage }) => {
                                     id="lastname"
                                     label="Last Name"
                                     name="lastname"
-                                    autoFocus
                                     value={formData.lastname}
                                     onChange={handleChange}
                                     error={!!errors.lastname}
@@ -249,4 +304,5 @@ const Registration = ({ onSwitchPage }) => {
     );
 }
 
-export default Registration;
+export { Registration }
+export default withFirebase(Registration);
