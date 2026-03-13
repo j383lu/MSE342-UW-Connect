@@ -44,7 +44,7 @@ function EditPostForm({open, onClose, onSubmit, post}) {
     return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle>
-        <Typography variant="h6">Edit Post</Typography>
+        Edit Post
       </DialogTitle>
 
       <DialogContent>

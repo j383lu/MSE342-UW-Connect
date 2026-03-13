@@ -3,6 +3,19 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import Post from "../Post";
 
+beforeEach(() => {
+  global.fetch = jest.fn(() =>
+    Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve([])
+    })
+  );
+});
+
+afterEach(() => {
+  jest.resetAllMocks();
+});
+
 describe("Create Text Post", () => {
 
   test("1. Clicking Create Post opens empty form", () => {
@@ -101,25 +114,25 @@ describe("Create Text Post", () => {
   });
 
   test("8. Shows error when title exceeds maximum length", () => {
-  render(<Post />);
+    render(<Post />);
 
-  fireEvent.click(screen.getByText(/create post/i));
+    fireEvent.click(screen.getByText(/create post/i));
 
-  const longTitle = "a".repeat(101);
+    const longTitle = "a".repeat(101);
 
-  fireEvent.change(screen.getByLabelText(/title/i), {
-    target: { value: longTitle }
-  });
+    fireEvent.change(screen.getByLabelText(/title/i), {
+      target: { value: longTitle }
+    });
 
-  fireEvent.change(screen.getByLabelText(/description/i), {
-    target: { value: "Valid description" }
-  });
+    fireEvent.change(screen.getByLabelText(/description/i), {
+      target: { value: "Valid description" }
+    });
 
-  fireEvent.click(screen.getByText(/submit/i));
+    fireEvent.click(screen.getByText(/submit/i));
 
-  expect(
-    screen.getByText(/title exceeds maximum length/i)
-  ).toBeInTheDocument();
+    expect(
+      screen.getByText(/title exceeds maximum length/i)
+    ).toBeInTheDocument();
 });
 
 test("9. Shows error when title contains only spaces", () => {

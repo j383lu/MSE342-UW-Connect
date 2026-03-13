@@ -77,7 +77,7 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter }) {
 
         <CardActions>
           {/* Like button - visible to everyone */}
-          <IconButton onClick={() => onLikePost(post.post_id)} size="small">
+          <IconButton data-testid="like-button" onClick={() => onLikePost(post.post_id)} size="small">
             {post.liked_by_me
               ? <FavoriteIcon fontSize="small" color="error" />
               : <FavoriteBorderIcon fontSize="small" />}

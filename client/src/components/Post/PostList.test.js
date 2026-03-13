@@ -1,35 +1,67 @@
+import React from "react";
 import { render, screen } from "@testing-library/react";
 import '@testing-library/jest-dom';
 import PostList from "../Post/PostList";
+import { MemoryRouter } from "react-router-dom";
+
+const renderList = (props = {}) => {
+  render(
+    <MemoryRouter>
+      <PostList {...defaultProps} {...props} />
+    </MemoryRouter>
+  );
+};
+
+const mockPosts = [
+  {
+    post_id: 1,
+    author_id: 1,
+    title: "Co-op Opportunity",
+    description: "Looking for co-op students",
+    createdAt: new Date().toISOString(),
+    tags: [],
+    like_count: 0,
+    liked_by_me: false,
+    comment_count: 0
+  },
+  {
+    post_id: 2,
+    author_id: 1,
+    title: "Intramural Soccer",
+    description: "Need 2 more players",
+    createdAt: new Date().toISOString(),
+    tags: [],
+    like_count: 0,
+    liked_by_me: false,
+    comment_count: 0
+  }
+];
+
+const defaultProps = {
+  posts: mockPosts,
+  onDeletePost: jest.fn(),
+  onEditPost: jest.fn(),
+  onLikePost: jest.fn(),
+  onTagFilter: jest.fn()
+};
 
 describe("PostList", () => {
-  const mockPosts = [
-    {
-      post_id: 1,
-      title: "Co-op Opportunity",
-      description: "Looking for co-op students",
-      createdAt: new Date().toISOString(),
-      tags: []
-    },
-    {
-      post_id: 2,
-      title: "Intramural Soccer",
-      description: "Need 2 more players",
-      createdAt: new Date().toISOString(),
-      tags: []
-    }
-  ];
-
-  function renderComponent(props = {}) {
-    render(<PostList posts={mockPosts} {...props} />);
-  }
 
   it("renders all posts", () => {
-    renderComponent();
-
+    renderList();
     expect(screen.getByText("Co-op Opportunity")).toBeInTheDocument();
     expect(screen.getByText("Looking for co-op students")).toBeInTheDocument();
     expect(screen.getByText("Intramural Soccer")).toBeInTheDocument();
     expect(screen.getByText("Need 2 more players")).toBeInTheDocument();
+  });
+
+  it("renders empty list without crashing", () => {
+    renderList( {posts: []});
+    expect(screen.queryByText("Co-op Opportunity")).not.toBeInTheDocument();
+  });
+
+  it("renders correct number of posts", () => {
+    renderList();
+    expect(screen.getAllByText(/just now/i)).toHaveLength(2);
   });
 });
