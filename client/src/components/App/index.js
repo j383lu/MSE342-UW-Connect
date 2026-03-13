@@ -5,6 +5,7 @@ import theme from './Theme';
 import Navbar from './Navbar';
 import LogInAndRegister from './LogIn/LogInAndRegister';
 import Post from '../Post'
+import PostDetailPage from '../Post/PostDetailPage'
 import { FirebaseContext } from '../Firebase';
 import { useState, useEffect, useContext } from 'react';
 
@@ -20,14 +21,13 @@ import CreateEventForm from "./Events/CreateEventForm";
 
 // Import profile components
 import ProfilePage from "./Profile/Profile";
-import EditProfile from "./Profile/EditProfile";  
-
-// placeholders (optional)
-const HomePage = () => <div>Home</div>;
+import EditProfile from "./Profile/EditProfile";
+import ProgramStudents from "./Profile/ProgramStudents";
+import ProfileSearch from "./Profile/ProfileSearch";
 
 function AppContent({ authUser }) {
   const location = useLocation();
-  
+
   const isLoginPage = location.pathname === "/";
   const authenticated = !!authUser;
 
@@ -37,11 +37,20 @@ function AppContent({ authUser }) {
       <Routes>
         {/* login is the default page */}
         <Route path="/" element={<LogInAndRegister />} />
-        
-        {/* when authenticated */}
+
+        {/* authenticated routes */}
         <Route path="/feed" element={authenticated ? <Post /> : <Navigate to="/" />} />
+        <Route path="/feed/:postId" element={authenticated ? <PostDetailPage /> : <Navigate to="/"/>} />
         <Route path="/profile" element={authenticated ? <ProfilePage /> : <Navigate to="/" />} />
         <Route path="/edit-profile" element={authenticated ? <EditProfile /> : <Navigate to="/" />} />
+        <Route
+          path="/programs/:programId/students"
+          element={authenticated ? <ProgramStudents /> : <Navigate to="/" />}
+        />
+        <Route
+          path="/profile-search"
+          element={authenticated ? <ProfileSearch /> : <Navigate to="/" />}
+        />
         <Route path="/groups" element={authenticated ? <GroupsPage /> : <Navigate to="/" />} />
         <Route path="/groups/new" element={authenticated ? <CreateGroupForm /> : <Navigate to="/" />} />
         <Route path="/groups/:groupId" element={authenticated ? <GroupDetailsPage /> : <Navigate to="/" />} />
@@ -59,7 +68,7 @@ const App = () => {
 
   useEffect(() => {
     if (firebase) {
-      const unsubscribe = firebase.auth.onAuthStateChanged(user => {
+      const unsubscribe = firebase.auth.onAuthStateChanged((user) => {
         user ? setAuthUser(user) : setAuthUser(null);
       });
       return () => unsubscribe();
