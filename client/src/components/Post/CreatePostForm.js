@@ -93,9 +93,7 @@ function CreatePostForm({ open, onClose, onSubmit }) {
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle>
-        <Typography variant="h6">
           Create a New Post
-        </Typography>
       </DialogTitle>
 
       <DialogContent>

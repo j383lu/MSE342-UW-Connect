@@ -1,12 +1,13 @@
 import * as React from "react";
 import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
-import { ThemeProvider } from "@mui/material/styles";
-import theme from "./Theme";
-import Navbar from "./Navbar";
-import LogInAndRegister from "./LogIn/LogInAndRegister";
-import Post from "../Post";
-import { FirebaseContext } from "../Firebase";
-import { useState, useEffect, useContext } from "react";
+import { ThemeProvider } from '@mui/material/styles';
+import theme from './Theme';
+import Navbar from './Navbar';
+import LogInAndRegister from './LogIn/LogInAndRegister';
+import Post from '../Post'
+import PostDetailPage from '../Post/PostDetailPage'
+import { FirebaseContext } from '../Firebase';
+import { useState, useEffect, useContext } from 'react';
 
 // Import groups components
 import GroupsPage from "./Groups/GroupsPage";
@@ -39,6 +40,7 @@ function AppContent({ authUser }) {
 
         {/* authenticated routes */}
         <Route path="/feed" element={authenticated ? <Post /> : <Navigate to="/" />} />
+        <Route path="/feed/:postId" element={authenticated ? <PostDetailPage /> : <Navigate to="/"/>} />
         <Route path="/profile" element={authenticated ? <ProfilePage /> : <Navigate to="/" />} />
         <Route path="/edit-profile" element={authenticated ? <EditProfile /> : <Navigate to="/" />} />
         <Route
