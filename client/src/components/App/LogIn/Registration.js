@@ -120,11 +120,12 @@ const Registration = ({ onSwitchPage, firebase }) => {
                     lastname: formData.lastname,
                     username: formData.username,
                     email: formData.email,
+                    password: formData.password,
                     firebase_uid: authUser.user.uid
                 };
 
                 //if Firebase succeeds, save to your MySQL API
-                const response = await fetch('https://urban-doodle-699q9xp7xgx4394r-5000.app.github.dev/api/register', {
+                const response = await fetch('/api/register', {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
@@ -138,7 +139,7 @@ const Registration = ({ onSwitchPage, firebase }) => {
                     navigate('/feed'); 
                 } else {
                     const errorData = await response.json();
-                    setErrors({ email: errorData.message || 'Database registration failed.' });
+                    setErrors({ email: errorData.error || 'Database registration failed.' });
                 }
 
             } catch (error) {

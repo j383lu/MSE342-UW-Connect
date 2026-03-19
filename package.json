@@ -2,6 +2,7 @@
     "name": "node-react-app",
     "version": "1.0.0",
     "type": "module",
+    "proxy": "https://urban-doodle-699q9xp7xgx4394r-5000.app.github.dev",
     "scripts": {
         "client": "cd client && yarn start",
         "server": "nodemon server.js",

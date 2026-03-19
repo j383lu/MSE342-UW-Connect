@@ -28,7 +28,9 @@ const checkAuth = (req, res, next) => {
     return res.status(401).json({ message: 'No token provided' });
   }
 
-  const idToken = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : authHeader;
+  const idToken = authHeader.startsWith('Bearer ') 
+      ? authHeader.split('Bearer ')[1] 
+      : authHeader;
 
   admin.auth().verifyIdToken(idToken)
     .then(decodedToken => {
@@ -1381,36 +1383,32 @@ app.post('/api/posts/:id/like', checkAuth, (req, res) => {
 
 // for registration
 app.post('/api/register', checkAuth, (req, res) => {
-    const { email, password, username, firebase_uid, firsname, lastname } = req.body;
+   const { email, password, username, firebase_uid } = req.body;
+    
     const sqlCredentials = "INSERT INTO User_Credentials (email, password_hash, firebase_uid) VALUES (?, ?, ?)";
     
+    // insert into Credentials
     db.query(sqlCredentials, [email, password, firebase_uid], (err, result) => {
-        if (err) return res.status(500).json({ error: "Database error during registration." });
-        
-        const newUserId = result.insertId;
-        const sqlProfile = "INSERT INTO User_Profiles (user_id, display_name) VALUES (?, ?)";
-        
-        db.query(sqlProfile, [newUserId, username], (profileErr) => {
-            if (err) {
+        if (err) {
             console.error("Credentials Error:", err);
             return res.status(500).json({ error: "Database error during registration." });
         }
         
         const newUserId = result.insertId;
-        
         const sqlProfile = "INSERT INTO User_Profiles (user_id, display_name) VALUES (?, ?)";
         
+        // insert into Profile
         db.query(sqlProfile, [newUserId, username], (profileErr) => {
             if (profileErr) {
                 console.error("Profile Error:", profileErr);
                 return res.status(500).json({ error: "Profile creation failed." });
             }
             
-            res.status(201).json({ 
+            console.log(`User ${newUserId} fully registered!`);
+            return res.status(201).json({ 
                 message: "User created successfully!",
-                user_id: newUserId 
+                userId: newUserId 
             });
-        });
         });
     });
 });
