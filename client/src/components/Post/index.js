@@ -3,8 +3,9 @@ import { Grid, Button, Typography, TextField, Stack, Chip } from "@mui/material"
 import PostList from "./PostList";
 import CreatePostForm from "./CreatePostForm";
 import EditPostForm from "./EditPostForm";
+import { withFirebase } from "../Firebase";
 
-function Post() {
+function Post({firebase}) {
   const [posts, setPosts] = useState([]);
   const [open, setOpen] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -19,9 +20,22 @@ function Post() {
 
   const fetchPosts = async () => {
     try {
-      const response = await fetch('/api/posts');
+      const token = await firebase.auth.currentUser?.getIdToken();
+
+      const response = await fetch('/api/posts', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
       const data = await response.json();
+
+      if (response.ok && Array.isArray(data)) {
       setPosts(data);
+      } else {
+        setPosts([]); // Fallback to empty array if 401 or error
+      }
+
     } catch (error) {
       console.error("Error fetching posts:", error);
     }
@@ -43,7 +57,11 @@ function Post() {
     }
 
     try {
-      const response = await fetch(`/api/posts/search?keyword=${encodeURIComponent(searchKeyword)}`);
+      const token = await firebase.auth.currentUser?.getIdToken();
+      const response = await fetch(`/api/posts/search?keyword=${encodeURIComponent(searchKeyword)}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
       const data = await response.json();
       console.log(data)
 
@@ -64,10 +82,13 @@ function Post() {
   // create post
   const handleCreatePost = async (newPost) => {
     try {
+      const token = await firebase.auth.currentUser?.getIdToken();
+
       const response = await fetch('/api/posts', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           title: newPost.title,

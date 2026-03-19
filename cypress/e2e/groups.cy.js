@@ -1,6 +1,18 @@
 describe('Groups Feature', () => {
   beforeEach(() => {
     // Visit the groups page before each test
+    cy.intercept('GET', '**/api/users/*/invites', {
+      statusCode: 200,
+      body: [
+        {
+          invite_id: 1,
+          group_id: 1,
+          group_name: 'Test Group',
+          inviter_name: 'Test User'
+        }
+      ]
+    }).as('getInvites');
+    
     cy.visit('/')
 
     cy.get('input[name="email"]').type('jc@uwaterloo.ca')

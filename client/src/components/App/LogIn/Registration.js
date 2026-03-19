@@ -113,17 +113,24 @@ const Registration = ({ onSwitchPage, firebase }) => {
                     formData.email, 
                     formData.password
                 );
+                const token = await authUser.user.getIdToken();
                 
                 const dataToSave = {
-                    ...formData,
+                    firstname: formData.firstname,
+                    lastname: formData.lastname,
+                    username: formData.username,
+                    email: formData.email,
                     firebase_uid: authUser.user.uid
                 };
 
                 //if Firebase succeeds, save to your MySQL API
                 const response = await fetch('https://urban-doodle-699q9xp7xgx4394r-5000.app.github.dev/api/register', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(dataToSave) 
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}` // Good practice to send the token
+                    },
+                    body: JSON.stringify(dataToSave)
                 });
 
                 if (response.ok) {

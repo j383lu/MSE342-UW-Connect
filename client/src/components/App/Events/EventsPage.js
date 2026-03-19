@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useContext } from "react";
 import { useNavigate } from "react-router-dom";
+import { FirebaseContext } from '../../Firebase';
 
 export default function EventsPage() {
   const navigate = useNavigate();
+  const firebase = useContext(FirebaseContext);
 
   // Main event list states
   const [events, setEvents] = useState([]);
@@ -34,7 +36,14 @@ export default function EventsPage() {
       setError("");
 
       // Set includePast=true to return all the events
-      const res = await fetch("/api/events?includePast=true");
+      const user = firebase.auth.currentUser; 
+      if (!user) return; 
+
+      const token = await user.getIdToken();
+
+      const res = await fetch("/api/events?includePast=true", {
+        headers: { 'Authorization': token } // send token in header 
+      });
       const data = await res.json();
 
       // Backend error handling
@@ -59,11 +68,15 @@ export default function EventsPage() {
   const loadAttendees = async (eventId) => {
     try {
       setDetailsLoading(true);
+      const user = firebase.auth.currentUser;
+      const token = await user.getIdToken();
       setDetailsError("");
       setAttendees([]);
 
       // Use the correct api
-      const res = await fetch(`/api/events/${eventId}/attendees`);
+      const res = await fetch(`/api/events/${eventId}/attendees`, {
+        headers: { 'Authorization': token }
+      });
       const data = await res.json();
 
       // Handle load attendees errors
@@ -100,13 +113,23 @@ export default function EventsPage() {
   // Update the current_count in UI
   // If attendees panel is open, reload it to show the new attendee
   const handleJoin = async (ev) => {
-    const name = window.prompt("Enter your name to join this event:");
-    if (!name) return;
+    const user = firebase.auth.currentUser; // get current user
+    if (!user) {
+      window.alert("Please log in to join events.");
+      return;
+    }
+    const name = user.displayName || user.email
+    // const name = window.prompt("Enter your name to join this event:");
+    // if (!name) return;
 
     try {
+      const token = await user.getIdToken();
       const res = await fetch(`/api/events/${ev.id}/join`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": token
+         },
         body: JSON.stringify({ attendee_name: name }),
       });
 

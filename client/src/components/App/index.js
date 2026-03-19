@@ -8,6 +8,7 @@ import Post from '../Post'
 import PostDetailPage from '../Post/PostDetailPage'
 import { FirebaseContext } from '../Firebase';
 import { useState, useEffect, useContext } from 'react';
+import PrivateRoute from '../Navigation/PrivateRoute';
 
 // Import groups components
 import GroupsPage from "./Groups/GroupsPage";
@@ -68,17 +69,28 @@ const App = () => {
 
   useEffect(() => {
     if (firebase) {
-      const unsubscribe = firebase.auth.onAuthStateChanged((user) => {
-        user ? setAuthUser(user) : setAuthUser(null);
+      const listener = firebase.auth.onAuthStateChanged(user => {
+        if (user) {
+          setAuthUser(user);
+        } else {
+          setAuthUser(null);
+        }
       });
-      return () => unsubscribe();
+      // Cleanup: unsubscribe the listener when the component unmounts
+      return () => listener();
     }
   }, [firebase]);
 
+  const authenticated = !!authUser;
+
   return (
     <BrowserRouter>
-      <AppContent authUser={authUser} />
-    </BrowserRouter>
+        {/* Only show navbar if authenticated */}
+        {authenticated && <Navbar authUser={authUser} />}
+        
+        {/* privateroute now handles all page switching */}
+        <PrivateRoute authenticated={authenticated} authUser={authUser} />
+      </BrowserRouter>
   );
 };
 
