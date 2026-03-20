@@ -8,6 +8,8 @@ import Post from '../Post'
 import PostDetailPage from '../Post/PostDetailPage'
 import { FirebaseContext } from '../Firebase';
 import { useState, useEffect, useContext } from 'react';
+import PrivateRoute from '../Navigation/PrivateRoute';
+import { UserProvider } from '../../contexts/UserContext';
 
 // Import groups components
 import GroupsPage from "./Groups/GroupsPage";
@@ -68,16 +70,19 @@ const App = () => {
 
   useEffect(() => {
     if (firebase) {
-      const unsubscribe = firebase.auth.onAuthStateChanged((user) => {
-        user ? setAuthUser(user) : setAuthUser(null);
+      const listener = firebase.auth.onAuthStateChanged(user => {
+        setAuthUser(user || null);
       });
-      return () => unsubscribe();
+      return () => listener();
     }
   }, [firebase]);
 
   return (
     <BrowserRouter>
-      <AppContent authUser={authUser} />
+      {/* Wrap everything here so UserProvider has access to the Router */}
+      <UserProvider>
+        <AppContent authUser={authUser} />
+      </UserProvider>
     </BrowserRouter>
   );
 };

@@ -1,10 +1,12 @@
 // client/src/components/App/Groups/CreateGroupForm.js
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useContext } from "react";
 import { useNavigate } from "react-router-dom";
+import { FirebaseContext } from '../../Firebase';
 
 export default function CreateGroupForm() {
   const navigate = useNavigate();
+  const firebase = useContext(FirebaseContext);
 
   const [coverImage, setCoverImage] = useState(null);
   const [coverPreview, setCoverPreview] = useState("");
@@ -47,10 +49,17 @@ export default function CreateGroupForm() {
         setLoadingTags(true);
         setTagsError("");
 
-        console.log("Fetching tags from /api/tags...");
-        const res = await fetch("/api/tags");
-        console.log("Tags response status:", res.status);
+        const user = firebase.auth.currentUser;
+        const token = user ? await user.getIdToken() : null;
+
+        // console.log("Fetching tags from /api/tags...");
+        // const res = await fetch("/api/tags");
+        // console.log("Tags response status:", res.status);
         
+        const res = await fetch("/api/tags", {
+          headers: token ? { 'Authorization': token } : {} // Only send if user is loaded
+        });
+
         // Check if response is OK
         if (!res.ok) {
           const text = await res.text();
@@ -79,7 +88,7 @@ export default function CreateGroupForm() {
     }
 
     loadTags();
-  }, []);
+  }, [firebase.auth]);
 
   const errors = useMemo(() => {
     const e = {};
@@ -133,6 +142,10 @@ export default function CreateGroupForm() {
 
   async function onSubmit(e) {
     e.preventDefault();
+    if (!canSubmit) return;
+
+    setIsSubmitting(true);
+    setSubmitError("");
 
     setTouched({
       name: true,
@@ -148,6 +161,12 @@ export default function CreateGroupForm() {
     setUploadProgress(0);
 
     try {
+      const user = firebase.auth.currentUser;
+      if (!user) {
+        throw new Error("Authentication required. Please log in again.");
+      }
+      const token = await user.getIdToken();
+      
       // Create FormData for file upload
       const formData = new FormData();
       formData.append('name', name.trim());
@@ -157,10 +176,10 @@ export default function CreateGroupForm() {
       formData.append('maxMembers', maxMembers || '');
 
       // Attach current app user id so backend can set creator_id correctly
-      const currentUserId = localStorage.getItem('currentUserId');
-      if (currentUserId) {
-        formData.append('user_id', currentUserId);
-      }
+      // const currentUserId = localStorage.getItem('currentUserId');
+      // if (currentUserId) {
+      //   formData.append('user_id', currentUserId);
+      // }
       
       if (coverImage) {
         formData.append('coverImage', coverImage);
@@ -181,25 +200,47 @@ export default function CreateGroupForm() {
       const apiUrl = `${baseUrl}/api/groups`;
       console.log("Sending request to:", apiUrl);
 
-      const res = await fetch(apiUrl, {
+      // const res = await fetch(apiUrl, {
+      //   method: 'POST',
+      //   body: formData,
+      // });
+      const res = await fetch("/api/groups", {
         method: 'POST',
+        headers: { 
+          'Authorization': token // Add token here
+          // NOTE: Do NOT set Content-Type; FormData sets it automatically
+        },
         body: formData,
       });
 
       console.log("Response status:", res.status);
       
       // Check if response is OK
-      if (!res.ok) {
-        const responseText = await res.text();
-        console.error("Error response:", responseText.substring(0, 500));
+      // if (!res.ok) {
+      //   const responseText = await res.text();
+      //   console.error("Error response:", responseText.substring(0, 500));
         
-        // Try to parse as JSON if possible
+      //   // Try to parse as JSON if possible
+      //   try {
+      //     const errorData = JSON.parse(responseText);
+      //     throw new Error(errorData.error || errorData.details || `Server error: ${res.status}`);
+      //   } catch (e) {
+      //     // If not JSON, throw the text
+      //     throw new Error(`Server returned ${res.status}: ${responseText.substring(0, 100)}`);
+      //   }
+      // }
+      
+      if (!res.ok) {
+        const errorText = await res.text();
+        
         try {
-          const errorData = JSON.parse(responseText);
-          throw new Error(errorData.error || errorData.details || `Server error: ${res.status}`);
+          const errorData = JSON.parse(errorText);
+          throw new Error(errorData.error || `Server Error: ${res.status}`);
         } catch (e) {
-          // If not JSON, throw the text
-          throw new Error(`Server returned ${res.status}: ${responseText.substring(0, 100)}`);
+          if (errorText.includes("Proxy error")) {
+            throw new Error("Backend server is down (Proxy Error). Check your terminal!");
+          }
+          throw new Error(`Server returned ${res.status}: ${errorText.substring(0, 50)}...`);
         }
       }
 

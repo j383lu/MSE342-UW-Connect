@@ -7,13 +7,40 @@ import bodyParser from 'body-parser';
 import profileRoutes from "./profileRoutes.js";
 import multer from 'multer'; // For file uploads
 import fs from 'fs'; // For file system operations
-import cors from 'cors';
+import admin from 'firebase-admin';
+import serviceAccount from './serviceAccountKey.json' assert {type: 'json'};
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 const port = process.env.PORT || 5000;
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  databaseURL: "https://mse342-group1-default-rtdb.firebaseio.com"
+});
+
+// Middleware to verify Firebase ID Token
+const checkAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ message: 'No token provided' });
+  }
+
+  const idToken = authHeader.startsWith('Bearer ') 
+      ? authHeader.split('Bearer ')[1] 
+      : authHeader;
+
+  admin.auth().verifyIdToken(idToken)
+    .then(decodedToken => {
+      req.user = decodedToken;
+      next();
+    })
+    .catch((error) => {
+       res.status(403).json({ error: 'Unauthorized', message: 'Token invalid' });
+    });
+};
 
 // Create database connection using your config (ONLY ONE DECLARATION)
 const db = mysql.createConnection({
@@ -33,7 +60,6 @@ db.connect((err) => {
   console.log('Connected to MySQL database');
 });
 
-app.use(cors()); 
 app.use(express.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 app.use('/uploads', express.static('uploads'));
@@ -80,7 +106,7 @@ app.use("/api/profile", profileRoutes);
 // GET /api/events
 // default: upcoming only
 // if includePast=true: return all events
-app.get("/api/events", (req, res) => {
+app.get("/api/events", checkAuth, (req, res) => {
   const includePast = String(req.query.includePast).toLowerCase() === "true";
   const whereClause = includePast
     ? ""
@@ -122,6 +148,8 @@ app.get("/api/events", (req, res) => {
 app.post("/api/events", (req, res) => {
   const {title, description, event_date, event_time, location, capacity, category, tags,
   } = req.body;
+app.post("/api/events", checkAuth, (req, res) => {
+  const { title, description, event_date, event_time, location, capacity } = req.body;
 
   if (!title || !description || !event_date || !event_time || !location || capacity === undefined || !category
   ) {
@@ -186,7 +214,7 @@ app.post("/api/events", (req, res) => {
 });
 
 // POST /api/events/:id/join
-app.post("/api/events/:id/join", (req, res) => {
+app.post("/api/events/:id/join", checkAuth, (req, res) => {
   const eventId = Number(req.params.id);
   const attendeeName = String(req.body.attendee_name || "").trim();
 
@@ -237,7 +265,7 @@ app.post("/api/events/:id/join", (req, res) => {
 });
 
 // GET /api/events/:id/attendees
-app.get("/api/events/:id/attendees", (req, res) => {
+app.get("/api/events/:id/attendees", checkAuth, (req, res) => {
   const eventId = Number(req.params.id);
   if (!eventId) return res.status(400).json({ error: "Invalid event id." });
 
@@ -261,7 +289,7 @@ app.use('/uploads', express.static('uploads'));
 //CREATE GROUP PAGE:
 
 ///GET TAGS FROM DATABASE:
-app.get("/api/tags", (req, res) => {
+app.get("/api/tags", checkAuth, (req, res) => {
   const sql = "SELECT tag_id, tag_name FROM Tags ORDER BY tag_name ASC;";
   db.query(sql, (err, rows) => {
     if (err) {
@@ -273,7 +301,7 @@ app.get("/api/tags", (req, res) => {
 });
 
 // CREATE GROUP API (with optional image upload):
-app.post("/api/groups", upload.single('coverImage'), (req, res) => {
+app.post("/api/groups", checkAuth, upload.single('coverImage'), (req, res) => {
   const { name, description, category, isOpen, maxMembers } = req.body;
   
   // Creator comes from the logged-in app user (sent by client)
@@ -335,7 +363,7 @@ app.post("/api/groups", upload.single('coverImage'), (req, res) => {
 });
 
 // GET ALL GROUPS (for discovery page):
-app.get("/api/groups", (req, res) => {
+app.get("/api/groups", checkAuth, (req, res) => {
   const { category, search } = req.query;
   
   let sql = `
@@ -370,7 +398,7 @@ app.get("/api/groups", (req, res) => {
 });
 
 // GET SINGLE GROUP BY ID:
-app.get("/api/groups/:groupId", (req, res) => {
+app.get("/api/groups/:groupId", checkAuth, (req, res) => {
   const groupId = req.params.groupId;
   
   const sql = `
@@ -396,7 +424,7 @@ app.get("/api/groups/:groupId", (req, res) => {
 });
 
 // GET GROUPS CREATED BY USER (Owned Groups):
-app.get("/api/users/:userId/groups/owned", (req, res) => {
+app.get("/api/users/:userId/groups/owned", checkAuth, (req, res) => {
   const userId = req.params.userId;
   
   const sql = `
@@ -417,7 +445,7 @@ app.get("/api/users/:userId/groups/owned", (req, res) => {
 });
 
 // GET GROUPS USER IS A MEMBER OF (My Groups):
-app.get("/api/users/:userId/groups/member", (req, res) => {
+app.get("/api/users/:userId/groups/member", checkAuth, (req, res) => {
   const userId = req.params.userId;
   
   console.log(`GET /api/users/${userId}/groups/member - Fetching user's groups`);
@@ -442,7 +470,7 @@ app.get("/api/users/:userId/groups/member", (req, res) => {
 });
 
 // JOIN GROUP:
-app.post("/api/groups/:groupId/join", (req, res) => {
+app.post("/api/groups/:groupId/join", checkAuth, (req, res) => {
   const groupId = req.params.groupId;
   // Prefer explicit userId from client, fallback to 1 for now
   const userId = Number(req.body.userId) || 1;
@@ -526,7 +554,7 @@ app.delete("/api/groups/:groupId/leave", (req, res) => {
 });
 
 // Create group invite(s) by email (owner only, matches existing Group_Invites schema: id, group_id, email, invited_by_user_id, status, created_at)
-app.post("/api/groups/:groupId/invite", (req, res) => {
+app.post("/api/groups/:groupId/invite", checkAuth, (req, res) => {
   const groupId = Number(req.params.groupId);
   const { emails = [], inviterId } = req.body;
 
@@ -627,7 +655,7 @@ app.post("/api/groups/:groupId/invite", (req, res) => {
 });
 
 // Get pending invites for a user, using email from User_Credentials
-app.get("/api/users/:userId/invites", (req, res) => {
+app.get("/api/users/:userId/invites", checkAuth, (req, res) => {
   const userId = Number(req.params.userId);
   if (!userId) {
     return res.status(400).json({ error: "Invalid userId" });
@@ -659,7 +687,7 @@ app.get("/api/users/:userId/invites", (req, res) => {
 });
 
 // Respond to an invite (accept / decline) using existing Group_Invites schema
-app.post("/api/invites/:inviteId/respond", (req, res) => {
+app.post("/api/invites/:inviteId/respond", checkAuth, (req, res) => {
   const inviteId = Number(req.params.inviteId);
   const { action, userId } = req.body;
 
@@ -841,7 +869,7 @@ app.delete("/api/groups/:groupId", (req, res) => {
 });
 
 // GET GROUP MEMBERS with user details
-app.get("/api/groups/:groupId/members", (req, res) => {
+app.get("/api/groups/:groupId/members", checkAuth, (req, res) => {
   const groupId = req.params.groupId;
   
   console.log(`GET /api/groups/${groupId}/members - Fetching group members`);
@@ -900,12 +928,12 @@ app.use((err, req, res, next) => {
 // FEED PAGE APIs
 
 // Post /api/posts - create a new post
-app.post('/api/posts', (req, res) => {
+app.post('/api/posts', checkAuth, (req, res) => {
     let connection = mysql.createConnection(config);
 
 
     let { title, content, group_id = null, is_anonymous = 0, image_url = null, tags = [] } = req.body;
-    let author_id = 1; // Placeholder for now, should be replaced with actual user ID from authentication
+    // let author_id = 1; // Placeholder for now, should be replaced with actual user ID from authentication
 
     let postSql = 'INSERT INTO Posts (author_id, group_id, title, content, is_anonymous, image_url) VALUES (?, ?, ?, ?, ?, ?)';
     let postData = [author_id, group_id, title, content, is_anonymous, image_url];
@@ -940,7 +968,10 @@ app.post('/api/posts', (req, res) => {
                         connection.end();
                         if (err) {
                             console.error(err);
-                            return res.status(500).send('Error creating post tags');
+                            return res.status(500).json({ 
+                                posts: [], 
+                                error: 'Error creating post tags' 
+                            });
                         } 
                         res.json({
                             post: {
@@ -976,7 +1007,7 @@ app.post('/api/posts', (req, res) => {
 });
 
 // GET /api/posts/tag/:tagName - filter posts by tag
-app.get('/api/posts/tag/:tagName', (req, res) => {
+app.get('/api/posts/tag/:tagName', checkAuth, (req, res) => {
     const connection = mysql.createConnection(config);
     const tagName = req.params.tagName;
     const currentUserId = 1; // placeholder
@@ -1006,7 +1037,7 @@ app.get('/api/posts/tag/:tagName', (req, res) => {
             return res.status(500).json({ error: 'Error filtering posts by tag' });
         }
 
-        const formattedPosts = results.map(post => ({
+        const formattedPosts = (Array.isArray(results) ? results : []).map(post => ({
             post_id: post.post_id,
             author_id: post.author_id,
             title: post.title,
@@ -1026,7 +1057,7 @@ app.get('/api/posts/tag/:tagName', (req, res) => {
 });
 
 // GET API for posts
-app.get('/api/posts', (req, res) => {
+app.get('/api/posts', checkAuth, (req, res) => {
     let connection = mysql.createConnection(config);
     const currentUserId = 1 //Placeholde, need to replace with actually user id later
     let sql = `
@@ -1069,7 +1100,7 @@ app.get('/api/posts', (req, res) => {
 });
 
 // GET API for seraching posts
-app.get('/api/posts/search', (req, res) => {
+app.get('/api/posts/search', checkAuth, (req, res) => {
     const { keyword } = req.query;
 
     if (!keyword || keyword.trim() === "") {
@@ -1125,7 +1156,7 @@ app.get('/api/posts/search', (req, res) => {
 });
 
 // GET /api/posts/:id - get a single post
-app.get('/api/posts/:id', (req, res) => {
+app.get('/api/posts/:id', checkAuth, (req, res) => {
     const connection = mysql.createConnection(config);
     const postId = req.params.id;
     const currentUserId = 1; // placeholder
@@ -1168,7 +1199,7 @@ app.get('/api/posts/:id', (req, res) => {
 });
 
 // GET /api/posts/:id/comments - get all comments for a post
-app.get('/api/posts/:id/comments', (req, res) => {
+app.get('/api/posts/:id/comments', checkAuth, (req, res) => {
     const connection = mysql.createConnection(config);
     const postId = req.params.id;
 
@@ -1191,7 +1222,7 @@ app.get('/api/posts/:id/comments', (req, res) => {
 });
 
 // POST /api/posts/:id/comments - add a comment or reply
-app.post('/api/posts/:id/comments', (req, res) => {
+app.post('/api/posts/:id/comments', checkAuth, (req, res) => {
     const connection = mysql.createConnection(config);
     const postId = req.params.id;
     const { content, parent_comment_id = null } = req.body;
@@ -1348,7 +1379,7 @@ app.put('/api/posts/:id', (req, res) => {
 });
 
 // POST /api/posts/:id/like - toggle like/unlike
-app.post('/api/posts/:id/like', (req, res) => {
+app.post('/api/posts/:id/like', checkAuth, (req, res) => {
     let connection = mysql.createConnection(config);
     const postId = req.params.id;
     const currentUserId = 1; // Placeholder - replace with real auth user ID later
@@ -1615,25 +1646,39 @@ app.get("/api/events/suggestions", (req, res) => {
 });
 
 // for registration
-app.post('/api/register', (req, res) => {
-    const { email, password, username, firebase_uid } = req.body;
+app.post('/api/register', checkAuth, (req, res) => {
+   const { email, password, username, firebase_uid } = req.body;
+    
     const sqlCredentials = "INSERT INTO User_Credentials (email, password_hash, firebase_uid) VALUES (?, ?, ?)";
     
+    // insert into Credentials
     db.query(sqlCredentials, [email, password, firebase_uid], (err, result) => {
-        if (err) return res.status(500).json({ error: "Database error during registration." });
+        if (err) {
+            console.error("Credentials Error:", err);
+            return res.status(500).json({ error: "Database error during registration." });
+        }
         
         const newUserId = result.insertId;
         const sqlProfile = "INSERT INTO User_Profiles (user_id, display_name) VALUES (?, ?)";
         
+        // insert into Profile
         db.query(sqlProfile, [newUserId, username], (profileErr) => {
-            if (profileErr) return res.status(500).json({ error: "Profile creation failed." });
-            res.status(201).json({ message: "User created successfully!" });
+            if (profileErr) {
+                console.error("Profile Error:", profileErr);
+                return res.status(500).json({ error: "Profile creation failed." });
+            }
+            
+            console.log(`User ${newUserId} fully registered!`);
+            return res.status(201).json({ 
+                message: "User created successfully!",
+                userId: newUserId 
+            });
         });
     });
 });
 
 // Lookup app user_id by email (used after Firebase login)
-app.get('/api/users/by-email', (req, res) => {
+app.get('/api/users/by-email', checkAuth, (req, res) => {
   const { email } = req.query;
 
   if (!email) {

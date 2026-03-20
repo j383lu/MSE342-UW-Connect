@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useContext } from "react";
 import { useNavigate } from "react-router-dom";
 import styles from "./eventStyles";
+import { FirebaseContext } from '../../Firebase';
 
 export default function CreateEventForm() {
   const navigate = useNavigate();
+  const firebase = useContext(FirebaseContext);
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -65,10 +67,21 @@ export default function CreateEventForm() {
       return;
     }
 
+    // Create event in MySQL with POST /api/events
     try {
+      const user = firebase.auth.currentUser;
+      if (!user) {
+        setError("You must be logged in to create an event.");
+        return;
+      }
+      const token = await user.getIdToken();
+
       const res = await fetch("/api/events", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json", 
+          "Authorization": token 
+        },
         body: JSON.stringify({
           title,
           description,

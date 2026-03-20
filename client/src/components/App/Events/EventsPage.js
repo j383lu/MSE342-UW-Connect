@@ -1,13 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import EventCard from "./EventCard";
-import styles from "./eventStyles";
 
 export default function EventsPage() {
   const navigate = useNavigate();
-  const searchBoxRef = useRef(null);
-
-  const USER_ID = 1;
 
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -36,6 +31,7 @@ export default function EventsPage() {
       setLoading(true);
       setError("");
 
+      // Set includePast=true to return all the events
       const res = await fetch("/api/events?includePast=true");
       const data = await res.json();
 
@@ -57,9 +53,12 @@ export default function EventsPage() {
   const loadAttendees = async (eventId) => {
     try {
       setDetailsLoading(true);
+      const user = firebase.auth.currentUser;
+      const token = await user.getIdToken();
       setDetailsError("");
       setAttendees([]);
 
+      // Use the correct api
       const res = await fetch(`/api/events/${eventId}/attendees`);
       const data = await res.json();
 
@@ -89,13 +88,23 @@ export default function EventsPage() {
   };
 
   const handleJoin = async (ev) => {
-    const name = window.prompt("Enter your name to join this event:");
-    if (!name) return;
+    const user = firebase.auth.currentUser; // get current user
+    if (!user) {
+      window.alert("Please log in to join events.");
+      return;
+    }
+    const name = user.displayName || user.email
+    // const name = window.prompt("Enter your name to join this event:");
+    // if (!name) return;
 
     try {
+      const token = await user.getIdToken();
       const res = await fetch(`/api/events/${ev.id}/join`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": token
+         },
         body: JSON.stringify({ attendee_name: name }),
       });
 

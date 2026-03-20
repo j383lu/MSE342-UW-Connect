@@ -2,6 +2,7 @@
     "name": "node-react-app",
     "version": "1.0.0",
     "type": "module",
+    "proxy": "https://urban-doodle-699q9xp7xgx4394r-5000.app.github.dev",
     "scripts": {
         "client": "cd client && yarn start",
         "server": "nodemon server.js",
@@ -14,6 +15,7 @@
         "dotenv": "^16.0.3",
         "express": "^4.18.2",
         "firebase": "^12.10.0",
+        "firebase-admin": "^13.7.0",
         "multer": "^2.0.2",
         "mysql": "^2.18.1",
         "node-fetch": "^3.3.1",

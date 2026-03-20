@@ -18,15 +18,23 @@ const LogInPage = ({ onSwitchPage, firebase }) => {
 
     const navigate = useNavigate();
 
-    const [formData, setFormData] = React.useState({ email: '', password: '' });
-    const [errors, setErrors] = React.useState({});
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState({}); 
+    const [showPassword, setShowPassword] = useState(false);
     const [serverError, setServerError] = useState('');
 
     const handleChange = (e) => {
         const { name, value } = e.target;
-        setFormData({ ...formData, [name]: value });
-        // Clear error when user types
-        if (errors[name]) setErrors({ ...errors, [name]: '' });
+        if (name === 'email') setEmail(value);
+        if (name === 'password') setPassword(value);
+        
+        // clear errors as the user types
+        if (error[name]) setError({ ...error, [name]: '' });
+    };
+
+    const handleClickShowPassword = () => {
+        setShowPassword(!showPassword);
     };
 
     const handleSubmit = async(event) => {
@@ -34,62 +42,48 @@ const LogInPage = ({ onSwitchPage, firebase }) => {
         setServerError('');
         let newErrors = {};
 
-        if (!formData.email) newErrors.email = 'This field is required.';
-        if (!formData.password) newErrors.password = 'This field is required.';
+        if (!email) newErrors.email = 'This field is required.';
+        if (!password) newErrors.password = 'This field is required.';
 
-        setErrors(newErrors);
+        if (Object.keys(newErrors).length > 0) {
+            setError(newErrors);
+            return;
+        }
 
-        if (Object.keys(newErrors).length === 0) {
-            try {
-                await firebase.doSignInWithEmailAndPassword(formData.email, formData.password);
-                console.log('Successfully logged in with Firebase');
 
-                // After Firebase login, fetch our app-specific user_id by email
-                try {
-                    const res = await fetch(`/api/users/by-email?email=${encodeURIComponent(formData.email)}`);
-                    if (!res.ok) {
-                        console.error('Failed to fetch user id from backend, status:', res.status);
-                    } else {
-                        const data = await res.json();
-                        if (data && data.userId) {
-                            // Persist current app user id for later use (e.g., Groups, Profile, etc.)
-                            localStorage.setItem('currentUserId', String(data.userId));
-                            console.log('Stored currentUserId in localStorage:', data.userId);
-                        } else {
-                            console.warn('No userId returned from /api/users/by-email');
-                        }
-                    }
-                } catch (lookupError) {
-                    console.error('Error looking up user id after login:', lookupError);
-                }
+        try {
+            const authUser = await firebase.doSignInWithEmailAndPassword(email, password);
+            console.log('Successfully logged in with Firebase');
 
-                navigate('/feed'); 
-            } catch (error) {
-                switch (error.code) {
-                case 'auth/invalid-email':
-                    setServerError('The email address is poorly formatted.');
-                    break;
-                case 'auth/user-not-found':
-                    setServerError('No user found with this email.');
-                    break;
-                case 'auth/wrong-password':
-                    setServerError('Incorrect password. Please try again.');
-                    break;
-                case 'auth/invalid-credential':
-                    setServerError('Invalid email or password.');
-                    break;
-                default:
-                    setServerError('An unexpected error occurred. Please try again.');
-                }
+            const token = await authUser.user.getIdToken();
+
+            const res = await fetch(`/api/users/by-email?email=${encodeURIComponent(email)}`, {
+                headers: { 'Authorization': token }
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                if (data.userId) localStorage.setItem('currentUserId', data.userId);
+                navigate('/feed');
+            }
+        } catch (error) {
+            switch (error.code) {
+            case 'auth/invalid-email':
+                setServerError('The email address is poorly formatted.');
+                break;
+            case 'auth/user-not-found':
+                setServerError('No user found with this email.');
+                break;
+            case 'auth/wrong-password':
+                setServerError('Incorrect password. Please try again.');
+                break;
+            case 'auth/invalid-credential':
+                setServerError('Invalid email or password.');
+                break;
+            default:
+                setServerError('An unexpected error occurred. Please try again.');
             }
         }
-    };
-
-    // to change whether or not the password is masked or not
-    const [showPassword, setShowPassword] = useState(false);
-    // toggle Function
-    const handleClickShowPassword = () => {
-        setShowPassword(!showPassword);
     };
 
     return (
@@ -150,10 +144,10 @@ const LogInPage = ({ onSwitchPage, firebase }) => {
                                     label="Email"
                                     name="email"
                                     autoFocus
-                                    value={formData.email}
+                                    value={email}
                                     onChange={handleChange}
-                                    error={!!errors.email}
-                                    helperText={errors.email}
+                                    error={!!error.email}
+                                    helperText={error.email}
                                 />
                                 <TextField
                                     margin="normal"
@@ -163,10 +157,10 @@ const LogInPage = ({ onSwitchPage, firebase }) => {
                                     label="Password"
                                     type={showPassword ? 'text' : 'password'}
                                     id="password"
-                                    value={formData.password}
+                                    value={password}
                                     onChange={handleChange}
-                                    error={!!errors.password}
-                                    helperText={errors.password}
+                                    error={!!error.password}
+                                    helperText={error.password}
                                     InputProps={{
                                         endAdornment: (
                                             <InputAdornment position="end">
