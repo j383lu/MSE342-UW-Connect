@@ -4,8 +4,10 @@ import PostList from "./PostList";
 import CreatePostForm from "./CreatePostForm";
 import EditPostForm from "./EditPostForm";
 import { withFirebase } from "../Firebase";
+import {useUser} from "../../contexts/UserContext";
 
 function Post({firebase}) {
+  const {dbUser, loading } = useUser();
   const [posts, setPosts] = useState([]);
   const [open, setOpen] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -15,8 +17,10 @@ function Post({firebase}) {
   const [activeTag, setActiveTag] = useState(null);
 
    useEffect(() => {
+    if (!loading && dbUser) {
     fetchPosts();
-  }, []);
+    }
+  }, [dbUser, loading]);
 
   const fetchPosts = async () => {
     try {
@@ -117,14 +121,13 @@ function Post({firebase}) {
   // handler for liking posts
   const handleLikePost = async (postId) => {
     try {
-        const response = await fetch(`/api/posts/${postId}/like`, { method: 'POST' });
+        const token = await firebase.auth.currentUser?.getIdToken();
+        const response = await fetch(`/api/posts/${postId}/like`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
         const data = await response.json();
-
-        if (!response.ok) {
-            console.error(data.error);
-            return;
-        }
-
+        if (!response.ok) { console.error(data.error); return; }
         setPosts(prev => prev.map(p =>
             p.post_id === postId
                 ? { ...p, like_count: data.like_count, liked_by_me: data.liked_by_me }
@@ -133,28 +136,26 @@ function Post({firebase}) {
     } catch (error) {
         console.error("Error liking post:", error);
     }
-  };
+};
 
-  // edit post handler
-  const handleEditPost = async (updatedFields) => {
+const handleEditPost = async (updatedFields) => {
     try {
+        const token = await firebase.auth.currentUser?.getIdToken();
         const response = await fetch(`/api/posts/${editingPost.post_id}`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({
                 title: updatedFields.title,
-                content: updatedFields.description, // backend expects "content"
-                tags: updatedFields.tags
+                content: updatedFields.description,
+                tags: updatedFields.tags,
+                group_id: updatedFields.group_id ?? null
             })
         });
-
         const data = await response.json();
-        if (!response.ok) {
-            console.error(data.error);
-            return;
-        }
-
-        // Update just that post in state
+        if (!response.ok) { console.error(data.error); return; }
         setPosts(prev => prev.map(p =>
             p.post_id === editingPost.post_id ? { ...p, ...data.post } : p
         ));
@@ -163,34 +164,33 @@ function Post({firebase}) {
     } catch (error) {
         console.error("Error editing post:", error);
     }
-  };
+};
 
-   // to delete the post
-  const handleDeletePost = async (postId) => {
+const handleDeletePost = async (postId) => {
     try {
+        const token = await firebase.auth.currentUser?.getIdToken();
         const response = await fetch(`/api/posts/${postId}`, {
             method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
         });
-
         if (!response.ok) {
             const data = await response.json();
             console.error("Delete failed:", data.error);
             return;
         }
-
-        //remove deleted post from state
         setPosts(prev => prev.filter(p => p.post_id !== postId));
     } catch (error) {
         console.error("Error deleting post:", error);
     }
-  };  
+};
 
-  // for tag filtering
-  const handleTagFilter = async (tagName) => {
+const handleTagFilter = async (tagName) => {
     try {
-        const response = await fetch(`/api/posts/tag/${encodeURIComponent(tagName)}`);
+        const token = await firebase.auth.currentUser?.getIdToken();
+        const response = await fetch(`/api/posts/tag/${encodeURIComponent(tagName)}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
         const data = await response.json();
-
         if (data.posts && data.posts.length > 0) {
             setPosts(data.posts);
             setActiveTag(tagName);
@@ -292,4 +292,4 @@ function Post({firebase}) {
   );
 }
 
-export default Post;
+export default withFirebase(Post);
