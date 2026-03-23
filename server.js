@@ -282,9 +282,10 @@ app.post("/api/events", checkAuth, (req, res) => {
           location,
           capacity,
           category,
-          event_type
+          event_type,
+          created_by
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
       db.query(
@@ -298,6 +299,7 @@ app.post("/api/events", checkAuth, (req, res) => {
           capNum,
           category,
           safeEventType,
+          currentUserId,
         ],
         (err, result) => {
           if (err) {
@@ -2416,6 +2418,235 @@ app.get("/api/my-groups", checkAuth, (req, res) => {
         groups: rows,
       });
     });
+  });
+});
+
+// GET /api/events/public
+// Show only public events with default of upcoming events only
+// if includePast=true then return all public events
+app.get("/api/events/public", checkAuth, (req, res) => {
+  const includePast = String(req.query.includePast).toLowerCase() === "true";
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
+
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("GET /api/events/public user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
+    }
+
+    const whereClause = includePast
+      ? "WHERE e.event_type = 'public'"
+      : "WHERE e.event_type = 'public' AND TIMESTAMP(e.event_date, e.event_time) >= NOW()";
+
+    const sql = `
+      SELECT 
+        e.id,
+        e.title,
+        e.description,
+        DATE_FORMAT(e.event_date, '%Y-%m-%d') AS event_date,
+        TIME_FORMAT(e.event_time, '%H:%i') AS event_time,
+        e.location,
+        e.capacity,
+        COUNT(DISTINCT el.id) AS likes,
+        e.category,
+        e.event_type,
+        e.created_by,
+        DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
+        COUNT(DISTINCT a.id) AS current_count,
+        GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
+        (TIMESTAMP(e.event_date, e.event_time) < NOW()) AS is_past,
+        MAX(CASE WHEN LOWER(a.attendee_name) = ? THEN 1 ELSE 0 END) AS has_joined,
+        MAX(CASE WHEN el.user_id = ? THEN 1 ELSE 0 END) AS has_liked
+      FROM Events e
+      LEFT JOIN Event_Attendees a ON a.event_id = e.id
+      LEFT JOIN Event_Tags t ON t.event_id = e.id
+      LEFT JOIN Event_Likes el ON el.event_id = e.id
+      ${whereClause}
+      GROUP BY
+        e.id,
+        e.title,
+        e.description,
+        e.event_date,
+        e.event_time,
+        e.location,
+        e.capacity,
+        e.category,
+        e.event_type,
+        e.created_by,
+        e.published_time
+      ORDER BY e.event_date ASC, e.event_time ASC
+    `;
+
+    db.query(sql, [currentUserEmail, currentUserId], (err, rows) => {
+      if (err) {
+        console.log("GET /api/events/public error:", err);
+        return res.status(500).json({ error: "Failed to load public events." });
+      }
+
+      return res.json(rows);
+    });
+  });
+});
+
+// GET /api/events/my-groups
+// show only group events linked to groups the current user joined with default of upcoming events only
+// if includePast=true then return all matching group events
+app.get("/api/events/my-groups", checkAuth, (req, res) => {
+  const includePast = String(req.query.includePast).toLowerCase() === "true";
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
+
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("GET /api/events/my-groups user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
+    }
+
+    const pastClause = includePast
+      ? ""
+      : "AND TIMESTAMP(e.event_date, e.event_time) >= NOW()";
+
+    const sql = `
+      SELECT 
+        e.id,
+        e.title,
+        e.description,
+        DATE_FORMAT(e.event_date, '%Y-%m-%d') AS event_date,
+        TIME_FORMAT(e.event_time, '%H:%i') AS event_time,
+        e.location,
+        e.capacity,
+        COUNT(DISTINCT el.id) AS likes,
+        e.category,
+        e.event_type,
+        e.created_by,
+        DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
+        COUNT(DISTINCT a.id) AS current_count,
+        GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
+        (TIMESTAMP(e.event_date, e.event_time) < NOW()) AS is_past,
+        MAX(CASE WHEN LOWER(a.attendee_name) = ? THEN 1 ELSE 0 END) AS has_joined,
+        MAX(CASE WHEN el.user_id = ? THEN 1 ELSE 0 END) AS has_liked
+      FROM Events e
+      INNER JOIN Event_Groups eg ON eg.event_id = e.id
+      INNER JOIN Group_Members gm ON gm.group_id = eg.group_id AND gm.user_id = ?
+      LEFT JOIN Event_Attendees a ON a.event_id = e.id
+      LEFT JOIN Event_Tags t ON t.event_id = e.id
+      LEFT JOIN Event_Likes el ON el.event_id = e.id
+      WHERE e.event_type = 'group'
+      ${pastClause}
+      GROUP BY
+        e.id,
+        e.title,
+        e.description,
+        e.event_date,
+        e.event_time,
+        e.location,
+        e.capacity,
+        e.category,
+        e.event_type,
+        e.created_by,
+        e.published_time
+      ORDER BY e.event_date ASC, e.event_time ASC
+    `;
+
+    db.query(sql, [currentUserEmail, currentUserId, currentUserId], (err, rows) => {
+      if (err) {
+        console.log("GET /api/events/my-groups error:", err);
+        return res.status(500).json({ error: "Failed to load group events." });
+      }
+
+      return res.json(rows);
+    });
+  });
+});
+
+// GET /api/events/my-events
+// show events the current user joined or created with default of upcoming events only
+// if includePast=true then return all matching events
+app.get("/api/events/my-events", checkAuth, (req, res) => {
+  const includePast = String(req.query.includePast).toLowerCase() === "true";
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
+
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("GET /api/events/my-events user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
+    }
+
+    const pastClause = includePast
+      ? ""
+      : "AND TIMESTAMP(e.event_date, e.event_time) >= NOW()";
+
+    const sql = `
+      SELECT 
+        e.id,
+        e.title,
+        e.description,
+        DATE_FORMAT(e.event_date, '%Y-%m-%d') AS event_date,
+        TIME_FORMAT(e.event_time, '%H:%i') AS event_time,
+        e.location,
+        e.capacity,
+        COUNT(DISTINCT el.id) AS likes,
+        e.category,
+        e.event_type,
+        e.created_by,
+        DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
+        COUNT(DISTINCT a.id) AS current_count,
+        GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
+        (TIMESTAMP(e.event_date, e.event_time) < NOW()) AS is_past,
+        MAX(CASE WHEN LOWER(a.attendee_name) = ? THEN 1 ELSE 0 END) AS has_joined,
+        MAX(CASE WHEN el.user_id = ? THEN 1 ELSE 0 END) AS has_liked
+      FROM Events e
+      LEFT JOIN Event_Attendees a ON a.event_id = e.id
+      LEFT JOIN Event_Tags t ON t.event_id = e.id
+      LEFT JOIN Event_Likes el ON el.event_id = e.id
+      WHERE (
+        e.created_by = ?
+        OR EXISTS (
+          SELECT 1
+          FROM Event_Attendees a2
+          WHERE a2.event_id = e.id
+            AND LOWER(a2.attendee_name) = ?
+        )
+      )
+      ${pastClause}
+      GROUP BY
+        e.id,
+        e.title,
+        e.description,
+        e.event_date,
+        e.event_time,
+        e.location,
+        e.capacity,
+        e.category,
+        e.event_type,
+        e.created_by,
+        e.published_time
+      ORDER BY e.event_date ASC, e.event_time ASC
+    `;
+
+    db.query(
+      sql,
+      [currentUserEmail, currentUserId, currentUserId, currentUserEmail],
+      (err, rows) => {
+        if (err) {
+          console.log("GET /api/events/my-events error:", err);
+          return res.status(500).json({ error: "Failed to load your events." });
+        }
+
+        return res.json(rows);
+      }
+    );
   });
 });
 
