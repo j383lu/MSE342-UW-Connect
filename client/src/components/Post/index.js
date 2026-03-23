@@ -98,7 +98,8 @@ function Post({firebase}) {
           title: newPost.title,
           content: newPost.description, // backend expects "content"
           tags: newPost.tags,
-          group_id: newPost.group_id ?? null
+          group_id: newPost.group_id ?? null,
+          is_anonymous: newPost.is_anonymous ?? 0
         })
       });
 
@@ -153,7 +154,8 @@ const handleEditPost = async (updatedFields) => {
                 title: updatedFields.title,
                 content: updatedFields.description,
                 tags: updatedFields.tags,
-                group_id: updatedFields.group_id ?? null
+                group_id: updatedFields.group_id ?? null,
+                is_anonymous: updatedFields.is_anonymous ?? 0
             })
         });
         const data = await response.json();
@@ -290,6 +292,7 @@ const handleTagFilter = async (tagName) => {
         onClose={() => { setEditOpen(false); setEditingPost(null); }}
         onSubmit={handleEditPost}
         post={editingPost}
+        firebase={firebase}
       />
     </Grid>
   );

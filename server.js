@@ -9,6 +9,7 @@ import multer from 'multer'; // For file uploads
 import fs from 'fs'; // For file system operations
 import admin from 'firebase-admin';
 import serviceAccount from './serviceAccountKey.json' assert {type: 'json'};
+import { group } from 'console';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1408,8 +1409,9 @@ app.get('/api/posts', checkAuth, async (req, res) => {
             like_count: post.like_count,
             liked_by_me: post.liked_by_me === 1, 
             comment_count: post.comment_count ?? 0,
-            group_id: post.group_id,        // new
-            group_name: post.group_name     // new
+            group_id: post.group_id,        
+            group_name: post.group_name,
+            is_anonymous: post.is_anonymous === 1     
         }));
 
         res.json(formattedPosts);
@@ -1429,10 +1431,13 @@ app.get('/api/posts/:id', checkAuth, async (req, res) => {
 
     const sql = `
         SELECT p.post_id, p.title, p.content, p.author_id, p.created_at AS createdAt,
+              up.display_name AS author_name, sg.name AS group_name, p.group_id, p.is_anonymous,
                GROUP_CONCAT(DISTINCT t.tag_name) AS tags,
                COUNT(DISTINCT l.like_id) AS like_count,
                MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me
         FROM Posts p
+        LEFT JOIN User_Profiles up ON p.author_id = up.user_id
+        LEFT JOIN Social_Group sg ON p.group_id = sg.group_id
         LEFT JOIN post_tags pt ON p.post_id = pt.post_id
         LEFT JOIN Tags t ON pt.tag_id = t.tag_id
         LEFT JOIN Likes l ON p.post_id = l.post_id
@@ -1454,12 +1459,17 @@ app.get('/api/posts/:id', checkAuth, async (req, res) => {
         res.json({
             post_id: post.post_id,
             author_id: post.author_id,
+            author_name: post.is_anonymous ? 'Anonymous' : (post.author_name ?? 'Unknown'),
             title: post.title,
             description: post.content,
+            group_id: post.group_name,
             tags: post.tags ? post.tags.split(',') : [],
             createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
             like_count: post.like_count ?? 0,
-            liked_by_me: post.liked_by_me === 1
+            liked_by_me: post.liked_by_me === 1,
+            group_name: post.group_name,  
+            is_anonymous: post.is_anonymous === 1
+
         });
     });
 });
@@ -1585,7 +1595,7 @@ app.delete('/api/posts/:id', checkAuth, async(req, res) => {
 app.put('/api/posts/:id', checkAuth, async (req, res) => {
     //let connection = mysql.createConnection(config);
     const postId = req.params.id;
-    const { title, content, tags = [], group_id = null } = req.body;
+    const { title, content, tags = [], group_id = null, is_anonymous = 0 } = req.body;
 
     let requestingUserId; // Placeholder - replace with real auth user ID later
     try {
@@ -1609,8 +1619,8 @@ app.put('/api/posts/:id', checkAuth, async (req, res) => {
             return res.status(403).json({ error: 'Not authorized to edit this post' });
         }
 
-        const updateSql = 'UPDATE Posts SET title = ?, content = ?, group_id = ? WHERE post_id = ?';
-        db.query(updateSql, [title, content, group_id, postId], (err) => {
+        const updateSql = 'UPDATE Posts SET title = ?, content = ?, group_id = ?, is_anonymous = ? WHERE post_id = ?';
+        db.query(updateSql, [title, content, group_id, is_anonymous, postId], (err) => {
             if (err) {
                 //db.end();
                 return res.status(500).json({ error: 'Error updating post' });
@@ -1717,6 +1727,29 @@ app.post('/api/posts/:id/like', checkAuth, async (req, res) => {
         }
     });
 });
+
+// GET /api/posts/:id/likes - get list of users who liked a post
+app.get('/api/posts/:id/likes', checkAuth, async (req, res) => {
+    const postId = req.params.id;
+
+    const sql = `
+        SELECT l.user_id, up.display_name
+        FROM Likes l
+        LEFT JOIN User_Profiles up ON l.user_id = up.user_id
+        WHERE l.post_id = ?
+        ORDER BY up.display_name ASC
+    `;
+
+    db.query(sql, [postId], (err, results) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ error: 'Error retrieving likes' });
+        }
+        res.json(results);
+    });
+});
+
+//---------------------EVENTs-------------------------------------
 
 // Post API for "Like an Event"
 // POST /api/events/:id/like
