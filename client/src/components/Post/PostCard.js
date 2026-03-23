@@ -61,6 +61,16 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter, fir
             {renderTextWithLinks(post.description)}
           </Typography>
 
+          {post.image_url && (
+            <Box sx={{ mb: 2 }}>
+              <img
+                src={`/uploads/${post.image_url}`}
+                alt="post attachment"
+                style={{ maxWidth: '100%', borderRadius: 8, maxHeight: 300, objectFit: 'cover' }}
+              />
+            </Box>
+          )}
+
           <Stack direction="row" spacing={1} flexWrap="wrap">
             {/* Group chip — navigates to group page */}
             {post.group_id && post.group_name && (
