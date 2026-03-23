@@ -1200,7 +1200,7 @@ app.get('/api/posts', checkAuth, async (req, res) => {
             tags: post.tags ? post.tags.split(',') : [],
             createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
             like_count: post.like_count,
-            liked_by_me: post.liked_by_me, 
+            liked_by_me: post.liked_by_me === 1, 
             comment_count: post.comment_count ?? 0,
             group_id: post.group_id,        // new
             group_name: post.group_name     // new

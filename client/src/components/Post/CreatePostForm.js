@@ -123,7 +123,7 @@ function CreatePostForm({ open, onClose, onSubmit, firebase }) {
           {userGroups.length > 0 && (
             <Grid item xs={12}>
               <FormControl fullWidth>
-                <InputLabel>Link to a Group (optional)</InputLabel>
+                <InputLabel> Group (optional)</InputLabel>
                 <Select
                   value={selectedGroup}
                   label="Link to a Group (optional)"
