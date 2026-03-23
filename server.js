@@ -943,10 +943,15 @@ const getNumericUserId = (email) => {
 };
 
 // Post /api/posts - create a new post
-app.post('/api/posts', checkAuth, async (req, res) => {
+app.post('/api/posts', checkAuth, upload.single('image'), async (req, res) => {
     //let connection = mysql.createConnection(config);
 
-    let { title, content, group_id = null, is_anonymous = 0, image_url = null, tags = [] } = req.body;
+    let { title, content, group_id = null, is_anonymous = 0, tags = [] } = req.body;
+    const image_url = req.file ? req.file.filename : null;
+    if (typeof tags === 'string') {
+        try { tags = JSON.parse(tags); } catch { tags = []; }
+    }
+
     let author_id; // Placeholder for now, should be replaced with actual user ID from authentication
     try {
         author_id = await getNumericUserId(req.user.email);
@@ -1198,6 +1203,7 @@ app.get('/api/posts', checkAuth, async (req, res) => {
             author_name: post.author_name ?? `User ${post.author_id}`,
             title: post.title,
             description: post.content, // map content to description
+            image_url: post.image_url,
             tags: post.tags ? post.tags.split(',') : [],
             createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
             like_count: post.like_count,
