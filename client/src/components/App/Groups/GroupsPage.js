@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import apiRequest from "../../../utils/api";
 
 export default function GroupsPage() {
   const navigate = useNavigate();
@@ -62,7 +63,7 @@ export default function GroupsPage() {
   async function loadTags() {
     try {
       setLoadingTags(true);
-      const res = await fetch('/api/tags');
+      const res = await apiRequest('/api/tags');
       
       if (!res.ok) {
         throw new Error('Failed to load tags');
@@ -88,7 +89,7 @@ export default function GroupsPage() {
   async function fetchFreshData() {
     try {
       // Fetch fresh groups
-      const groupsRes = await fetch('/api/groups');
+      const groupsRes = await apiRequest('/api/groups');
       if (!groupsRes.ok) {
         throw new Error('Failed to fetch groups');
       }
@@ -104,7 +105,7 @@ export default function GroupsPage() {
       }
 
       // Fetch fresh memberships - ONLY from Group_Members table for this user
-      const membershipsRes = await fetch(`/api/users/${CURRENT_USER_ID}/groups/member`);
+      const membershipsRes = await apiRequest(`/api/users/${CURRENT_USER_ID}/groups/member`);
       let memberIds = [];
       
       if (membershipsRes.ok) {
@@ -117,7 +118,7 @@ export default function GroupsPage() {
       setMemberships(memberIds);
 
       // Fetch pending group invites for this user
-      const invitesRes = await fetch(`/api/users/${CURRENT_USER_ID}/invites`);
+      const invitesRes = await apiRequest(`/api/users/${CURRENT_USER_ID}/invites`);
       if (invitesRes.ok) {
         const invitesData = await invitesRes.json();
         console.log("Pending invites:", invitesData);
@@ -155,7 +156,7 @@ export default function GroupsPage() {
       console.log("========== JOIN ATTEMPT ==========");
       console.log("Joining group ID:", groupId);
       
-      const res = await fetch(`/api/groups/${groupId}/join`, {
+      const res = await apiRequest(`/api/groups/${groupId}/join`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -201,7 +202,7 @@ export default function GroupsPage() {
       console.log("========== LEAVE ATTEMPT ==========");
       console.log("Leaving group ID:", groupId);
       
-      const res = await fetch(`/api/groups/${groupId}/leave`, {
+      const res = await apiRequest(`/api/groups/${groupId}/leave`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json'
@@ -335,7 +336,7 @@ export default function GroupsPage() {
                   onClick={async () => {
                     if (!CURRENT_USER_ID) return;
                     try {
-                      const res = await fetch(`/api/invites/${invite.invite_id}/respond`, {
+                      const res = await apiRequest(`/api/invites/${invite.invite_id}/respond`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ action: "accept", userId: CURRENT_USER_ID })
@@ -358,7 +359,7 @@ export default function GroupsPage() {
                   onClick={async () => {
                     if (!CURRENT_USER_ID) return;
                     try {
-                      const res = await fetch(`/api/invites/${invite.invite_id}/respond`, {
+                      const res = await apiRequest(`/api/invites/${invite.invite_id}/respond`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ action: "decline", userId: CURRENT_USER_ID })
