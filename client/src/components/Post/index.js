@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Grid, Button, Typography, TextField, Stack, Chip } from "@mui/material";
+import { Grid, Button, Typography, TextField, Stack, Chip, Box } from "@mui/material";
 import PostList from "./PostList";
 import CreatePostForm from "./CreatePostForm";
 import EditPostForm from "./EditPostForm";
@@ -15,18 +15,21 @@ function Post({ firebase }) {
   const [editOpen, setEditOpen] = useState(false);
   const [editingPost, setEditingPost] = useState(null);
   const [activeTag, setActiveTag] = useState(null);
+  const [activeView, setActiveView] = useState('all');
 
   useEffect(() => {
     if (!loading && dbUser) {
       fetchPosts();
     }
-  }, [dbUser, loading]);
+  }, [dbUser, loading, activeView]);
 
   const fetchPosts = async () => {
     try {
       const token = await firebase.auth.currentUser?.getIdToken();
-
-      const response = await fetch('/api/posts', {
+      const url = activeView === 'groups'
+        ? '/api/posts?filter=mygroups'
+        : '/api/posts';
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -282,6 +285,51 @@ function Post({ firebase }) {
         </Button>
       </Grid>
 
+
+      <Grid item xs={12}>
+        <Box sx={{
+          display: 'flex',
+          width: '100%',
+          background: '#F0F3F0',
+          border: '1px solid #D6DFE2',
+          borderRadius: '800px',
+          padding: '3px',
+          gap: '2px'
+        }}>
+          <Button
+            fullWidth
+            onClick={() => { setActiveView('all'); setActiveTag(null); }}
+            sx={{
+              borderRadius: '30px',
+              padding: '4px 20px',
+              fontSize: '13px',
+              textTransform: 'none',
+              fontWeight: activeView === 'all' ? 600 : 400,
+              background: activeView === 'all' ? '#5D6C5C' : 'transparent',
+              color: activeView === 'all' ? '#FDFDF6' : '#686967',
+            }}
+          >
+            All posts
+          </Button>
+
+          <Button
+            fullWidth
+            onClick={() => { setActiveView('groups'); setActiveTag(null); }}
+            sx={{
+              borderRadius: '30px',
+              padding: '4px 20px',
+              fontSize: '13px',
+              textTransform: 'none',
+              fontWeight: activeView === 'groups' ? 600 : 400,
+              background: activeView === 'groups' ? '#5D6C5C' : 'transparent',
+              color: activeView === 'groups' ? '#FDFDF6' : '#686967',
+            }}
+          >
+            My Groups
+          </Button>
+        </Box>
+      </Grid>
+      
       {/* Post List */}
       <Grid item xs={12}>
         <PostList

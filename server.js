@@ -1176,19 +1176,19 @@ const getNumericUserId = (email) => {
 
 // GET /api/groups/:groupId/posts - get posts for a specific group
 app.get('/api/groups/:groupId/posts', checkAuth, async (req, res) => {
-    const groupId = Number(req.params.groupId);
-    if (!groupId) {
-        return res.status(400).json({ error: 'Invalid group id' });
-    }
+  const groupId = Number(req.params.groupId);
+  if (!groupId) {
+    return res.status(400).json({ error: 'Invalid group id' });
+  }
 
-    let currentUserId;
-    try {
-        currentUserId = await getNumericUserId(req.user.email);
-    } catch (err) {
-        return res.status(404).json({ error: 'User not found' });
-    }
+  let currentUserId;
+  try {
+    currentUserId = await getNumericUserId(req.user.email);
+  } catch (err) {
+    return res.status(404).json({ error: 'User not found' });
+  }
 
-    const sql = `
+  const sql = `
         SELECT p.post_id, p.title, p.content, p.author_id, p.group_id, sg.name AS group_name,
                p.is_anonymous, p.image_url, p.created_at AS createdAt,
                up.display_name AS author_name,
@@ -1207,29 +1207,29 @@ app.get('/api/groups/:groupId/posts', checkAuth, async (req, res) => {
         ORDER BY p.post_id DESC
     `;
 
-    db.query(sql, [currentUserId, groupId], (err, results) => {
-        if (err) {
-            console.error(err);
-            return res.status(500).json({ error: 'Error retrieving group posts' });
-        }
+  db.query(sql, [currentUserId, groupId], (err, results) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Error retrieving group posts' });
+    }
 
-        const formattedPosts = results.map(post => ({
-            post_id: post.post_id,
-            author_id: post.author_id,
-            author_name: post.author_name ?? `User ${post.author_id}`,
-            title: post.title,
-            description: post.content,
-            tags: post.tags ? post.tags.split(',') : [],
-            createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
-            like_count: post.like_count,
-            liked_by_me: post.liked_by_me === 1,
-            comment_count: post.comment_count ?? 0,
-            group_id: post.group_id,
-            group_name: post.group_name
-        }));
+    const formattedPosts = results.map(post => ({
+      post_id: post.post_id,
+      author_id: post.author_id,
+      author_name: post.author_name ?? `User ${post.author_id}`,
+      title: post.title,
+      description: post.content,
+      tags: post.tags ? post.tags.split(',') : [],
+      createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
+      like_count: post.like_count,
+      liked_by_me: post.liked_by_me === 1,
+      comment_count: post.comment_count ?? 0,
+      group_id: post.group_id,
+      group_name: post.group_name
+    }));
 
-        return res.json(formattedPosts);
-    });
+    return res.json(formattedPosts);
+  });
 });
 
 // Post /api/posts - create a new post
@@ -1453,13 +1453,28 @@ app.get('/api/posts/tag/:tagName', checkAuth, async (req, res) => {
 
 // GET API for posts
 app.get('/api/posts', checkAuth, async (req, res) => {
-  //let connection = mysql.createConnection(config);
+  const { filter } = req.query
   let currentUserId; //Placeholde, need to replace with actually user id later
   try {
     currentUserId = await getNumericUserId(req.user.email);
   } catch (err) {
     return res.status(404).json({ error: 'User not found' });
   }
+
+  // Base where clause depending on filter
+  const whereClause = filter === 'mygroups'
+    ? `WHERE (
+            p.group_id IS NOT NULL AND
+            EXISTS (
+                SELECT 1 FROM Group_Members gm
+                WHERE gm.group_id = p.group_id
+                AND gm.user_id = ?
+            )
+          )`
+    : `WHERE (
+            p.group_id IS NULL
+            OR sg.is_private = 0
+          )`;
 
   let sql = `
          SELECT p.post_id, p.title, p.content, p.author_id, p.group_id, sg.name AS group_name,
@@ -1475,13 +1490,12 @@ app.get('/api/posts', checkAuth, async (req, res) => {
         LEFT JOIN post_tags pt ON p.post_id = pt.post_id
         LEFT JOIN Tags t ON pt.tag_id = t.tag_id
         LEFT JOIN Likes l ON p.post_id = l.post_id
+        ${whereClause}
         GROUP BY p.post_id
         ORDER BY p.post_id DESC
     `;
 
-  db.query(sql, [currentUserId], (err, results) => {
-    //db.end();
-
+  db.query(sql, filter === 'mygroups' ? [currentUserId, currentUserId] : [currentUserId], (err, results) => {
     if (err) {
       console.error(err);
       return res.status(500).send('Error retrieving posts');
@@ -1492,7 +1506,7 @@ app.get('/api/posts', checkAuth, async (req, res) => {
       author_id: post.author_id,
       author_name: post.author_name ?? `User ${post.author_id}`,
       title: post.title,
-      description: post.content, // map content to description
+      description: post.content,
       image_url: post.image_url,
       tags: post.tags ? post.tags.split(',') : [],
       createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
@@ -1702,70 +1716,70 @@ app.put('/api/posts/:id', checkAuth, upload.single('image'), async (req, res) =>
     imageUpdateSql = ', image_url = NULL';
   }
 
-    let requestingUserId;
-    try {
-      requestingUserId = await getNumericUserId(req.user.email);
-    } catch (err) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+  let requestingUserId;
+  try {
+    requestingUserId = await getNumericUserId(req.user.email);
+  } catch (err) {
+    return res.status(404).json({ error: 'User not found' });
+  }
 
-    const checkSql = 'SELECT author_id FROM Posts WHERE post_id = ?';
-    db.query(checkSql, [postId], (err, results) => {
-      if (err) return res.status(500).json({ error: 'Error finding post' });
-      if (results.length === 0) return res.status(404).json({ error: 'Post not found' });
-      if (results[0].author_id !== requestingUserId) return res.status(403).json({ error: 'Not authorized' });
+  const checkSql = 'SELECT author_id FROM Posts WHERE post_id = ?';
+  db.query(checkSql, [postId], (err, results) => {
+    if (err) return res.status(500).json({ error: 'Error finding post' });
+    if (results.length === 0) return res.status(404).json({ error: 'Post not found' });
+    if (results[0].author_id !== requestingUserId) return res.status(403).json({ error: 'Not authorized' });
 
-      // Only update image_url if a new image was uploaded
-      const updateSql = `UPDATE Posts SET title = ?, content = ?, group_id = ?, is_anonymous = ?${imageUpdateSql} WHERE post_id = ?`;
+    // Only update image_url if a new image was uploaded
+    const updateSql = `UPDATE Posts SET title = ?, content = ?, group_id = ?, is_anonymous = ?${imageUpdateSql} WHERE post_id = ?`;
 
-      const updateParams = imageValue !== undefined
-        ? [title, content, group_id || null, is_anonymous, imageValue, postId]
-        : [title, content, group_id || null, is_anonymous, postId]
+    const updateParams = imageValue !== undefined
+      ? [title, content, group_id || null, is_anonymous, imageValue, postId]
+      : [title, content, group_id || null, is_anonymous, postId]
 
-      db.query(updateSql, updateParams, (err) => {
-        if (err) return res.status(500).json({ error: 'Error updating post' });
+    db.query(updateSql, updateParams, (err) => {
+      if (err) return res.status(500).json({ error: 'Error updating post' });
 
-        const deleteTagsSql = 'DELETE FROM post_tags WHERE post_id = ?';
-        db.query(deleteTagsSql, [postId], (err) => {
-          if (err) return res.status(500).json({ error: 'Error updating tags' });
+      const deleteTagsSql = 'DELETE FROM post_tags WHERE post_id = ?';
+      db.query(deleteTagsSql, [postId], (err) => {
+        if (err) return res.status(500).json({ error: 'Error updating tags' });
 
-          if (tags.length === 0) {
+        if (tags.length === 0) {
+          return res.json({
+            post: { post_id: parseInt(postId), title, description: content, tags: [] },
+            message: 'Post updated successfully'
+          });
+        }
+
+        const tagSql = 'SELECT tag_id, tag_name FROM Tags WHERE tag_name IN (' + tags.map(() => '?').join(', ') + ')';
+        db.query(tagSql, tags, (err, tagResults) => {
+          if (err) return res.status(500).json({ error: 'Error finding tags' });
+
+          const postTagData = tagResults.map(tag => [postId, tag.tag_id]);
+          if (postTagData.length === 0) {
             return res.json({
               post: { post_id: parseInt(postId), title, description: content, tags: [] },
-              message: 'Post updated successfully'
+              message: 'Post updated successfully but no valid tags found'
             });
           }
 
-          const tagSql = 'SELECT tag_id, tag_name FROM Tags WHERE tag_name IN (' + tags.map(() => '?').join(', ') + ')';
-          db.query(tagSql, tags, (err, tagResults) => {
-            if (err) return res.status(500).json({ error: 'Error finding tags' });
-
-            const postTagData = tagResults.map(tag => [postId, tag.tag_id]);
-            if (postTagData.length === 0) {
-              return res.json({
-                post: { post_id: parseInt(postId), title, description: content, tags: [] },
-                message: 'Post updated successfully but no valid tags found'
-              });
-            }
-
-            const postTagSql = 'INSERT INTO post_tags (post_id, tag_id) VALUES ?';
-            db.query(postTagSql, [postTagData], (err) => {
-              if (err) return res.status(500).json({ error: 'Error inserting tags' });
-              res.json({
-                post: {
-                  post_id: parseInt(postId),
-                  title,
-                  description: content,
-                  tags: tagResults.map(t => t.tag_name)
-                },
-                message: 'Post updated successfully'
-              });
+          const postTagSql = 'INSERT INTO post_tags (post_id, tag_id) VALUES ?';
+          db.query(postTagSql, [postTagData], (err) => {
+            if (err) return res.status(500).json({ error: 'Error inserting tags' });
+            res.json({
+              post: {
+                post_id: parseInt(postId),
+                title,
+                description: content,
+                tags: tagResults.map(t => t.tag_name)
+              },
+              message: 'Post updated successfully'
             });
           });
         });
       });
     });
   });
+});
 
 // POST /api/posts/:id/like - toggle like/unlike
 app.post('/api/posts/:id/like', checkAuth, async (req, res) => {
