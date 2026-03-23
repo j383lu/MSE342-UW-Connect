@@ -4,10 +4,10 @@ import PostList from "./PostList";
 import CreatePostForm from "./CreatePostForm";
 import EditPostForm from "./EditPostForm";
 import { withFirebase } from "../Firebase";
-import {useUser} from "../../contexts/UserContext";
+import { useUser } from "../../contexts/UserContext";
 
-function Post({firebase}) {
-  const {dbUser, loading } = useUser();
+function Post({ firebase }) {
+  const { dbUser, loading } = useUser();
   const [posts, setPosts] = useState([]);
   const [open, setOpen] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -16,9 +16,9 @@ function Post({firebase}) {
   const [editingPost, setEditingPost] = useState(null);
   const [activeTag, setActiveTag] = useState(null);
 
-   useEffect(() => {
+  useEffect(() => {
     if (!loading && dbUser) {
-    fetchPosts();
+      fetchPosts();
     }
   }, [dbUser, loading]);
 
@@ -35,7 +35,7 @@ function Post({firebase}) {
       const data = await response.json();
 
       if (response.ok && Array.isArray(data)) {
-      setPosts(data);
+        setPosts(data);
       } else {
         setPosts([]); // Fallback to empty array if 401 or error
       }
@@ -51,7 +51,7 @@ function Post({firebase}) {
     setActiveTag(null);
     setSearchKeyword("");
     setSearchError("");
-};
+  };
 
   // Search function
   const handleSearch = async () => {
@@ -88,18 +88,25 @@ function Post({firebase}) {
     try {
       const token = await firebase.auth.currentUser?.getIdToken();
 
+      const formData = new FormData();
+      formData.append('title', newPost.title);
+      formData.append('content', newPost.description);
+      formData.append('tags', JSON.stringify(newPost.tags));
+      formData.append('is_anonymous', newPost.is_anonymous ?? 0);
+      if (newPost.group_id) {
+        formData.append('group_id', newPost.group_id); // only append if actually set
+      }
+      if (newPost.imageFile) {
+        formData.append('image', newPost.imageFile);
+      }
+
       const response = await fetch('/api/posts', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          //'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          title: newPost.title,
-          content: newPost.description, // backend expects "content"
-          tags: newPost.tags,
-          group_id: newPost.group_id ?? null
-        })
+        body: formData
       });
 
       const data = await response.json();
@@ -123,94 +130,95 @@ function Post({firebase}) {
   // handler for liking posts
   const handleLikePost = async (postId) => {
     try {
-        const token = await firebase.auth.currentUser?.getIdToken();
-        const response = await fetch(`/api/posts/${postId}/like`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const data = await response.json();
-        if (!response.ok) { console.error(data.error); return; }
-        setPosts(prev => prev.map(p =>
-            p.post_id === postId
-                ? { ...p, like_count: data.like_count, liked_by_me: data.liked_by_me }
-                : p
-        ));
+      const token = await firebase.auth.currentUser?.getIdToken();
+      const response = await fetch(`/api/posts/${postId}/like`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await response.json();
+      if (!response.ok) { console.error(data.error); return; }
+      setPosts(prev => prev.map(p =>
+        p.post_id === postId
+          ? { ...p, like_count: data.like_count, liked_by_me: data.liked_by_me }
+          : p
+      ));
     } catch (error) {
-        console.error("Error liking post:", error);
+      console.error("Error liking post:", error);
     }
-};
+  };
 
-const handleEditPost = async (updatedFields) => {
+  const handleEditPost = async (updatedFields) => {
     try {
-        const token = await firebase.auth.currentUser?.getIdToken();
-        const response = await fetch(`/api/posts/${editingPost.post_id}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-                title: updatedFields.title,
-                content: updatedFields.description,
-                tags: updatedFields.tags,
-                group_id: updatedFields.group_id ?? null
-            })
-        });
-        const data = await response.json();
-        if (!response.ok) { console.error(data.error); return; }
-        //setPosts(prev => prev.map(p =>
-          //  p.post_id === editingPost.post_id ? { ...p, ...data.post } : p
-        //));
-        await fetchPosts();
-        setEditOpen(false);
-        setEditingPost(null);
+      const token = await firebase.auth.currentUser?.getIdToken();
+      const response = await fetch(`/api/posts/${editingPost.post_id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          title: updatedFields.title,
+          content: updatedFields.description,
+          tags: updatedFields.tags,
+          group_id: updatedFields.group_id ?? null,
+          is_anonymous: updatedFields.is_anonymous ?? 0
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) { console.error(data.error); return; }
+      //setPosts(prev => prev.map(p =>
+      //  p.post_id === editingPost.post_id ? { ...p, ...data.post } : p
+      //));
+      await fetchPosts();
+      setEditOpen(false);
+      setEditingPost(null);
     } catch (error) {
-        console.error("Error editing post:", error);
+      console.error("Error editing post:", error);
     }
-};
+  };
 
-const handleDeletePost = async (postId) => {
+  const handleDeletePost = async (postId) => {
     try {
-        const token = await firebase.auth.currentUser?.getIdToken();
-        const response = await fetch(`/api/posts/${postId}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!response.ok) {
-            const data = await response.json();
-            console.error("Delete failed:", data.error);
-            return;
-        }
-        setPosts(prev => prev.filter(p => p.post_id !== postId));
-    } catch (error) {
-        console.error("Error deleting post:", error);
-    }
-};
-
-const handleTagFilter = async (tagName) => {
-    try {
-        const token = await firebase.auth.currentUser?.getIdToken();
-        const response = await fetch(`/api/posts/tag/${encodeURIComponent(tagName)}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
+      const token = await firebase.auth.currentUser?.getIdToken();
+      const response = await fetch(`/api/posts/${postId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!response.ok) {
         const data = await response.json();
-        if (data.posts && data.posts.length > 0) {
-            setPosts(data.posts);
-            setActiveTag(tagName);
-            setSearchError("");
-        } else {
-            setPosts([]);
-            setActiveTag(tagName);
-            setSearchError(`No posts found for #${tagName}`);
-        }
+        console.error("Delete failed:", data.error);
+        return;
+      }
+      setPosts(prev => prev.filter(p => p.post_id !== postId));
+    } catch (error) {
+      console.error("Error deleting post:", error);
+    }
+  };
+
+  const handleTagFilter = async (tagName) => {
+    try {
+      const token = await firebase.auth.currentUser?.getIdToken();
+      const response = await fetch(`/api/posts/tag/${encodeURIComponent(tagName)}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await response.json();
+      if (data.posts && data.posts.length > 0) {
+        setPosts(data.posts);
+        setActiveTag(tagName);
+        setSearchError("");
+      } else {
+        setPosts([]);
+        setActiveTag(tagName);
+        setSearchError(`No posts found for #${tagName}`);
+      }
     } catch (err) {
-        console.error("Error filtering by tag:", err);
-        setSearchError("Error occurred while filtering.");
+      console.error("Error filtering by tag:", err);
+      setSearchError("Error occurred while filtering.");
     }
-};
+  };
 
   return (
-    <Grid container spacing={3} sx={{ maxWidth: 800, margin: '0 auto', px:2}}>
+    <Grid container spacing={3} sx={{ maxWidth: 800, margin: '0 auto', px: 2 }}>
 
       {/* Header Section */}
       <Grid item xs={12}>
@@ -228,11 +236,12 @@ const handleTagFilter = async (tagName) => {
             onChange={(e) => setSearchKeyword(e.target.value)}
             error={Boolean(searchError)}
             helperText={searchError}
-            sx={{ width: '50%', 
-                  '& .MuiOutlinedInput-root': {
-                  borderRadius: '50px',    
-                },
-              }}
+            sx={{
+              width: '50%',
+              '& .MuiOutlinedInput-root': {
+                borderRadius: '50px',
+              },
+            }}
           />
           <Button variant="contained" onClick={handleSearch}>
             Search
@@ -245,16 +254,16 @@ const handleTagFilter = async (tagName) => {
         {activeTag && (
           <Stack direction="row" justifyContent="center" sx={{ mt: 1 }}>
             <Typography variant="body2" color="text.secondary">
-            Filtering by:
+              Filtering by:
             </Typography>
             <Chip
-                label={`#${activeTag}`}
-                onDelete={handleReset}
-                color="primary"
-                size="small"
+              label={`#${activeTag}`}
+              onDelete={handleReset}
+              color="primary"
+              size="small"
             />
-        </Stack>
-      )}
+          </Stack>
+        )}
 
       </Grid>
 
@@ -270,12 +279,12 @@ const handleTagFilter = async (tagName) => {
 
       {/* Post List */}
       <Grid item xs={12}>
-        <PostList 
-        posts={posts}
-        onDeletePost={handleDeletePost}
-        onEditPost={(post) => { setEditingPost(post); setEditOpen(true); }}
-        onLikePost={handleLikePost}
-        onTagFilter={handleTagFilter}
+        <PostList
+          posts={posts}
+          onDeletePost={handleDeletePost}
+          onEditPost={(post) => { setEditingPost(post); setEditOpen(true); }}
+          onLikePost={handleLikePost}
+          onTagFilter={handleTagFilter}
         />
       </Grid>
 
@@ -290,6 +299,7 @@ const handleTagFilter = async (tagName) => {
         onClose={() => { setEditOpen(false); setEditingPost(null); }}
         onSubmit={handleEditPost}
         post={editingPost}
+        firebase={firebase}
       />
     </Grid>
   );
