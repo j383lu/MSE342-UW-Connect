@@ -31,11 +31,11 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter }) {
       <Card sx={{ mb: 2 }}>
         <CardHeader
           title={post.title}
-          subheader={`${post.author_name ?? 'Unknown'} · ${getRelativeTime(post.createdAt)}`}
+          subheader={`${post.is_anonymous ? 'Anonymous' : (post.author_name ?? 'Unknown')} · ${getRelativeTime(post.createdAt)}`}
         />
 
         <CardContent>
-          <Typography variant="body1" sx={{ mb: 2 }}>
+          <Typography variant="body1" sx={{ mb: 2, whiteSpace: 'pre-wrap' }}>
             {renderTextWithLinks(post.description)}
           </Typography>
 

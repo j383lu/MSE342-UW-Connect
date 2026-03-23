@@ -2,8 +2,8 @@ import React, { useState, useEffect } from "react";
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, Grid, Autocomplete,
-  FormControl, InputLabel, Select, MenuItem
-} from "@mui/material";
+  FormControl, InputLabel, Select, MenuItem, Switch, FormControlLabel}
+   from "@mui/material";
 import { useUser } from "../../contexts/UserContext"; // adjust path if needed
 import { withFirebase } from "../Firebase";           // adjust path if needed
 
@@ -21,6 +21,7 @@ function CreatePostForm({ open, onClose, onSubmit, firebase }) {
   const [selectedGroup, setSelectedGroup] = useState("");
   const [userGroups, setUserGroups] = useState([]);
   const [error, setError] = useState({ title: "", description: "", tags: "" });
+  const [isAnonymous, setIsAnonymous] = useState(false);
 
   // Fetch the groups this user belongs to when the form opens
   useEffect(() => {
@@ -69,7 +70,8 @@ function CreatePostForm({ open, onClose, onSubmit, firebase }) {
       title,
       description,
       tags: selectedTags,
-      group_id: selectedGroup || null  // null if no group selected
+      group_id: selectedGroup || null,  // null if no group selected
+      is_anonymous: isAnonymous ? 1 : 0
     });
 
     // reset form
@@ -103,6 +105,18 @@ function CreatePostForm({ open, onClose, onSubmit, firebase }) {
               onChange={(e) => { setTitle(e.target.value); setError(prev => ({ ...prev, title: "" })); }}
               error={Boolean(error.title)}
               helperText={error.title}
+            />
+          </Grid>
+
+          <Grid item xs={12}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={isAnonymous}
+                  onChange={(e) => setIsAnonymous(e.target.checked)}
+                />
+                }
+              label="Post anonymously"
             />
           </Grid>
 
