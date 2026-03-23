@@ -10,6 +10,7 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import PostCommentThread from "./PostCommentThread";
 import { getAuth } from 'firebase/auth';
 import { getRelativeTime } from "../../utils/timeUtils";
+import { renderTextWithLinks } from "../../utils/linkUtils";
 
 function PostDetailPage() {
     const { postId } = useParams();
@@ -93,10 +94,13 @@ function PostDetailPage() {
                 <Card>
                     <CardHeader
                         title={post.title}
-                        subheader={getRelativeTime(post.createdAt)}
+                        //edit
+                        subheader={`${post.author_name ?? 'Unknown'} · ${getRelativeTime(post.createdAt)}`}
                     />
                     <CardContent>
-                        <Typography variant="body1" sx={{ mb: 2 }}>{post.description}</Typography>
+                        <Typography variant="body1" sx={{ mb: 2 }}>
+                            {renderTextWithLinks(post.description)}
+                        </Typography>
 
                         {post.tags && post.tags.length > 0 && (
                             <Stack direction="row" spacing={1} flexWrap="wrap">

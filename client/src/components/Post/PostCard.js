@@ -9,6 +9,7 @@ import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "../../contexts/UserContext";
 import { getRelativeTime } from "../../utils/timeUtils";
+import { renderTextWithLinks } from "../../utils/linkUtils";
 
 //const currentUser = { id : 1};
 
@@ -35,7 +36,7 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter }) {
 
         <CardContent>
           <Typography variant="body1" sx={{ mb: 2 }}>
-            {post.description}
+            {renderTextWithLinks(post.description)}
           </Typography>
 
           <Stack direction="row" spacing={1} flexWrap="wrap">
