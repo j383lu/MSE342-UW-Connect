@@ -7,7 +7,14 @@ import {
 import { useUser } from "../../contexts/UserContext"; // adjust path if needed
 import { withFirebase } from "../Firebase";           // adjust path if needed
 
-function CreatePostForm({ open, onClose, onSubmit, firebase }) {
+function CreatePostForm({
+  open,
+  onClose,
+  onSubmit,
+  firebase,
+  hideGroupSelect = false,
+  fixedGroupId = null
+}) {
   const predefined_Tags = [
     "FreeFood", "Events", "StudyGroups", "Housing",
     "Jobs", "Sports", "Clubs", "Intramurals", "Tutoring"
@@ -69,7 +76,7 @@ function CreatePostForm({ open, onClose, onSubmit, firebase }) {
       title,
       description,
       tags: selectedTags,
-      group_id: selectedGroup || null  // null if no group selected
+      group_id: (fixedGroupId ?? selectedGroup) || null  // null if no group selected
     });
 
     // reset form
@@ -119,8 +126,8 @@ function CreatePostForm({ open, onClose, onSubmit, firebase }) {
             />
           </Grid>
 
-          {/* Group dropdown — only shows if user belongs to at least one group */}
-          {userGroups.length > 0 && (
+          {/* Group dropdown — hidden when creating from a group details page */}
+          {!hideGroupSelect && userGroups.length > 0 && (
             <Grid item xs={12}>
               <FormControl fullWidth>
                 <InputLabel> Group (optional)</InputLabel>
