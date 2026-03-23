@@ -861,6 +861,19 @@ const eventStyles = {
     cursor: "pointer",
     outline: "none",
   },
+
+  leaveBtn: {
+    height: 40,
+    borderRadius: 999,
+    border: "none",
+    background: "#C62828",
+    color: "#FFFFFF",
+    fontWeight: 700,
+    cursor: "pointer",
+    padding: "0 18px",
+    boxShadow: "0 8px 18px rgba(198,40,40,0.18)",
+    transition: "all 0.2s ease",
+  },
   
 };
 
