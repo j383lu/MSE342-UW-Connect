@@ -348,10 +348,10 @@ export default function EventsPage() {
     }
   };
 
-  const handleLikeRefresh = async (eventId, newLikes) => {
+  const handleLikeRefresh = async (eventId, newLikes, newHasLiked) => {
     updateEventStateEverywhere(eventId, {
       likes: newLikes,
-      has_liked: 1,
+      has_liked: newHasLiked ? 1 : 0,
     });
 
     if (isSearching && searchTerm.trim()) {

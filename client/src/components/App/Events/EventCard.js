@@ -40,10 +40,10 @@ export default function EventCard({
   const statusText = isPast ? "Ended" : isFull ? "Full" : "Open";
   const eventTags = ev.tags ? ev.tags.split(",") : [];
 
-  const handleLike = async (e) => {
+  const handleLikeToggle = async (e) => {
     e.preventDefault();
 
-    if (likeLoading || liked) return;
+    if (likeLoading) return;
 
     try {
       const user = firebase?.auth?.currentUser;
@@ -66,20 +66,22 @@ export default function EventCard({
       const data = await res.json();
 
       if (!res.ok) {
-        window.alert(data.error || "Failed to like event.");
+        window.alert(data.error || "Failed to update like.");
         return;
       }
 
       const updatedLikes = Number(data.likes || 0);
+      const updatedHasLiked = Number(data.has_liked || 0) === 1;
+
       setLikes(updatedLikes);
-      setLiked(true);
+      setLiked(updatedHasLiked);
 
       if (data.message) {
         window.alert(data.message);
       }
 
       if (onLikeSuccess) {
-        await onLikeSuccess(ev.id, updatedLikes);
+        await onLikeSuccess(ev.id, updatedLikes, updatedHasLiked);
       }
     } catch (e2) {
       window.alert("Cannot connect to backend.");
@@ -164,8 +166,8 @@ export default function EventCard({
             ...(liked ? styles.likeBtnActive : null),
             ...(likeLoading ? styles.joinBtnDisabled : null),
           }}
-          onClick={handleLike}
-          disabled={likeLoading || liked}
+          onClick={handleLikeToggle}
+          disabled={likeLoading}
         >
           {liked ? "❤ Liked" : "♡ Like"}
         </button>

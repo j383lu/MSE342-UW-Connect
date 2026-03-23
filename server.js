@@ -125,6 +125,23 @@ const getCurrentUserIdByEmail = (email, callback) => {
   });
 };
 
+// Set up helper function to get the current like count
+const getCurrentLikeCount = (eventId, callback) => {
+  const countSql = `
+    SELECT COUNT(*) AS likes
+    FROM Event_Likes
+    WHERE event_id = ?
+  `;
+
+  db.query(countSql, [eventId], (err, rows) => {
+    if (err) {
+      return callback(err, null);
+    }
+
+    return callback(null, Number(rows[0]?.likes || 0));
+  });
+};
+
 // GET /api/events
 // default: upcoming only
 // if includePast=true: return all events
@@ -155,7 +172,7 @@ app.get("/api/events", checkAuth, (req, res) => {
         TIME_FORMAT(e.event_time, '%H:%i') AS event_time,
         e.location,
         e.capacity,
-        e.likes,
+        COUNT(DISTINCT el.id) AS likes,
         e.category,
         DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
         COUNT(DISTINCT a.id) AS current_count,
@@ -168,7 +185,16 @@ app.get("/api/events", checkAuth, (req, res) => {
       LEFT JOIN Event_Tags t ON t.event_id = e.id
       LEFT JOIN Event_Likes el ON el.event_id = e.id
       ${whereClause}
-      GROUP BY e.id
+      GROUP BY
+        e.id,
+        e.title,
+        e.description,
+        e.event_date,
+        e.event_time,
+        e.location,
+        e.capacity,
+        e.category,
+        e.published_time
       ORDER BY e.event_date ASC, e.event_time ASC
     `;
 
@@ -1816,7 +1842,6 @@ app.get('/api/posts/:id/likes', checkAuth, async (req, res) => {
 //---------------------EVENTs-------------------------------------
 
 // Post API for "Like an Event"
-// POST /api/events/:id/like
 app.post("/api/events/:id/like", checkAuth, (req, res) => {
   const eventId = Number(req.params.id);
   const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
@@ -1835,86 +1860,93 @@ app.post("/api/events/:id/like", checkAuth, (req, res) => {
       return res.status(500).json({ error: "Failed to identify current user." });
     }
 
-    const checkSql = `
-      SELECT id
-      FROM Event_Likes
-      WHERE event_id = ? AND user_id = ?
+    const eventSql = `
+      SELECT id, title
+      FROM Events
+      WHERE id = ?
       LIMIT 1
     `;
 
-    db.query(checkSql, [eventId, currentUserId], (checkErr, checkRows) => {
-      if (checkErr) {
-        console.log("Check event like error:", checkErr);
-        return res.status(500).json({ error: "Failed to check like status." });
+    db.query(eventSql, [eventId], (eventErr, eventRows) => {
+      if (eventErr) {
+        console.log("Like event lookup error:", eventErr);
+        return res.status(500).json({ error: "Failed to load event." });
       }
 
-      if (checkRows.length > 0) {
-        return res.status(400).json({ error: "You have already liked this event." });
+      if (!eventRows || eventRows.length === 0) {
+        return res.status(404).json({ error: "Event not found." });
       }
 
-      const eventSql = `
-        SELECT title
-        FROM Events
-        WHERE id = ?
+      const eventTitle = eventRows[0].title;
+
+      const checkLikeSql = `
+        SELECT id
+        FROM Event_Likes
+        WHERE event_id = ? AND user_id = ?
         LIMIT 1
       `;
 
-      db.query(eventSql, [eventId], (eventErr, eventRows) => {
-        if (eventErr || eventRows.length === 0) {
-          return res.status(404).json({ error: "Event not found." });
+      db.query(checkLikeSql, [eventId, currentUserId], (checkErr, likeRows) => {
+        if (checkErr) {
+          console.log("Check like status error:", checkErr);
+          return res.status(500).json({ error: "Failed to check like status." });
         }
 
-        const eventTitle = eventRows[0].title;
-
-        const insertLikeSql = `
-          INSERT INTO Event_Likes (event_id, user_id)
-          VALUES (?, ?)
-        `;
-
-        db.query(insertLikeSql, [eventId, currentUserId], (insertErr) => {
-          if (insertErr) {
-            console.log("Insert event like error:", insertErr);
-            return res.status(500).json({ error: "Failed to like event." });
-          }
-
-          const updateSql = `
-            UPDATE Events
-            SET likes = likes + 1
-            WHERE id = ?
+        if (likeRows.length > 0) {
+          const deleteLikeSql = `
+            DELETE FROM Event_Likes
+            WHERE event_id = ? AND user_id = ?
           `;
 
-          db.query(updateSql, [eventId], (updateErr, result) => {
-            if (updateErr) {
-              console.log("Update event likes error:", updateErr);
-              return res.status(500).json({ error: "Failed to update event likes." });
+          db.query(deleteLikeSql, [eventId, currentUserId], (deleteErr) => {
+            if (deleteErr) {
+              console.log("Unlike event error:", deleteErr);
+              return res.status(500).json({ error: "Failed to unlike event." });
             }
 
-            if (result.affectedRows === 0) {
-              return res.status(404).json({ error: "Event not found." });
-            }
-
-            const selectSql = `
-              SELECT likes
-              FROM Events
-              WHERE id = ?
-              LIMIT 1
-            `;
-
-            db.query(selectSql, [eventId], (err2, rows) => {
-              if (err2 || rows.length === 0) {
+            getCurrentLikeCount(eventId, (countErr, likeCount) => {
+              if (countErr) {
+                console.log("Reload like count error after unlike:", countErr);
                 return res.status(500).json({
-                  error: "Liked event, but failed to reload likes.",
+                  error: "Unliked event, but failed to reload like count.",
                 });
               }
 
               return res.json({
-                likes: Number(rows[0].likes || 0),
-                has_liked: 1,
-                message: `You have successfully liked the "${eventTitle}" event.`,
+                likes: likeCount,
+                has_liked: 0,
+                message: `You removed your like from "${eventTitle}".`,
               });
             });
           });
-        });
+        } else {
+          const insertLikeSql = `
+            INSERT INTO Event_Likes (event_id, user_id)
+            VALUES (?, ?)
+          `;
+
+          db.query(insertLikeSql, [eventId, currentUserId], (insertErr) => {
+            if (insertErr) {
+              console.log("Like event insert error:", insertErr);
+              return res.status(500).json({ error: "Failed to like event." });
+            }
+
+            getCurrentLikeCount(eventId, (countErr, likeCount) => {
+              if (countErr) {
+                console.log("Reload like count error after like:", countErr);
+                return res.status(500).json({
+                  error: "Liked event, but failed to reload like count.",
+                });
+              }
+
+              return res.json({
+                likes: likeCount,
+                has_liked: 1,
+                message: `You liked "${eventTitle}".`,
+              });
+            });
+          });
+        }
       });
     });
   });
@@ -2007,11 +2039,12 @@ app.post("/api/events/search-history", checkAuth, (req, res) => {
 app.get("/api/events/search", checkAuth, (req, res) => {
   const keyword = String(req.query.keyword || "").trim();
   const sort = String(req.query.sort || "mostUpcoming").trim();
-  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
 
   if (!keyword) {
-    return res.json({ events: [] });
+    return res.status(400).json({ error: "Keyword is required." });
   }
+
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
 
   if (!currentUserEmail) {
     return res.status(401).json({ error: "Authenticated user email not found." });
@@ -2035,7 +2068,7 @@ app.get("/api/events/search", checkAuth, (req, res) => {
       `;
     } else if (sort === "mostLiked") {
       orderClause = `
-        ORDER BY e.likes DESC, e.published_time DESC
+        ORDER BY likes DESC, e.published_time DESC
       `;
     }
 
@@ -2048,7 +2081,7 @@ app.get("/api/events/search", checkAuth, (req, res) => {
         TIME_FORMAT(e.event_time,'%H:%i') AS event_time,
         e.location,
         e.capacity,
-        e.likes,
+        COUNT(DISTINCT el.id) AS likes,
         e.category,
         DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
         COUNT(DISTINCT a.id) AS current_count,
@@ -2064,7 +2097,16 @@ app.get("/api/events/search", checkAuth, (req, res) => {
         e.title LIKE ?
         OR e.category LIKE ?
         OR t.tag_name LIKE ?
-      GROUP BY e.id
+      GROUP BY
+        e.id,
+        e.title,
+        e.description,
+        e.event_date,
+        e.event_time,
+        e.location,
+        e.capacity,
+        e.category,
+        e.published_time
       ${orderClause}
       LIMIT 50
     `;
