@@ -2285,44 +2285,133 @@ app.delete("/api/events/search-history", checkAuth, (req, res) => {
   });
 });
 
-app.get("/api/events/suggestions", (req, res) => {
+app.get("/api/events/suggestions", checkAuth, (req, res) => {
   const keyword = String(req.query.keyword || "").trim();
+  const tab = String(req.query.tab || "public").trim();
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
+
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
 
   if (!keyword) {
     return res.json([]);
   }
 
-  const like = `%${keyword}%`;
-
-  const sql = `
-    SELECT value, type
-    FROM (
-      SELECT DISTINCT e.title AS value, 'Title' AS type
-      FROM Events e
-      WHERE e.title LIKE ?
-
-      UNION
-
-      SELECT DISTINCT e.category AS value, 'Category' AS type
-      FROM Events e
-      WHERE e.category LIKE ?
-
-      UNION
-
-      SELECT DISTINCT t.tag_name AS value, 'Tag' AS type
-      FROM Event_Tags t
-      WHERE t.tag_name LIKE ?
-    ) AS combined
-    LIMIT 10
-  `;
-
-  db.query(sql, [like, like, like], (err, rows) => {
-    if (err) {
-      console.log("Suggestions error:", err);
-      return res.status(500).json({ error: "Failed to load suggestions." });
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("Suggestions user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
     }
 
-    return res.json(rows);
+    const like = `%${keyword}%`;
+
+    let accessCondition = `
+      (
+        e.event_type = 'public'
+        OR (
+          e.event_type = 'group'
+          AND EXISTS (
+            SELECT 1
+            FROM Event_Groups eg2
+            INNER JOIN Group_Members gm2
+              ON gm2.group_id = eg2.group_id
+            WHERE eg2.event_id = e.id
+              AND gm2.user_id = ?
+          )
+        )
+      )
+    `;
+
+    let params = [currentUserId];
+
+    if (tab === "my-groups") {
+      accessCondition = `
+        (
+          e.event_type = 'group'
+          AND EXISTS (
+            SELECT 1
+            FROM Event_Groups eg2
+            INNER JOIN Group_Members gm2
+              ON gm2.group_id = eg2.group_id
+            WHERE eg2.event_id = e.id
+              AND gm2.user_id = ?
+          )
+        )
+      `;
+      params = [currentUserId];
+    } else if (tab === "my-events") {
+      accessCondition = `
+        (
+          (
+            e.created_by = ?
+            OR EXISTS (
+              SELECT 1
+              FROM Event_Attendees a2
+              WHERE a2.event_id = e.id
+                AND LOWER(a2.attendee_name) = ?
+            )
+          )
+          AND
+          (
+            e.event_type = 'public'
+            OR (
+              e.event_type = 'group'
+              AND EXISTS (
+                SELECT 1
+                FROM Event_Groups eg2
+                INNER JOIN Group_Members gm2
+                  ON gm2.group_id = eg2.group_id
+                WHERE eg2.event_id = e.id
+                  AND gm2.user_id = ?
+              )
+            )
+          )
+        )
+      `;
+      params = [currentUserId, currentUserEmail, currentUserId];
+    }
+
+    const sql = `
+      SELECT value, type
+      FROM (
+        SELECT DISTINCT e.title AS value, 'Title' AS type
+        FROM Events e
+        WHERE ${accessCondition}
+          AND e.title LIKE ?
+
+        UNION
+
+        SELECT DISTINCT e.category AS value, 'Category' AS type
+        FROM Events e
+        WHERE ${accessCondition}
+          AND e.category LIKE ?
+
+        UNION
+
+        SELECT DISTINCT t.tag_name AS value, 'Tag' AS type
+        FROM Events e
+        INNER JOIN Event_Tags t ON t.event_id = e.id
+        WHERE ${accessCondition}
+          AND t.tag_name LIKE ?
+      ) AS combined
+      LIMIT 10
+    `;
+
+    const finalParams = [
+      ...params, like,
+      ...params, like,
+      ...params, like,
+    ];
+
+    db.query(sql, finalParams, (err, rows) => {
+      if (err) {
+        console.log("Suggestions error:", err);
+        return res.status(500).json({ error: "Failed to load suggestions." });
+      }
+
+      return res.json(rows);
+    });
   });
 });
 
