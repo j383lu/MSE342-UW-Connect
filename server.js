@@ -2438,9 +2438,9 @@ app.get("/api/events/public", checkAuth, (req, res) => {
       return res.status(500).json({ error: "Failed to identify current user." });
     }
 
-    const whereClause = includePast
-      ? "WHERE e.event_type = 'public'"
-      : "WHERE e.event_type = 'public' AND TIMESTAMP(e.event_date, e.event_time) >= NOW()";
+    const pastClause = includePast
+      ? ""
+      : "AND TIMESTAMP(e.event_date, e.event_time) >= NOW()";
 
     const sql = `
       SELECT 
@@ -2465,7 +2465,21 @@ app.get("/api/events/public", checkAuth, (req, res) => {
       LEFT JOIN Event_Attendees a ON a.event_id = e.id
       LEFT JOIN Event_Tags t ON t.event_id = e.id
       LEFT JOIN Event_Likes el ON el.event_id = e.id
-      ${whereClause}
+      WHERE (
+        e.event_type = 'public'
+        OR (
+          e.event_type = 'group'
+          AND EXISTS (
+            SELECT 1
+            FROM Event_Groups eg2
+            INNER JOIN Group_Members gm2
+              ON gm2.group_id = eg2.group_id
+            WHERE eg2.event_id = e.id
+              AND gm2.user_id = ?
+          )
+        )
+      )
+      ${pastClause}
       GROUP BY
         e.id,
         e.title,
@@ -2481,10 +2495,10 @@ app.get("/api/events/public", checkAuth, (req, res) => {
       ORDER BY e.event_date ASC, e.event_time ASC
     `;
 
-    db.query(sql, [currentUserEmail, currentUserId], (err, rows) => {
+    db.query(sql, [currentUserEmail, currentUserId, currentUserId], (err, rows) => {
       if (err) {
         console.log("GET /api/events/public error:", err);
-        return res.status(500).json({ error: "Failed to load public events." });
+        return res.status(500).json({ error: "Failed to load upcoming events." });
       }
 
       return res.json(rows);
@@ -2610,15 +2624,31 @@ app.get("/api/events/my-events", checkAuth, (req, res) => {
       LEFT JOIN Event_Attendees a ON a.event_id = e.id
       LEFT JOIN Event_Tags t ON t.event_id = e.id
       LEFT JOIN Event_Likes el ON el.event_id = e.id
-      WHERE (
-        e.created_by = ?
-        OR EXISTS (
-          SELECT 1
-          FROM Event_Attendees a2
-          WHERE a2.event_id = e.id
-            AND LOWER(a2.attendee_name) = ?
+      WHERE
+        (
+          e.created_by = ?
+          OR EXISTS (
+            SELECT 1
+            FROM Event_Attendees a2
+            WHERE a2.event_id = e.id
+              AND LOWER(a2.attendee_name) = ?
+          )
         )
-      )
+        AND
+        (
+          e.event_type = 'public'
+          OR (
+            e.event_type = 'group'
+            AND EXISTS (
+              SELECT 1
+              FROM Event_Groups eg2
+              INNER JOIN Group_Members gm2
+                ON gm2.group_id = eg2.group_id
+              WHERE eg2.event_id = e.id
+                AND gm2.user_id = ?
+            )
+          )
+        )
       ${pastClause}
       GROUP BY
         e.id,
@@ -2637,7 +2667,7 @@ app.get("/api/events/my-events", checkAuth, (req, res) => {
 
     db.query(
       sql,
-      [currentUserEmail, currentUserId, currentUserId, currentUserEmail],
+      [currentUserEmail, currentUserId, currentUserId, currentUserEmail, currentUserId],
       (err, rows) => {
         if (err) {
           console.log("GET /api/events/my-events error:", err);
