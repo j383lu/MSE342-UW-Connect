@@ -92,7 +92,7 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter, fir
                   label={tag}
                   size="small"
                   sx={{ mb: 1 }}
-                  onClick={() => onTagFilter(tag)}
+                  onClick={() => onTagFilter?.(tag)}
                 />
               ))
             )}
@@ -100,7 +100,7 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter, fir
         </CardContent>
 
         <CardActions>
-          <IconButton data-testid="like-button" onClick={() => onLikePost(post.post_id)} size="small">
+          <IconButton data-testid="like-button" onClick={() => onLikePost?.(post.post_id)} size="small">
             {post.liked_by_me
               ? <FavoriteIcon fontSize="small" color="error" />
               : <FavoriteBorderIcon fontSize="small" />}
@@ -124,7 +124,7 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter, fir
           </Typography>
 
           {/* Edit/Delete only shown to the actual author */}
-          {isAuthor && (
+          {isAuthor && onEditPost && onDeletePost && (
             <>
               <Button size="small" onClick={() => onEditPost(post)}>Edit</Button>
               <Button size="small" color="error" onClick={() => setConfirmOpen(true)}>Delete</Button>

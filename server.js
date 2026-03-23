@@ -1148,6 +1148,64 @@ const getNumericUserId = (email) => {
     });
 };
 
+// GET /api/groups/:groupId/posts - get posts for a specific group
+app.get('/api/groups/:groupId/posts', checkAuth, async (req, res) => {
+    const groupId = Number(req.params.groupId);
+    if (!groupId) {
+        return res.status(400).json({ error: 'Invalid group id' });
+    }
+
+    let currentUserId;
+    try {
+        currentUserId = await getNumericUserId(req.user.email);
+    } catch (err) {
+        return res.status(404).json({ error: 'User not found' });
+    }
+
+    const sql = `
+        SELECT p.post_id, p.title, p.content, p.author_id, p.group_id, sg.name AS group_name,
+               p.is_anonymous, p.image_url, p.created_at AS createdAt,
+               up.display_name AS author_name,
+               GROUP_CONCAT(DISTINCT t.tag_name) AS tags,
+               COUNT(DISTINCT l.like_id) AS like_count,
+               MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me,
+               (SELECT COUNT(*) FROM Comments WHERE post_id = p.post_id) AS comment_count
+        FROM Posts p
+        LEFT JOIN Social_Group sg ON p.group_id = sg.group_id
+        LEFT JOIN User_Profiles up ON p.author_id = up.user_id
+        LEFT JOIN post_tags pt ON p.post_id = pt.post_id
+        LEFT JOIN Tags t ON pt.tag_id = t.tag_id
+        LEFT JOIN Likes l ON p.post_id = l.post_id
+        WHERE p.group_id = ?
+        GROUP BY p.post_id
+        ORDER BY p.post_id DESC
+    `;
+
+    db.query(sql, [currentUserId, groupId], (err, results) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ error: 'Error retrieving group posts' });
+        }
+
+        const formattedPosts = results.map(post => ({
+            post_id: post.post_id,
+            author_id: post.author_id,
+            author_name: post.author_name ?? `User ${post.author_id}`,
+            title: post.title,
+            description: post.content,
+            tags: post.tags ? post.tags.split(',') : [],
+            createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
+            like_count: post.like_count,
+            liked_by_me: post.liked_by_me === 1,
+            comment_count: post.comment_count ?? 0,
+            group_id: post.group_id,
+            group_name: post.group_name
+        }));
+
+        return res.json(formattedPosts);
+    });
+});
+
 // Post /api/posts - create a new post
 app.post('/api/posts', checkAuth, upload.single('image'), async (req, res) => {
     //let connection = mysql.createConnection(config);
