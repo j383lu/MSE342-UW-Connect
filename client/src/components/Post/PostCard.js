@@ -7,44 +7,22 @@ import FavoriteIcon from "@mui/icons-material/Favorite";
 import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder"; 
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import { useNavigate } from "react-router-dom";
+import { useUser } from "../../contexts/UserContext";
+import { getRelativeTime } from "../../utils/timeUtils";
 
-const currentUser = { id : 1};
+//const currentUser = { id : 1};
 
 function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter }) {
   const navigate = useNavigate();
+  const { dbUser } = useUser();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const isAuthor = post.author_id === currentUser.id;
+// uses real numeric user ID from UserContext instead of hardcoded 1
+  const isAuthor = dbUser && post.author_id === dbUser.userId;
 
   const handleDeleteConfirm = () => {
     onDeletePost(post.post_id);
     setConfirmOpen(false);
-  };
-
-  const getRelativeTime = (dateString) => {
-    const now = new Date();
-    const created = new Date(dateString);
-    const seconds = Math.floor((now - created) / 1000);
-
-    if (seconds < 60) return "just now";
-
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
-
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
-
-    const days = Math.floor(hours / 24);
-    if (days < 7) return `${days} day${days !== 1 ? 's' : ''} ago`;
-
-    const weeks = Math.floor(days / 7);
-    if (weeks < 4) return `${weeks} week${weeks !== 1 ? 's' : ''} ago`;
-
-    const months = Math.floor(days / 30);
-    if (months < 12) return `${months} month${months !== 1 ? 's' : ''} ago`;
-
-    const years = Math.floor(days / 365);
-    return `${years} year${years !== 1 ? 's' : ''} ago`;
   };
 
   return (
@@ -52,7 +30,7 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter }) {
       <Card sx={{ mb: 2 }}>
         <CardHeader
           title={post.title}
-          subheader={getRelativeTime(post.createdAt)}
+          subheader={`${post.author_name ?? 'Unknown'} · ${getRelativeTime(post.createdAt)}`}
         />
 
         <CardContent>
@@ -60,23 +38,35 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter }) {
             {post.description}
           </Typography>
 
-          {post.tags && post.tags.length > 0 && (
-            <Stack direction="row" spacing={1} flexWrap="wrap">
-              {post.tags.map((tag, index) => (
-                <Chip 
-                  key={index} 
-                  label={tag} 
-                  size="small" 
-                  sx={{ mb: 1 }} 
+          <Stack direction="row" spacing={1} flexWrap="wrap">
+            {/* Group chip — navigates to group page */}
+            {post.group_id && post.group_name && (
+              <Chip
+                label={`${post.group_name}`}
+                size="small"
+                color="primary"
+                //edit this to go to actual group page
+                onClick={() => navigate(`/groups/${post.group_id}`)}
+                sx={{ mb: 1, cursor: 'pointer' }}
+              />
+            )}
+
+            {/* Regular tags */}
+            {post.tags && post.tags.length > 0 && (
+              post.tags.map((tag, index) => (
+                <Chip
+                  key={index}
+                  label={tag}
+                  size="small"
+                  sx={{ mb: 1 }}
                   onClick={() => onTagFilter(tag)}
-                  />
-              ))}
-            </Stack>
-          )}
+                />
+              ))
+            )}
+          </Stack>
         </CardContent>
 
         <CardActions>
-          {/* Like button - visible to everyone */}
           <IconButton data-testid="like-button" onClick={() => onLikePost(post.post_id)} size="small">
             {post.liked_by_me
               ? <FavoriteIcon fontSize="small" color="error" />
@@ -90,29 +80,19 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter }) {
             <ChatBubbleOutlineIcon fontSize="small" />
           </IconButton>
           <Typography variant="body2" sx={{ mr: 1 }}>
-              {post.comment_count ?? 0}
+            {post.comment_count ?? 0}
           </Typography>
 
-
-        {/*only show delete button if current user is the author */}
-        {isAuthor && (
-          <>
-            <Button size="small" onClick={() => onEditPost(post)}>
-              Edit
-            </Button>
-            <Button
-              size="small"
-              color="error"
-              onClick={() => setConfirmOpen(true)}
-            >
-              Delete
-            </Button>
-          </>
-        )}
+          {/* Edit/Delete only shown to the actual author */}
+          {isAuthor && (
+            <>
+              <Button size="small" onClick={() => onEditPost(post)}>Edit</Button>
+              <Button size="small" color="error" onClick={() => setConfirmOpen(true)}>Delete</Button>
+            </>
+          )}
         </CardActions>
       </Card>
 
-      {/* Confirmation message */}
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
         <DialogTitle>Delete Post?</DialogTitle>
         <DialogContent>
@@ -122,9 +102,7 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter }) {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmOpen(false)}>Cancel</Button>
-          <Button onClick={handleDeleteConfirm} color="error" variant="contained">
-            Delete
-          </Button>
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained">Delete</Button>
         </DialogActions>
       </Dialog>
     </>

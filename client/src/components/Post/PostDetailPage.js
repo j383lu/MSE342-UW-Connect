@@ -8,26 +8,8 @@ import FavoriteIcon from "@mui/icons-material/Favorite";
 import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import PostCommentThread from "./PostCommentThread";
-
-//make util file for this
-const getRelativeTime = (dateString) => {
-    const now = new Date();
-    const created = new Date(dateString);
-    const seconds = Math.floor((now - created) / 1000);
-    if (seconds < 60) return "just now";
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
-    const days = Math.floor(hours / 24);
-    if (days < 7) return `${days} day${days !== 1 ? 's' : ''} ago`;
-    const weeks = Math.floor(days / 7);
-    if (weeks < 4) return `${weeks} week${weeks !== 1 ? 's' : ''} ago`;
-    const months = Math.floor(days / 30);
-    if (months < 12) return `${months} month${months !== 1 ? 's' : ''} ago`;
-    const years = Math.floor(days / 365);
-    return `${years} year${years !== 1 ? 's' : ''} ago`;
-};
+import { getAuth } from 'firebase/auth';
+import { getRelativeTime } from "../../utils/timeUtils";
 
 function PostDetailPage() {
     const { postId } = useParams();
@@ -41,9 +23,17 @@ function PostDetailPage() {
         fetchComments();
     }, [postId]);
 
+    const getToken = async () => {
+    const auth = getAuth();
+    return await auth.currentUser?.getIdToken();
+    };
+
     const fetchPost = async () => {
         try {
-            const response = await fetch(`/api/posts/${postId}`);
+            const token = await getToken();
+            const response = await fetch(`/api/posts/${postId}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
             const data = await response.json();
             setPost(data);
         } catch (err) {
@@ -53,7 +43,10 @@ function PostDetailPage() {
 
     const fetchComments = async () => {
         try {
-            const response = await fetch(`/api/posts/${postId}/comments`);
+            const token = await getToken();
+            const response = await fetch(`/api/posts/${postId}/comments`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
             const data = await response.json();
             setComments(data);
         } catch (err) {
@@ -62,23 +55,24 @@ function PostDetailPage() {
     };
 
     //handler for adding new comments
-    const handleAddComment = async (content, parentCommentId = null) => {
-        try {
-            const response = await fetch(`/api/posts/${postId}/comments`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content, parent_comment_id: parentCommentId })
-            });
-            const data = await response.json();
-            if (!response.ok) {
-                console.error(data.error);
-                return;
-            }
-            setComments(prev => [...prev, data]);
-            setNewComment("");
-        } catch (err) {
-            console.error("Error adding comment:", err);
-        }
+   const handleAddComment = async (content, parentCommentId = null) => {
+    try {
+        const token = await getToken();
+        const response = await fetch(`/api/posts/${postId}/comments`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}` 
+            },
+            body: JSON.stringify({ content, parent_comment_id: parentCommentId })
+        });
+        const data = await response.json();
+        if (!response.ok) { console.error(data.error); return; }
+        setComments(prev => [...prev, data]);
+        setNewComment("");
+    } catch (err) {
+        console.error("Error adding comment:", err);
+    }
     };
 
     const topLevelComments = comments.filter(c => c.parent_comment_id === null);
