@@ -174,6 +174,7 @@ app.get("/api/events", checkAuth, (req, res) => {
         e.capacity,
         COUNT(DISTINCT el.id) AS likes,
         e.category,
+        e.event_type,
         DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
         COUNT(DISTINCT a.id) AS current_count,
         GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
@@ -194,6 +195,7 @@ app.get("/api/events", checkAuth, (req, res) => {
         e.location,
         e.capacity,
         e.category,
+        e.event_type,
         e.published_time
       ORDER BY e.event_date ASC, e.event_time ASC
     `;
@@ -220,6 +222,8 @@ app.post("/api/events", checkAuth, (req, res) => {
     capacity,
     category,
     tags,
+    event_type,
+    group_ids,
   } = req.body;
 
   if (
@@ -239,57 +243,174 @@ app.post("/api/events", checkAuth, (req, res) => {
     return res.status(400).json({ error: "Capacity must be a positive integer." });
   }
 
+  const safeEventType =
+    String(event_type || "public").trim().toLowerCase() === "group"
+      ? "group"
+      : "public";
+
   const safeTags = Array.isArray(tags) ? tags : [];
 
-  const insertEventSql = `
-    INSERT INTO Events (title, description, event_date, event_time, location, capacity, category)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `;
+  const safeGroupIds = Array.isArray(group_ids)
+    ? [...new Set(group_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))]
+    : [];
 
-  db.query(
-    insertEventSql,
-    [title, description, event_date, event_time, location, capNum, category],
-    (err, result) => {
-      if (err) {
-        console.log("POST /api/events error:", err);
-        return res.status(500).json({ error: "Failed to create event." });
-      }
+  if (safeEventType === "group" && safeGroupIds.length === 0) {
+    return res.status(400).json({
+      error: "Please select at least one group for a group event.",
+    });
+  }
 
-      const eventId = result.insertId;
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
 
-      const uniqueTags = [
-        ...new Set(safeTags.map((tag) => String(tag).trim()).filter(Boolean)),
-      ];
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
 
-      if (uniqueTags.length === 0) {
-        return res.status(201).json({
-          id: eventId,
-          message: "Event created successfully.",
-        });
-      }
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("POST /api/events user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
+    }
 
-      const values = uniqueTags.map((tag) => [eventId, tag]);
-
-      const insertTagsSql = `
-        INSERT INTO Event_Tags (event_id, tag_name)
-        VALUES ?
+    const verifyGroupsAndCreateEvent = () => {
+      const insertEventSql = `
+        INSERT INTO Events (
+          title,
+          description,
+          event_date,
+          event_time,
+          location,
+          capacity,
+          category,
+          event_type
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
-      db.query(insertTagsSql, [values], (tagErr) => {
-        if (tagErr) {
-          console.log("Insert Event_Tags error:", tagErr);
-          return res.status(500).json({
-            error: "Event was created, but failed to save tags.",
+      db.query(
+        insertEventSql,
+        [
+          title,
+          description,
+          event_date,
+          event_time,
+          location,
+          capNum,
+          category,
+          safeEventType,
+        ],
+        (err, result) => {
+          if (err) {
+            console.log("POST /api/events error:", err);
+            return res.status(500).json({ error: "Failed to create event." });
+          }
+
+          const eventId = result.insertId;
+
+          const uniqueTags = [
+            ...new Set(safeTags.map((tag) => String(tag).trim()).filter(Boolean)),
+          ];
+
+          const insertEventGroups = (done) => {
+            if (safeEventType !== "group" || safeGroupIds.length === 0) {
+              return done(null);
+            }
+
+            const groupValues = safeGroupIds.map((groupId) => [eventId, groupId]);
+
+            const insertGroupsSql = `
+              INSERT INTO Event_Groups (event_id, group_id)
+              VALUES ?
+            `;
+
+            db.query(insertGroupsSql, [groupValues], (groupErr) => {
+              if (groupErr) {
+                console.log("Insert Event_Groups error:", groupErr);
+                return done(new Error("Event was created, but failed to save selected groups."));
+              }
+
+              return done(null);
+            });
+          };
+
+          const insertEventTags = (done) => {
+            if (uniqueTags.length === 0) {
+              return done(null);
+            }
+
+            const tagValues = uniqueTags.map((tag) => [eventId, tag]);
+
+            const insertTagsSql = `
+              INSERT INTO Event_Tags (event_id, tag_name)
+              VALUES ?
+            `;
+
+            db.query(insertTagsSql, [tagValues], (tagErr) => {
+              if (tagErr) {
+                console.log("Insert Event_Tags error:", tagErr);
+                return done(new Error("Event was created, but failed to save tags."));
+              }
+
+              return done(null);
+            });
+          };
+
+          insertEventGroups((groupInsertErr) => {
+            if (groupInsertErr) {
+              return res.status(500).json({ error: groupInsertErr.message });
+            }
+
+            insertEventTags((tagInsertErr) => {
+              if (tagInsertErr) {
+                return res.status(500).json({ error: tagInsertErr.message });
+              }
+
+              return res.status(201).json({
+                id: eventId,
+                event_type: safeEventType,
+                group_ids: safeGroupIds,
+                message: "Event created successfully.",
+              });
+            });
+          });
+        }
+      );
+    };
+
+    if (safeEventType !== "group") {
+      return verifyGroupsAndCreateEvent();
+    }
+
+    const placeholders = safeGroupIds.map(() => "?").join(", ");
+
+    const verifyGroupsSql = `
+      SELECT DISTINCT gm.group_id
+      FROM Group_Members gm
+      WHERE gm.user_id = ?
+        AND gm.group_id IN (${placeholders})
+    `;
+
+    db.query(
+      verifyGroupsSql,
+      [currentUserId, ...safeGroupIds],
+      (verifyErr, verifyRows) => {
+        if (verifyErr) {
+          console.log("Verify selected groups error:", verifyErr);
+          return res.status(500).json({ error: "Failed to verify selected groups." });
+        }
+
+        const verifiedGroupIds = (verifyRows || []).map((row) => Number(row.group_id));
+
+        if (verifiedGroupIds.length !== safeGroupIds.length) {
+          return res.status(403).json({
+            error: "You can only create a group event for groups you have joined.",
           });
         }
 
-        return res.status(201).json({
-          id: eventId,
-          message: "Event created successfully.",
-        });
-      });
-    }
-  );
+        return verifyGroupsAndCreateEvent();
+      }
+    );
+  });
 });
 
 // POST /api/events/:id/join
@@ -2083,6 +2204,7 @@ app.get("/api/events/search", checkAuth, (req, res) => {
         e.capacity,
         COUNT(DISTINCT el.id) AS likes,
         e.category,
+        e.event_type,
         DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
         COUNT(DISTINCT a.id) AS current_count,
         GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
@@ -2106,6 +2228,7 @@ app.get("/api/events/search", checkAuth, (req, res) => {
         e.location,
         e.capacity,
         e.category,
+        e.event_type,
         e.published_time
       ${orderClause}
       LIMIT 50
@@ -2257,6 +2380,44 @@ app.get('/api/users/by-email', checkAuth, (req, res) => {
   });
 });
 
+// GET /api/my-groups
+// return all groups the current logged-in user has joined, if user is not in any groups, return message in frontend
+app.get("/api/my-groups", checkAuth, (req, res) => {
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
+
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("GET /api/my-groups user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
+    }
+
+    const sql = `
+      SELECT 
+        sg.group_id,
+        sg.name
+      FROM Group_Members gm
+      JOIN Social_Group sg
+        ON gm.group_id = sg.group_id
+      WHERE gm.user_id = ?
+      ORDER BY sg.name ASC
+    `;
+
+    db.query(sql, [currentUserId], (err, rows) => {
+      if (err) {
+        console.log("GET /api/my-groups error:", err);
+        return res.status(500).json({ error: "Failed to load groups." });
+      }
+
+      return res.json({
+        groups: rows,
+      });
+    });
+  });
+});
 
 
 app.listen(port, () => console.log(`Listening on port ${port}`)); 
