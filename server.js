@@ -1522,6 +1522,29 @@ app.post('/api/posts/:id/like', checkAuth, async (req, res) => {
     });
 });
 
+// GET /api/posts/:id/likes - get list of users who liked a post
+app.get('/api/posts/:id/likes', checkAuth, async (req, res) => {
+    const postId = req.params.id;
+
+    const sql = `
+        SELECT l.user_id, up.display_name
+        FROM Likes l
+        LEFT JOIN User_Profiles up ON l.user_id = up.user_id
+        WHERE l.post_id = ?
+        ORDER BY up.display_name ASC
+    `;
+
+    db.query(sql, [postId], (err, results) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ error: 'Error retrieving likes' });
+        }
+        res.json(results);
+    });
+});
+
+//---------------------EVENTs-------------------------------------
+
 // Post API for "Like an Event"
 app.post("/api/events/:id/like", (req, res) => {
   const eventId = Number(req.params.id);
