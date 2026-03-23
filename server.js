@@ -148,6 +148,7 @@ app.get("/api/events", checkAuth, (req, res) => {
 app.post("/api/events", (req, res) => {
   const {title, description, event_date, event_time, location, capacity, category, tags,
   } = req.body;
+})
 app.post("/api/events", checkAuth, (req, res) => {
   const { title, description, event_date, event_time, location, capacity } = req.body;
 
@@ -925,23 +926,40 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || "Internal server error" });
 });
 
-// FEED PAGE APIs
+// ------------------------------FEED PAGE APIs
+const getNumericUserId = (email) => {
+    return new Promise((resolve, reject) => {
+        db.query(
+            'SELECT user_id FROM User_Credentials WHERE email = ? LIMIT 1',
+            [email],
+            (err, rows) => {
+                if (err) return reject(err);
+                if (!rows || rows.length === 0) return reject(new Error('User not found'));
+                resolve(rows[0].user_id);
+            }
+        );
+    });
+};
 
 // Post /api/posts - create a new post
-app.post('/api/posts', checkAuth, (req, res) => {
-    let connection = mysql.createConnection(config);
-
+app.post('/api/posts', checkAuth, async (req, res) => {
+    //let connection = mysql.createConnection(config);
 
     let { title, content, group_id = null, is_anonymous = 0, image_url = null, tags = [] } = req.body;
-    // let author_id = 1; // Placeholder for now, should be replaced with actual user ID from authentication
+    let author_id; // Placeholder for now, should be replaced with actual user ID from authentication
+    try {
+        author_id = await getNumericUserId(req.user.email);
+    } catch (err) {
+        return res.status(404).json({ error: 'User not found' });
+    }
 
     let postSql = 'INSERT INTO Posts (author_id, group_id, title, content, is_anonymous, image_url) VALUES (?, ?, ?, ?, ?, ?)';
     let postData = [author_id, group_id, title, content, is_anonymous, image_url];
     
-    connection.query(postSql, postData, (err, result) => {
+    db.query(postSql, postData, (err, result) => {
         if (err) {
             console.error(err);
-            connection.end();
+            //db.end();
             return res.status(500).send('Error creating post');
         } 
 
@@ -954,18 +972,18 @@ app.post('/api/posts', checkAuth, (req, res) => {
 
 
             //let tagData = tags.map(tag => [postId, tag]);
-            connection.query(tagSql, tags, (err, tagResult) => {
+            db.query(tagSql, tags, (err, tagResult) => {
                 if (err) {
                     console.error(err);
-                    connection.end();
+                    //db.end();
                     return res.status(500).send('Error creating post tags');
                 }
 
                 let postTagData = tagResult.map(tag => [postId, tag.tag_id]);
                 if (postTagData.length > 0) {
                     let postTagSql = 'INSERT INTO post_tags (post_id, tag_id) VALUES ?';
-                    connection.query(postTagSql, [postTagData], (err) => {
-                        connection.end();
+                    db.query(postTagSql, [postTagData], (err) => {
+                        //db.end();
                         if (err) {
                             console.error(err);
                             return res.status(500).json({ 
@@ -988,7 +1006,7 @@ app.post('/api/posts', checkAuth, (req, res) => {
                         });                  
                     });
                 } else {
-                    connection.end();
+                    //db.end();
                     res.json({
                         post: { post_id: postId, author_id: author_id, title, description: content, tags: [], createdAt: new Date().toISOString(), like_count: 0, liked_by_me: false },
                         message: 'Post created successfully but no valid tags found'
@@ -996,7 +1014,7 @@ app.post('/api/posts', checkAuth, (req, res) => {
                 }
             });
         } else {
-            connection.end();
+            //db.end();
             res.json({
                 post: { post_id: postId, author_id: author_id, title, description: content, tags: [], createdAt: new Date().toISOString(), like_count: 0, liked_by_me: false },
                 message: 'Post created successfully without tags'
@@ -1006,18 +1024,95 @@ app.post('/api/posts', checkAuth, (req, res) => {
     });
 });
 
+
+// GET API for seraching posts
+app.get('/api/posts/search', checkAuth, async (req, res) => {
+    const { keyword } = req.query;
+    if (!keyword || keyword.trim() === "") {
+        return res.status(400).json({ error: "Please enter a keyword to search" });
+    }
+
+    //const connection = mysql.createConnection(config);
+    let currentUserId; // placeholder
+    try {
+        currentUserId = await getNumericUserId(req.user.email);
+    } catch (err) {
+        return res.status(404).json({ error: 'User not found' });
+    }
+
+    const searchSql = `
+        SELECT p.post_id, p.title, p.content AS description, p.author_id, 
+          p.group_id, sg.name AS group_name, p.created_at AS createdAt,
+          up.display_name AS author_name,
+          GROUP_CONCAT(DISTINCT t.tag_name) AS tags,
+          COUNT(DISTINCT l.like_id) AS like_count,
+          MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me,
+          (SELECT COUNT(*) FROM Comments WHERE post_id = p.post_id) AS comment_count
+        FROM Posts p
+        LEFT JOIN Social_Group sg ON p.group_id = sg.group_id
+        LEFT JOIN User_Profiles up ON p.author_id = up.user_id
+        LEFT JOIN post_tags pt ON p.post_id = pt.post_id
+        LEFT JOIN Tags t ON pt.tag_id = t.tag_id
+        LEFT JOIN Likes l ON p.post_id = l.post_id
+        WHERE LOWER(p.title) LIKE ? OR LOWER(p.content) LIKE ?
+        GROUP BY p.post_id
+        ORDER BY p.created_at DESC
+        LIMIT 50
+    `;
+
+    const keywordParam = `%${keyword.toLowerCase()}%`;
+
+    db.query(searchSql, [currentUserId, keywordParam, keywordParam], (err, results) => {
+        //db.end();
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ error: "Database error while searching posts" });
+        }
+
+        const formattedPosts = results.map(post => ({
+            post_id: post.post_id,
+            author_id: post.author_id,
+            author_name: post.author_name ?? `User ${post.author_id}`,
+            title: post.title,
+            description: post.description,
+            tags: post.tags ? post.tags.split(',') : [],
+            createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
+            like_count: post.like_count ?? 0,
+            liked_by_me: post.liked_by_me === 1,
+            comment_count: post.comment_count ?? 0,
+            group_id: post.group_id,        // new
+            group_name: post.group_name     // new
+        }));
+
+        if (formattedPosts.length === 0) {
+            return res.json({ message: "No results found.", posts: [] });
+        }
+
+        res.json({ posts: formattedPosts });
+    });
+});
+
 // GET /api/posts/tag/:tagName - filter posts by tag
-app.get('/api/posts/tag/:tagName', checkAuth, (req, res) => {
-    const connection = mysql.createConnection(config);
+app.get('/api/posts/tag/:tagName', checkAuth, async (req, res) => {
+    //const connection = mysql.createConnection(config);
     const tagName = req.params.tagName;
-    const currentUserId = 1; // placeholder
+    let currentUserId; // placeholder
+    try {
+        currentUserId = await getNumericUserId(req.user.email);
+    } catch (err) {
+        return res.status(404).json({ error: 'User not found' });
+    }
 
     const sql = `
-        SELECT p.post_id, p.title, p.content, p.author_id, p.created_at AS createdAt,
+        SELECT p.post_id, p.title, p.content, p.author_id, p.group_id, sg.name AS group_name, 
+                p.created_at AS createdAt, up.display_name AS author_name,
                GROUP_CONCAT(DISTINCT t.tag_name) AS tags,
                COUNT(DISTINCT l.like_id) AS like_count,
-               MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me
+               MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me,
+               (SELECT COUNT(*) FROM Comments WHERE post_id = p.post_id) AS comment_count
         FROM Posts p
+        LEFT JOIN Social_Group sg ON p.group_id = sg.group_id
+        LEFT JOIN User_Profiles up ON p.author_id = up.user_id
         LEFT JOIN post_tags pt ON p.post_id = pt.post_id
         LEFT JOIN Tags t ON pt.tag_id = t.tag_id
         LEFT JOIN Likes l ON p.post_id = l.post_id
@@ -1030,8 +1125,8 @@ app.get('/api/posts/tag/:tagName', checkAuth, (req, res) => {
         ORDER BY p.created_at DESC
     `;
 
-    connection.query(sql, [currentUserId, tagName], (err, results) => {
-        connection.end();
+    db.query(sql, [currentUserId, tagName], (err, results) => {
+        //db.end();
         if (err) {
             console.error(err);
             return res.status(500).json({ error: 'Error filtering posts by tag' });
@@ -1040,12 +1135,16 @@ app.get('/api/posts/tag/:tagName', checkAuth, (req, res) => {
         const formattedPosts = (Array.isArray(results) ? results : []).map(post => ({
             post_id: post.post_id,
             author_id: post.author_id,
+            author_name: post.author_name ?? `User ${post.author_id}`,
             title: post.title,
             description: post.content,
             tags: post.tags ? post.tags.split(',') : [],
             createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
             like_count: post.like_count ?? 0,
-            liked_by_me: post.liked_by_me === 1
+            liked_by_me: post.liked_by_me === 1,
+            comment_count: post.comment_count ?? 0,
+            group_id: post.group_id,        // new
+            group_name: post.group_name     // new
         }));
 
         if (formattedPosts.length === 0) {
@@ -1057,17 +1156,26 @@ app.get('/api/posts/tag/:tagName', checkAuth, (req, res) => {
 });
 
 // GET API for posts
-app.get('/api/posts', checkAuth, (req, res) => {
-    let connection = mysql.createConnection(config);
-    const currentUserId = 1 //Placeholde, need to replace with actually user id later
+app.get('/api/posts', checkAuth, async (req, res) => {
+    //let connection = mysql.createConnection(config);
+    let currentUserId; //Placeholde, need to replace with actually user id later
+    try {
+        currentUserId = await getNumericUserId(req.user.email);
+    } catch (err) {
+        return res.status(404).json({ error: 'User not found' });
+    }
+
     let sql = `
-         SELECT p.post_id, p.title, p.content, p.author_id, p.group_id,
+         SELECT p.post_id, p.title, p.content, p.author_id, p.group_id, sg.name AS group_name,
                p.is_anonymous, p.image_url, p.created_at AS createdAt,
-               GROUP_CONCAT(t.tag_name) AS tags,
+               up.display_name AS author_name,
+               GROUP_CONCAT(DISTINCT t.tag_name) AS tags,
                COUNT(DISTINCT l.like_id) AS like_count,
                MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me,
                (SELECT COUNT(*) FROM Comments WHERE post_id = p.post_id) AS comment_count
         FROM Posts p
+        LEFT JOIN Social_Group sg ON p.group_id = sg.group_id
+        LEFT JOIN User_Profiles up ON p.author_id = up.user_id
         LEFT JOIN post_tags pt ON p.post_id = pt.post_id
         LEFT JOIN Tags t ON pt.tag_id = t.tag_id
         LEFT JOIN Likes l ON p.post_id = l.post_id
@@ -1075,8 +1183,8 @@ app.get('/api/posts', checkAuth, (req, res) => {
         ORDER BY p.post_id DESC
     `;
 
-    connection.query(sql, [currentUserId], (err, results) => {
-        connection.end();
+    db.query(sql, [currentUserId], (err, results) => {
+        //db.end();
 
         if (err) {
             console.error(err);
@@ -1086,80 +1194,32 @@ app.get('/api/posts', checkAuth, (req, res) => {
         const formattedPosts = results.map(post => ({
             post_id: post.post_id,
             author_id: post.author_id,
+            author_name: post.author_name ?? `User ${post.author_id}`,
             title: post.title,
             description: post.content, // map content to description
             tags: post.tags ? post.tags.split(',') : [],
             createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
             like_count: post.like_count,
             liked_by_me: post.liked_by_me, 
-            comment_count: post.comment_count ?? 0
+            comment_count: post.comment_count ?? 0,
+            group_id: post.group_id,        // new
+            group_name: post.group_name     // new
         }));
 
         res.json(formattedPosts);
     });
 });
 
-// GET API for seraching posts
-app.get('/api/posts/search', checkAuth, (req, res) => {
-    const { keyword } = req.query;
-
-    if (!keyword || keyword.trim() === "") {
-        return res.status(400).json({ error: "Please enter a keyword to search" });
-    }
-
-    const connection = mysql.createConnection(config);
-    const currentUserId = 1 // placeholder
-
-    const searchSql = `
-        SELECT p.post_id, p.title, p.content AS description, p.author_id, p.created_at AS createdAt,
-        GROUP_CONCAT(t.tag_name) AS tags,
-        COUNT(DISTINCT l.like_id) AS like_count,
-        MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me,
-        (SELECT COUNT(*) FROM Comments WHERE post_id = p.post_id) AS comment_count
-        FROM Posts p
-        LEFT JOIN post_tags pt ON p.post_id = pt.post_id
-        LEFT JOIN Tags t ON pt.tag_id = t.tag_id
-        LEFT JOIN Likes l ON p.post_id = l.post_id
-        WHERE LOWER(p.title) LIKE ? OR LOWER(p.content) LIKE ?
-        GROUP BY p.post_id
-        ORDER BY p.created_at DESC
-        LIMIT 50
-    `;
-
-    const keywordParam = `%${keyword.toLowerCase()}%`;
-
-    connection.query(searchSql, [currentUserId, keywordParam, keywordParam], (err, results) => {
-        connection.end();
-        if (err) {
-            console.error(err);
-            return res.status(500).json({ error: "Database error while searching posts" });
-        }
-
-        const formattedPosts = results.map(post => ({
-            post_id: post.post_id,
-            author_id: post.author_id,
-            title: post.title,
-            description: post.description,
-            tags: post.tags ? post.tags.split(',') : [],
-            createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
-            like_count: post.like_count ?? 0,
-            liked_by_me: post.liked_by_me === 1,
-            comment_count: post.comment_count ?? 0
-        }));
-
-        if (formattedPosts.length === 0) {
-            return res.json({ message: "No results found.", posts: [] });
-        }
-
-        res.json({ posts: formattedPosts });
-    });
-});
-
 // GET /api/posts/:id - get a single post
-app.get('/api/posts/:id', checkAuth, (req, res) => {
-    const connection = mysql.createConnection(config);
+app.get('/api/posts/:id', checkAuth, async (req, res) => {
+    //const connection = mysql.createConnection(config);
     const postId = req.params.id;
-    const currentUserId = 1; // placeholder
+    let currentUserId; // placeholder
+    try {
+        currentUserId = await getNumericUserId(req.user.email);
+    } catch (err) {
+        return res.status(404).json({ error: 'User not found' });
+    }
 
     const sql = `
         SELECT p.post_id, p.title, p.content, p.author_id, p.created_at AS createdAt,
@@ -1174,8 +1234,8 @@ app.get('/api/posts/:id', checkAuth, (req, res) => {
         GROUP BY p.post_id
     `;
 
-    connection.query(sql, [currentUserId, postId], (err, results) => {
-        connection.end();
+    db.query(sql, [currentUserId, postId], (err, results) => {
+        //db.end();
         if (err) {
             console.error(err);
             return res.status(500).json({ error: 'Error retrieving post' });
@@ -1199,20 +1259,21 @@ app.get('/api/posts/:id', checkAuth, (req, res) => {
 });
 
 // GET /api/posts/:id/comments - get all comments for a post
-app.get('/api/posts/:id/comments', checkAuth, (req, res) => {
-    const connection = mysql.createConnection(config);
-    const postId = req.params.id;
+app.get('/api/posts/:id/comments', checkAuth, async (req, res) => {
+    //const connection = mysql.createConnection(config);
+    const postId = req.params.id
 
     const sql = `
         SELECT c.comment_id, c.post_id, c.user_id, c.parent_comment_id,
-               c.content, c.created_at AS createdAt
+               c.content, c.created_at AS createdAt, up.display_name as author_name
         FROM Comments c
+        LEFT JOIN User_Profiles up ON c.user_id = up.user_id
         WHERE c.post_id = ?
         ORDER BY c.created_at ASC
     `;
 
-    connection.query(sql, [postId], (err, results) => {
-        connection.end();
+    db.query(sql, [postId], (err, results) => {
+        //db.end();
         if (err) {
             console.error(err);
             return res.status(500).json({ error: 'Error retrieving comments' });
@@ -1222,70 +1283,88 @@ app.get('/api/posts/:id/comments', checkAuth, (req, res) => {
 });
 
 // POST /api/posts/:id/comments - add a comment or reply
-app.post('/api/posts/:id/comments', checkAuth, (req, res) => {
-    const connection = mysql.createConnection(config);
+app.post('/api/posts/:id/comments', checkAuth, async (req, res) => {
+    //const connection = mysql.createConnection(config);
     const postId = req.params.id;
     const { content, parent_comment_id = null } = req.body;
-    const currentUserId = 1; // placeholder
+    let currentUserId; // placeholder
+    try {
+        currentUserId = await getNumericUserId(req.user.email);
+    } catch (err) {
+        return res.status(404).json({ error: 'User not found' });
+    }
 
     if (!content || !content.trim()) {
-        connection.end();
+        //db.end();
         return res.status(400).json({ error: 'Comment content is required' });
     }
 
     const sql = 'INSERT INTO Comments (post_id, user_id, parent_comment_id, content) VALUES (?, ?, ?, ?)';
-    connection.query(sql, [postId, currentUserId, parent_comment_id, content], (err, result) => {
-        connection.end();
+    db.query(sql, [postId, currentUserId, parent_comment_id, content], (err, result) => {
+        //db.end();
         if (err) {
             console.error(err);
             return res.status(500).json({ error: 'Error creating comment' });
         }
-        res.json({
-            comment_id: result.insertId,
-            post_id: parseInt(postId),
-            user_id: currentUserId,
-            parent_comment_id,
-            content,
-            createdAt: new Date().toISOString()
-        });
+       db.query(
+        'SELECT display_name FROM User_Profiles WHERE user_id = ?',
+        [currentUserId],
+        (err2, profileRows) => {
+            const author_name = profileRows?.[0]?.display_name ?? `User ${currentUserId}`;
+            res.json({
+                comment_id: result.insertId,
+                post_id: parseInt(postId),
+                user_id: currentUserId,
+                author_name,
+                parent_comment_id,
+                content,
+                createdAt: new Date().toISOString()
+            });
+        }
+    );
     });
 });
 
 // DELETE /api/posts/:id - delete a post (only by author)
-app.delete('/api/posts/:id', (req, res) => {
-    let connection = mysql.createConnection(config);
+app.delete('/api/posts/:id', checkAuth, async(req, res) => {
+    //let connection = mysql.createConnection(config);
     const postId = req.params.id;
-    const requestingUserId = 1; // Placeholder need to replace with real auth user ID later
+    let requestingUserId; // Placeholder need to replace with real auth user ID later
+    try {
+        requestingUserId = await getNumericUserId(req.user.email);
+    } catch (err) {
+        return res.status(404).json({ error: 'User not found' });
+    }
 
     const checkSql = 'SELECT author_id FROM Posts WHERE post_id = ?';
-    connection.query(checkSql, [postId], (err, results) => {
+    db.query(checkSql, [postId], (err, results) => {
         if (err) {
             console.error(err);
-            connection.end();
+            //db.end();
             return res.status(500).json({ error: 'Error finding post' });
         }
 
         if (results.length === 0) {
-            connection.end();
+            //db.end();
             return res.status(404).json({ error: 'Post not found' });
         }
 
         if (results[0].author_id !== requestingUserId) {
-            connection.end();
+            //db.end();
             return res.status(403).json({ error: 'Not authorized to delete this post' });
         }
 
         const deleteTagsSql = 'DELETE FROM post_tags WHERE post_id = ?';
-        connection.query(deleteTagsSql, [postId], (err) => {
+        db.query(deleteTagsSql, [postId], (err) => {
             if (err) {
                 console.error(err);
-                connection.end();
+                //db.end();
                 return res.status(500).json({ error: 'Error deleting post tags' });
             }
 
             const deletePostSql = 'DELETE FROM Posts WHERE post_id = ?';
-            connection.query(deletePostSql, [postId], (err) => {
-                connection.end();
+            db.query(deletePostSql, [postId], (err) => {
+                //db.end();
                 if (err) {
                     console.error(err);
                     return res.status(500).json({ error: 'Error deleting post' });
@@ -1297,43 +1376,49 @@ app.delete('/api/posts/:id', (req, res) => {
 });
 
 // PUT /api/posts/:id - edit a post (only by author)
-app.put('/api/posts/:id', (req, res) => {
-    let connection = mysql.createConnection(config);
+app.put('/api/posts/:id', checkAuth, async (req, res) => {
+    //let connection = mysql.createConnection(config);
     const postId = req.params.id;
-    const requestingUserId = 1; // Placeholder - replace with real auth user ID later
-    const { title, content, tags = [] } = req.body;
+    const { title, content, tags = [], group_id = null } = req.body;
+
+    let requestingUserId; // Placeholder - replace with real auth user ID later
+    try {
+        requestingUserId = await getNumericUserId(req.user.email);
+    } catch (err) {
+        return res.status(404).json({ error: 'User not found' });
+    }
 
     const checkSql = 'SELECT author_id FROM Posts WHERE post_id = ?';
-    connection.query(checkSql, [postId], (err, results) => {
+    db.query(checkSql, [postId], (err, results) => {
         if (err) {
-            connection.end();
+            //db.end();
             return res.status(500).json({ error: 'Error finding post' });
         }
         if (results.length === 0) {
-            connection.end();
+            //db.end();
             return res.status(404).json({ error: 'Post not found' });
         }
         if (results[0].author_id !== requestingUserId) {
-            connection.end();
+            //db.end();
             return res.status(403).json({ error: 'Not authorized to edit this post' });
         }
 
-        const updateSql = 'UPDATE Posts SET title = ?, content = ? WHERE post_id = ?';
-        connection.query(updateSql, [title, content, postId], (err) => {
+        const updateSql = 'UPDATE Posts SET title = ?, content = ?, group_id = ? WHERE post_id = ?';
+        db.query(updateSql, [title, content, group_id, postId], (err) => {
             if (err) {
-                connection.end();
+                //db.end();
                 return res.status(500).json({ error: 'Error updating post' });
             }
 
             const deleteTagsSql = 'DELETE FROM post_tags WHERE post_id = ?';
-            connection.query(deleteTagsSql, [postId], (err) => {
+            db.query(deleteTagsSql, [postId], (err) => {
                 if (err) {
-                    connection.end();
+                    //db.end();
                     return res.status(500).json({ error: 'Error updating tags' });
                 }
 
                 if (tags.length === 0) {
-                    connection.end();
+                    //db.end();
                     return res.json({
                         post: { post_id: parseInt(postId), title, description: content, tags: [] },
                         message: 'Post updated successfully'
@@ -1341,15 +1426,15 @@ app.put('/api/posts/:id', (req, res) => {
                 }
 
                 const tagSql = 'SELECT tag_id, tag_name FROM Tags WHERE tag_name IN (' + tags.map(() => '?').join(', ') + ')';
-                connection.query(tagSql, tags, (err, tagResults) => {
+                db.query(tagSql, tags, (err, tagResults) => {
                     if (err) {
-                        connection.end();
+                        //db.end();
                         return res.status(500).json({ error: 'Error finding tags' });
                     }
 
                     const postTagData = tagResults.map(tag => [postId, tag.tag_id]);
                     if (postTagData.length === 0) {
-                        connection.end();
+                        //db.end();
                         return res.json({
                             post: { post_id: parseInt(postId), title, description: content, tags: [] },
                             message: 'Post updated successfully but no valid tags found'
@@ -1357,8 +1442,8 @@ app.put('/api/posts/:id', (req, res) => {
                     }
 
                     const postTagSql = 'INSERT INTO post_tags (post_id, tag_id) VALUES ?';
-                    connection.query(postTagSql, [postTagData], (err) => {
-                        connection.end();
+                    db.query(postTagSql, [postTagData], (err) => {
+                        //db.end();
                         if (err) {
                             return res.status(500).json({ error: 'Error inserting tags' });
                         }
@@ -1379,42 +1464,46 @@ app.put('/api/posts/:id', (req, res) => {
 });
 
 // POST /api/posts/:id/like - toggle like/unlike
-app.post('/api/posts/:id/like', checkAuth, (req, res) => {
-    let connection = mysql.createConnection(config);
+app.post('/api/posts/:id/like', checkAuth, async (req, res) => {
+    //let connection = mysql.createConnection(config);
     const postId = req.params.id;
-    const currentUserId = 1; // Placeholder - replace with real auth user ID later
+    let currentUserId; // Placeholder - replace with real auth user ID later
+    try {
+        currentUserId = await getNumericUserId(req.user.email);
+    } catch (err) {
+        return res.status(404).json({ error: 'User not found' });
+    }
 
     const checkSql = 'SELECT like_id FROM Likes WHERE post_id = ? AND user_id = ?';
-    connection.query(checkSql, [postId, currentUserId], (err, results) => {
+    db.query(checkSql, [postId, currentUserId], (err, results) => {
         if (err) {
-            connection.end();
+            //db.end();
             return res.status(500).json({ error: 'Error checking like status' });
         }
 
         if (results.length > 0) {
             const deleteSql = 'DELETE FROM Likes WHERE post_id = ? AND user_id = ?';
-            connection.query(deleteSql, [postId, currentUserId], (err) => {
+            db.query(deleteSql, [postId, currentUserId], (err) => {
                 if (err) {
-                    connection.end();
+                    //db.end();
                     return res.status(500).json({ error: 'Error unliking post' });
                 }
                 const countSql = 'SELECT COUNT(*) AS like_count FROM Likes WHERE post_id = ?';
-                connection.query(countSql, [postId], (err, countResult) => {
-                    connection.end();
+                db.query(countSql, [postId], (err, countResult) => {
+                    //db.end();
                     if (err) return res.status(500).json({ error: 'Error getting like count' });
                     res.json({ liked_by_me: false, like_count: countResult[0].like_count });
                 });
             });
         } else {
             const insertSql = 'INSERT INTO Likes (post_id, user_id) VALUES (?, ?)';
-            connection.query(insertSql, [postId, currentUserId], (err) => {
+            db.query(insertSql, [postId, currentUserId], (err) => {
                 if (err) {
-                    connection.end();
                     return res.status(500).json({ error: 'Error liking post' });
                 }
                 const countSql = 'SELECT COUNT(*) AS like_count FROM Likes WHERE post_id = ?';
-                connection.query(countSql, [postId], (err, countResult) => {
-                    connection.end();
+                db.query(countSql, [postId], (err, countResult) => {
+                    //db.end();
                     if (err) return res.status(500).json({ error: 'Error getting like count' });
                     res.json({ liked_by_me: true, like_count: countResult[0].like_count });
                 });

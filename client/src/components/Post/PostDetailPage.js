@@ -8,6 +8,7 @@ import FavoriteIcon from "@mui/icons-material/Favorite";
 import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import PostCommentThread from "./PostCommentThread";
+import { getAuth } from 'firebase/auth';
 
 //make util file for this
 const getRelativeTime = (dateString) => {
@@ -41,9 +42,17 @@ function PostDetailPage() {
         fetchComments();
     }, [postId]);
 
+    const getToken = async () => {
+    const auth = getAuth();
+    return await auth.currentUser?.getIdToken();
+    };
+
     const fetchPost = async () => {
         try {
-            const response = await fetch(`/api/posts/${postId}`);
+            const token = await getToken();
+            const response = await fetch(`/api/posts/${postId}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
             const data = await response.json();
             setPost(data);
         } catch (err) {
@@ -53,7 +62,10 @@ function PostDetailPage() {
 
     const fetchComments = async () => {
         try {
-            const response = await fetch(`/api/posts/${postId}/comments`);
+            const token = await getToken();
+            const response = await fetch(`/api/posts/${postId}/comments`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
             const data = await response.json();
             setComments(data);
         } catch (err) {
@@ -62,23 +74,24 @@ function PostDetailPage() {
     };
 
     //handler for adding new comments
-    const handleAddComment = async (content, parentCommentId = null) => {
-        try {
-            const response = await fetch(`/api/posts/${postId}/comments`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content, parent_comment_id: parentCommentId })
-            });
-            const data = await response.json();
-            if (!response.ok) {
-                console.error(data.error);
-                return;
-            }
-            setComments(prev => [...prev, data]);
-            setNewComment("");
-        } catch (err) {
-            console.error("Error adding comment:", err);
-        }
+   const handleAddComment = async (content, parentCommentId = null) => {
+    try {
+        const token = await getToken();
+        const response = await fetch(`/api/posts/${postId}/comments`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}` 
+            },
+            body: JSON.stringify({ content, parent_comment_id: parentCommentId })
+        });
+        const data = await response.json();
+        if (!response.ok) { console.error(data.error); return; }
+        setComments(prev => [...prev, data]);
+        setNewComment("");
+    } catch (err) {
+        console.error("Error adding comment:", err);
+    }
     };
 
     const topLevelComments = comments.filter(c => c.parent_comment_id === null);

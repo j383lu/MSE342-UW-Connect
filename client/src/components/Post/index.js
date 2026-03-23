@@ -97,7 +97,8 @@ function Post({firebase}) {
         body: JSON.stringify({
           title: newPost.title,
           content: newPost.description, // backend expects "content"
-          tags: newPost.tags
+          tags: newPost.tags,
+          group_id: newPost.group_id ?? null
         })
       });
 
@@ -109,7 +110,8 @@ function Post({firebase}) {
       }
 
       // After successful insert, refresh posts
-      setPosts([data.post, ...posts]);
+      //setPosts([data.post, ...posts]);\
+      await fetchPosts();
 
       setOpen(false);
 
@@ -156,9 +158,10 @@ const handleEditPost = async (updatedFields) => {
         });
         const data = await response.json();
         if (!response.ok) { console.error(data.error); return; }
-        setPosts(prev => prev.map(p =>
-            p.post_id === editingPost.post_id ? { ...p, ...data.post } : p
-        ));
+        //setPosts(prev => prev.map(p =>
+          //  p.post_id === editingPost.post_id ? { ...p, ...data.post } : p
+        //));
+        await fetchPosts();
         setEditOpen(false);
         setEditingPost(null);
     } catch (error) {

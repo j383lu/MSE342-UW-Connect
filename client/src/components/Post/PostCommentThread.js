@@ -41,7 +41,7 @@ function CommentThread({ comment, allComments, onReply }) {
             <Card variant="outlined" sx={{ mb: 1 }}>
                 <CardContent sx={{ pb: '8px !important' }}>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                        User {comment.user_id} · {getRelativeTime(comment.createdAt)}
+                        {comment.author_name ?? `User ${comment.user_id}` } · {getRelativeTime(comment.createdAt)}
                     </Typography>
                     <Typography variant="body1">{comment.content}</Typography>
                     <Button
