@@ -129,7 +129,7 @@ const Registration = ({ onSwitchPage, firebase }) => {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}` // Good practice to send the token
+                        'Authorization': `Bearer ${token}` 
                     },
                     body: JSON.stringify(dataToSave)
                 });
@@ -208,7 +208,7 @@ const Registration = ({ onSwitchPage, firebase }) => {
                                     error={!!errors.lastname}
                                     helperText={errors.lastname}
                                 />
-                                {/* need to wait for a later sprint to do the authentication */}
+                                {/* Dropdown with Student or Staff options */}
                                 <TextField
                                     margin="normal"
                                     required

@@ -27,6 +27,9 @@ import EditProfile from "./Profile/EditProfile";
 import ProgramStudents from "./Profile/ProgramStudents";
 import ProfileSearch from "./Profile/ProfileSearch";
 
+// Import notifications
+import Notifications from "./Notifications/Notifications";
+
 function AppContent({ authUser }) {
   const location = useLocation();
 
@@ -59,6 +62,7 @@ function AppContent({ authUser }) {
         <Route path="/groups/:groupId/edit" element={authenticated ? <EditGroupForm /> : <Navigate to="/" />} />
         <Route path="/events" element={authenticated ? <EventsPage /> : <Navigate to="/" />} />
         <Route path="/events/new" element={authenticated ? <CreateEventForm /> : <Navigate to="/" />} />
+        <Route path="notifications" element={authenticated ? <Notifications /> :<Navigate to="/"/>}/>
       </Routes>
     </ThemeProvider>
   );

@@ -70,6 +70,17 @@ function Navbar({ firebase }) {
             </Grid>
             <Grid item>
               <Button 
+                color="inherit" 
+                component={RouterLink} 
+                to="/events"
+                style={{ marginLeft: '10px', borderColor: 'white', color: 'white' }}
+              >
+                {/* Implement UI Bell Icon + notification badge */}
+                Notifications
+              </Button>
+            </Grid>
+            <Grid item>
+              <Button 
                 color="secondary" 
                 variant="outlined" 
                 onClick={handleLogout}

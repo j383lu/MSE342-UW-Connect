@@ -145,9 +145,9 @@ app.get("/api/events", checkAuth, (req, res) => {
 });
 
 // POST /api/events (create event)
-app.post("/api/events", (req, res) => {
-  const {title, description, event_date, event_time, location, capacity, category, tags,
-  } = req.body;
+// app.post("/api/events", (req, res) => {
+//   const {title, description, event_date, event_time, location, capacity, category, tags,
+//   } = req.body;
 app.post("/api/events", checkAuth, (req, res) => {
   const { title, description, event_date, event_time, location, capacity } = req.body;
 
@@ -1704,4 +1704,3 @@ app.get('/api/users/by-email', checkAuth, (req, res) => {
 
 
 app.listen(port, () => console.log(`Listening on port ${port}`)); 
-
