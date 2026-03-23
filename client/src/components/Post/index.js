@@ -150,25 +150,30 @@ function Post({ firebase }) {
   const handleEditPost = async (updatedFields) => {
     try {
       const token = await firebase.auth.currentUser?.getIdToken();
+
+      const formData = new FormData();
+      formData.append('title', updatedFields.title);
+      formData.append('content', updatedFields.description);
+      formData.append('tags', JSON.stringify(updatedFields.tags));
+      formData.append('is_anonymous', updatedFields.is_anonymous ?? 0);
+      formData.append('remove_image', updatedFields.removeImage ? '1' : '0');
+      if (updatedFields.group_id) {
+        formData.append('group_id', updatedFields.group_id);
+      }
+      if (updatedFields.imageFile) {
+        formData.append('image', updatedFields.imageFile);
+      }
+
       const response = await fetch(`/api/posts/${editingPost.post_id}`, {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          title: updatedFields.title,
-          content: updatedFields.description,
-          tags: updatedFields.tags,
-          group_id: updatedFields.group_id ?? null,
-          is_anonymous: updatedFields.is_anonymous ?? 0
-        })
+        body: formData
       });
+
       const data = await response.json();
       if (!response.ok) { console.error(data.error); return; }
-      //setPosts(prev => prev.map(p =>
-      //  p.post_id === editingPost.post_id ? { ...p, ...data.post } : p
-      //));
       await fetchPosts();
       setEditOpen(false);
       setEditingPost(null);
