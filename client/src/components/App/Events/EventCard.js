@@ -1,10 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import styles from "./eventStyles";
-
-// Sprint 2 limitation:
-// Likes are currently stored only as a total count. User authentication is not implemented yet,
-// so the system cannot prevent multiple likes from the same user.
-// This will be improved once the login system is implemented.
+import { FirebaseContext } from "../../Firebase";
 
 export default function EventCard({
   ev,
@@ -15,20 +11,25 @@ export default function EventCard({
   detailsError,
   toggleAttendees,
   handleJoin,
+  handleLeave,
   onLikeSuccess,
 }) {
+  const firebase = useContext(FirebaseContext);
+
   const [hover, setHover] = useState(false);
   const [likes, setLikes] = useState(Number(ev.likes || 0));
-  const [liked, setLiked] = useState(false);
+  const [liked, setLiked] = useState(Number(ev.has_liked || 0) === 1);
   const [likeLoading, setLikeLoading] = useState(false);
 
   useEffect(() => {
     setLikes(Number(ev.likes || 0));
-  }, [ev.likes]);
+    setLiked(Number(ev.has_liked || 0) === 1);
+  }, [ev.likes, ev.has_liked]);
 
   const current = Number(ev.current_count || 0);
   const max = Number(ev.capacity || 0);
   const isFull = max > 0 && current >= max;
+  const hasJoined = Number(ev.has_joined || 0) === 1;
 
   const statusStyle = isPast
     ? styles.statusEnded
@@ -45,10 +46,21 @@ export default function EventCard({
     if (likeLoading || liked) return;
 
     try {
+      const user = firebase?.auth?.currentUser;
+      if (!user) {
+        window.alert("Please log in to like events.");
+        return;
+      }
+
       setLikeLoading(true);
+
+      const token = await user.getIdToken();
 
       const res = await fetch(`/api/events/${ev.id}/like`, {
         method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
 
       const data = await res.json();
@@ -58,11 +70,16 @@ export default function EventCard({
         return;
       }
 
-      setLikes(Number(data.likes || 0));
+      const updatedLikes = Number(data.likes || 0);
+      setLikes(updatedLikes);
       setLiked(true);
 
+      if (data.message) {
+        window.alert(data.message);
+      }
+
       if (onLikeSuccess) {
-        await onLikeSuccess();
+        await onLikeSuccess(ev.id, updatedLikes);
       }
     } catch (e2) {
       window.alert("Cannot connect to backend.");
@@ -109,7 +126,9 @@ export default function EventCard({
         </div>
 
         <div style={styles.rightBox}>
-          <div style={styles.capacity}>{current}/{max}</div>
+          <div style={styles.capacity}>
+            {current}/{max}
+          </div>
           <div style={styles.capacityHint}>RSVP spots</div>
 
           <div style={{ ...styles.statusPill, ...statusStyle }}>
@@ -155,17 +174,27 @@ export default function EventCard({
       </div>
 
       <div style={styles.actions}>
-        <button
-          type="button"
-          style={{
-            ...styles.joinBtn,
-            ...(isFull || isPast ? styles.joinBtnDisabled : null),
-          }}
-          disabled={isFull || isPast}
-          onClick={() => handleJoin(ev)}
-        >
-          Join Event
-        </button>
+        {hasJoined ? (
+          <button
+            type="button"
+            style={styles.leaveBtn}
+            onClick={() => handleLeave(ev)}
+          >
+            Leave Event
+          </button>
+        ) : (
+          <button
+            type="button"
+            style={{
+              ...styles.joinBtn,
+              ...(isFull || isPast ? styles.joinBtnDisabled : null),
+            }}
+            disabled={isFull || isPast}
+            onClick={() => handleJoin(ev)}
+          >
+            Join Event
+          </button>
+        )}
 
         <button
           type="button"

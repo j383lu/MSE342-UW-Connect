@@ -6,7 +6,7 @@ import Navbar from './Navbar';
 import LogInAndRegister from './LogIn/LogInAndRegister';
 import Post from '../Post'
 import PostDetailPage from '../Post/PostDetailPage'
-import { FirebaseContext } from '../Firebase';
+import Firebase, { FirebaseContext } from '../Firebase';
 import { useState, useEffect, useContext } from 'react';
 import PrivateRoute from '../Navigation/PrivateRoute';
 import { UserProvider } from '../../contexts/UserContext';
@@ -68,10 +68,12 @@ function AppContent({ authUser }) {
   );
 }
 
+const firebase = new Firebase();
+
 const App = () => {
   const [authUser, setAuthUser] = useState(null);
-  const firebase = useContext(FirebaseContext);
-
+  //const firebase = useContext(FirebaseContext);
+/*
   useEffect(() => {
     if (firebase) {
       const listener = firebase.auth.onAuthStateChanged(user => {
@@ -80,14 +82,24 @@ const App = () => {
       return () => listener();
     }
   }, [firebase]);
+  */
+ useEffect(() => {
+    const listener = firebase.auth.onAuthStateChanged(user => {
+      setAuthUser(user || null);
+    });
+    return () => listener();
+  }, []);
+
 
   return (
-    <BrowserRouter>
-      {/* Wrap everything here so UserProvider has access to the Router */}
-      <UserProvider>
-        <AppContent authUser={authUser} />
-      </UserProvider>
-    </BrowserRouter>
+    <FirebaseContext.Provider value={firebase}>
+      <BrowserRouter>
+        {/* Wrap everything here so UserProvider has access to the Router */}
+        <UserProvider>
+          <AppContent authUser={authUser} />
+        </UserProvider>
+      </BrowserRouter>
+    </FirebaseContext.Provider>
   );
 };
 
