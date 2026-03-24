@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useState } from 'react';
-import { Typography, Button, MenuItem, TextField, Box, Container, Link, Card, CardContent } from '@mui/material';
+import { Typography, Button, MenuItem, TextField, Box, Container, Link, Card, CardContent, Grid } from '@mui/material';
 import { InputAdornment, IconButton } from '@mui/material';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
@@ -168,7 +168,7 @@ const Registration = ({ onSwitchPage, onBack, firebase }) => {
             <div style={{ ...s.heroGlowOne, opacity: 0.4 }} />
             <div style={{ ...s.heroGlowTwo, opacity: 0.4 }} />
 
-            <Container maxWidth="xs" sx={{ zIndex: 10 }}>
+            <Container maxWidth="sm" sx={{ zIndex: 10 }}>
                 <Button 
                     startIcon={<ArrowBackIcon />} 
                     onClick={onBack}
@@ -184,7 +184,7 @@ const Registration = ({ onSwitchPage, onBack, firebase }) => {
                     border: '1px solid rgba(255, 255, 255, 0.15)',
                     boxShadow: '0 24px 80px rgba(0,0,0,0.4)'
                 }}>
-                    <CardContent x={{ p: 4 }}>
+                    <CardContent sx={{ p: 4 }}>
                         <Typography variant="h4" sx={{ color: '#FDFDF6', fontWeight: 750, mb: 1, textAlign: 'center' }}>
                             Join UW Connect
                         </Typography>
@@ -198,133 +198,149 @@ const Registration = ({ onSwitchPage, onBack, firebase }) => {
                         </Typography>
 
                         <Box component="form" onSubmit={handleSubmit} noValidate sx={{ mt: 1 }}>
-                            <TextField
-                                margin="dense"
-                                required
-                                fullWidth
-                                id="firstname"
-                                label="First Name"
-                                name="firstname"
-                                value={formData.firstname}
-                                onChange={handleChange}
-                                error={!!errors.firstname}
-                                helperText={errors.firstname}
-                                sx={inputStyles}
-                            />
-                            <TextField
-                                margin="dense"
-                                required
-                                fullWidth
-                                id="lastname"
-                                label="Last Name"
-                                name="lastname"
-                                value={formData.lastname}
-                                onChange={handleChange}
-                                error={!!errors.lastname}
-                                helperText={errors.lastname}
-                                sx={inputStyles}
-                            />
-                            <TextField
-                                margin="normal"
-                                required
-                                fullWidth
-                                id="role"
-                                select 
-                                label="I am a..."
-                                name="role"
-                                value={formData.role}
-                                onChange={handleChange}
-                                error={!!errors.role}
-                                sx={inputStyles}
-                                helperText={errors.role || "Please select your role at UW"}
-                            >
-                                <MenuItem value="Student">Student</MenuItem>
-                                <MenuItem value="Staff">Staff</MenuItem>
-                            </TextField>
-                            <TextField
-                                margin="normal"
-                                required
-                                fullWidth
-                                name="email"
-                                label="Email"
-                                id="email"
-                                value={formData.email}
-                                onChange={handleChange}
-                                error={!!errors.email}
-                                helperText={errors.email}
-                                sx={inputStyles}
-                            />
-                            <TextField
-                                margin="normal"
-                                required
-                                fullWidth
-                                name="username"
-                                label="Username"
-                                id="username"
-                                value={formData.username}
-                                onChange={handleChange}
-                                error={!!errors.username}
-                                helperText={errors.username}
-                                sx={inputStyles}
-                            />
-                            <TextField
-                                margin="normal"
-                                required
-                                fullWidth
-                                sx={inputStyles}
-                                name="password"
-                                label="Password"
-                                type={showPassword ? 'text' : 'password'}
-                                id="password"
-                                value={formData.password}
-                                onChange={handleChange}
-                                error={!!errors.password}
-                                helperText={errors.password}
-                                InputProps={{
-                                    endAdornment: (
-                                        <InputAdornment position="end">
-                                            <IconButton
-                                                aria-label="toggle password visibility"
-                                                onClick={handleClickShowPassword}
-                                                edge="end"
-                                                sx={{ color: 'rgba(255,255,255,0.5)' }}
-                                            >
-                                                {/* switch icon based on state */}
-                                                {showPassword ? <VisibilityOff /> : <Visibility />}
-                                            </IconButton>
-                                        </InputAdornment>
-                                    )
-                                }}
-                            />
-                            <TextField
-                                margin="normal"
-                                required
-                                fullWidth
-                                sx={inputStyles}
-                                name="confirmpassword"
-                                label="Confirm Password"
-                                type={showPassword ? 'text' : 'password'}
-                                id="confirmpassword"
-                                value={formData.confirmpassword}
-                                onChange={handleChange}
-                                error={!!errors.confirmpassword}
-                                helperText={errors.confirmpassword}
-                                InputProps={{
-                                    endAdornment: (
-                                        <InputAdornment position="end">
-                                            <IconButton
-                                                aria-label="toggle password visibility"
-                                                onClick={handleClickShowPassword}
-                                                edge="end"
-                                                sx={{ color: 'rgba(255,255,255,0.5)' }}
-                                            >
-                                                {/* Switch icon based on state */}
-                                                {showPassword ? <VisibilityOff /> : <Visibility />}
-                                            </IconButton>
-                                        </InputAdornment>
-                                    )
-                                }}
-                            />
+                            <Grid container spacing={2}>
+                                <Grid item xs={12} sm={6}>
+                                    <TextField
+                                        margin="dense"
+                                        required
+                                        fullWidth
+                                        id="firstname"
+                                        label="First Name"
+                                        name="firstname"
+                                        value={formData.firstname}
+                                        onChange={handleChange}
+                                        error={!!errors.firstname}
+                                        helperText={errors.firstname}
+                                        sx={inputStyles}
+                                    />
+                                </Grid>
+                                <Grid item xs={12} sm={6}>
+                                    <TextField
+                                        margin="dense"
+                                        required
+                                        fullWidth
+                                        id="lastname"
+                                        label="Last Name"
+                                        name="lastname"
+                                        value={formData.lastname}
+                                        onChange={handleChange}
+                                        error={!!errors.lastname}
+                                        helperText={errors.lastname}
+                                        sx={inputStyles}
+                                    />
+                                </Grid>
+                                <Grid item xs={12} sm={6}>
+                                    <TextField
+                                        margin="normal"
+                                        required
+                                        fullWidth
+                                        id="role"
+                                        select 
+                                        label="I am a..."
+                                        name="role"
+                                        value={formData.role}
+                                        onChange={handleChange}
+                                        error={!!errors.role}
+                                        sx={inputStyles}
+                                        helperText={errors.role || "Please select your role at UW"}
+                                    >
+                                        <MenuItem value="Student">Student</MenuItem>
+                                        <MenuItem value="Staff">Staff</MenuItem>
+                                    </TextField>
+                                </Grid>
+                                <Grid item xs={12} sm={6}>
+                                    <TextField
+                                        margin="normal"
+                                        required
+                                        fullWidth
+                                        name="email"
+                                        label="Email"
+                                        id="email"
+                                        value={formData.email}
+                                        onChange={handleChange}
+                                        error={!!errors.email}
+                                        helperText={errors.email}
+                                        sx={inputStyles}
+                                    />
+                                </Grid>
+                                <Grid item xs={12}>
+                                    <TextField
+                                        margin="normal"
+                                        required
+                                        fullWidth
+                                        name="username"
+                                        label="Username"
+                                        id="username"
+                                        value={formData.username}
+                                        onChange={handleChange}
+                                        error={!!errors.username}
+                                        helperText={errors.username}
+                                        sx={inputStyles}
+                                    />
+                                </Grid>
+                                <Grid item xs={12} sm={6}>
+                                    <TextField
+                                        margin="normal"
+                                        required
+                                        fullWidth
+                                        sx={inputStyles}
+                                        name="password"
+                                        label="Password"
+                                        type={showPassword ? 'text' : 'password'}
+                                        id="password"
+                                        value={formData.password}
+                                        onChange={handleChange}
+                                        error={!!errors.password}
+                                        helperText={errors.password}
+                                        InputProps={{
+                                            endAdornment: (
+                                                <InputAdornment position="end">
+                                                    <IconButton
+                                                        aria-label="toggle password visibility"
+                                                        onClick={handleClickShowPassword}
+                                                        edge="end"
+                                                        sx={{ color: 'rgba(255,255,255,0.5)' }}
+                                                    >
+                                                        {/* switch icon based on state */}
+                                                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                                                    </IconButton>
+                                                </InputAdornment>
+                                            )
+                                        }}
+                                    />
+                                </Grid>
+                                <Grid item xs={12} sm={6}>
+                                    <TextField
+                                        margin="normal"
+                                        required
+                                        fullWidth
+                                        sx={inputStyles}
+                                        name="confirmpassword"
+                                        label="Confirm Password"
+                                        type={showPassword ? 'text' : 'password'}
+                                        id="confirmpassword"
+                                        value={formData.confirmpassword}
+                                        onChange={handleChange}
+                                        error={!!errors.confirmpassword}
+                                        helperText={errors.confirmpassword}
+                                        InputProps={{
+                                            endAdornment: (
+                                                <InputAdornment position="end">
+                                                    <IconButton
+                                                        aria-label="toggle password visibility"
+                                                        onClick={handleClickShowPassword}
+                                                        edge="end"
+                                                        sx={{ color: 'rgba(255,255,255,0.5)' }}
+                                                    >
+                                                        {/* Switch icon based on state */}
+                                                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                                                    </IconButton>
+                                                </InputAdornment>
+                                            )
+                                        }}
+                                    />
+                                </Grid>
+                            </Grid>
                             <Button
                                 type="submit"
                                 fullWidth
