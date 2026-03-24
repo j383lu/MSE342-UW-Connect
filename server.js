@@ -7,8 +7,7 @@ import bodyParser from 'body-parser';
 import multer from 'multer'; // For file uploads
 import fs from 'fs'; // For file system operations
 import admin from 'firebase-admin';
-import serviceAccount from './serviceAccountKey.json' assert {type: 'json'};
-import { group } from 'console';
+import serviceAccount from './serviceAccountKey.json' with { type: 'json' };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -121,8 +120,6 @@ const upload = multer({
     }
   }
 });
-
-app.use(express.static(path.join(__dirname, "client/build")));
 
 // Profile routes (inline - migrated from profileRoutes.js)
 app.get("/api/profile", checkAuth, (req, res) => {
@@ -988,8 +985,6 @@ app.get("/api/events/:id/attendees", checkAuth, (req, res) => {
   });
 });
 
-app.use('/uploads', express.static('uploads'));
-
 // API Routes
 
 //CREATE GROUP PAGE:
@@ -1009,6 +1004,7 @@ app.get("/api/tags", checkAuth, (req, res) => {
 // CREATE GROUP API (with optional image upload):
 app.post("/api/groups", checkAuth, upload.single('coverImage'), (req, res) => {
   const { name, description, category, isOpen, maxMembers } = req.body;
+  const explicitCreatorId = Number(req.body.user_id);
 
   const explicitCreatorId = Number(req.body.user_id);
 
@@ -1034,6 +1030,27 @@ app.post("/api/groups", checkAuth, upload.single('coverImage'), (req, res) => {
 
     db.query(sql, [creator_id, name, description, category, is_private, max_members, image_url],
       (err, result) => {
+  const createGroupWithCreator = (creator_id) => {
+    if (!creator_id) {
+      return res.status(400).json({ error: "Missing or invalid user_id for group creator" });
+    }
+
+    // Convert isOpen (public = true, private = false) to is_private (1 for private, 0 for public)
+    const is_private = isOpen === 'true' ? 0 : 1;
+
+    // Handle max_members (if empty/null, set to NULL for unlimited)
+    const max_members = maxMembers ? parseInt(maxMembers) : null;
+
+    // Get the uploaded file path if exists
+    const image_url = req.file ? req.file.filename : null;
+
+    const sql = `
+      INSERT INTO Social_Group 
+      (creator_id, name, description, category, is_private, max_members, image_url) 
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    db.query(sql, [creator_id, name, description, category, is_private, max_members, image_url], (err, result) => {
       if (err) {
         console.error("POST /api/groups error:", err);
         return res.status(500).json({
