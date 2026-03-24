@@ -2,6 +2,7 @@ import mysql from 'mysql';
 import config from './config.js';
 import express from 'express';
 import path from 'path';
+import 'dotenv/config';
 import { fileURLToPath } from 'url';
 import bodyParser from 'body-parser';
 import multer from 'multer'; // For file uploads
@@ -13,6 +14,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+console.log(process.env.PORT);
 const port = process.env.PORT || 5000;
 
 admin.initializeApp({
@@ -1258,28 +1260,28 @@ app.delete("/api/groups/:groupId/leave", (req, res) => {
   const userId = Number(req.body.userId);
 
   const infoSql = `
-    SELECT sg.name, sg.creator_id, up.display_name 
+    SELECT sg.name, sg.creator_id, up.display_name
     FROM Social_Group sg
     JOIN User_Profiles up ON up.user_id = ?
     WHERE sg.group_id = ?`;
   
-  const sql = "DELETE FROM Group_Members WHERE group_id = ? AND user_id = ?";
-
-  db.query(sql, [groupId, userId], (err, result) => {
-    if (infoErr || rows.length === 0) {
-        // Just proceed with delete if info lookup fails
-        performDelete();
-        return;
+  console.log("leave group fetch")
+  db.query(infoSql, [userId, groupId], (err, result) => {
+    
+    if (result.length === 0) {
+      return res.status(404).json({ error: "Group not found" });
     }
 
-    const { name, creator_id, display_name } = rows[0];
+    if (err) return res.status(500).json({ error: "Failed to leave group" });
+
+    const { name, display_name, creator_id } = result[0];
 
     function performDelete() {
       const sql = "DELETE FROM Group_Members WHERE group_id = ? AND user_id = ?";
       db.query(sql, [groupId, userId], (err, result) => {
         if (err) return res.status(500).json({ error: "Failed to leave group" });
         
-        // 2. Trigger Notification if delete worked
+        // Trigger Notification if delete worked
         if (result.affectedRows > 0 && creator_id !== userId) {
           const msg = `${display_name || "A student"} left your group: ${name}`;
           triggerNotification(creator_id, userId, groupId, 'GROUP', 'LEAVE', msg);
@@ -3382,6 +3384,25 @@ app.get('/api/notifications/unread-count', checkAuth, async (req, res) => {
   } catch (err) {
     res.status(404).json({ error: "User not found" });
   }
+});
+
+app.delete('/api/notifications/:id', (req, res) => {
+  const notificationId = req.params.id;
+
+  const query = 'DELETE FROM Notifications WHERE id = ?';
+
+  db.query(query, [notificationId], (err, result) => {
+    if (err) {
+      console.error('Error deleting notification:', err);
+      return res.status(500).json({ error: 'Database deletion failed' });
+    }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Notification not found' });
+    }
+
+    res.status(200).json({ message: 'Deleted successfully' });
+  });
 });
 
 app.listen(port, () => console.log(`Listening on port ${port}`)); 
