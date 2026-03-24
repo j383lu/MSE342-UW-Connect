@@ -119,7 +119,7 @@ function CreatePostForm({
           <Grid item xs={12}>
             <TextField
               fullWidth
-              label="Title"
+              label="Title *"
               value={title}
               onChange={(e) => { setTitle(e.target.value); setError(prev => ({ ...prev, title: "" })); }}
               error={Boolean(error.title)}
@@ -144,7 +144,7 @@ function CreatePostForm({
               fullWidth
               multiline
               rows={4}
-              label="Description"
+              label="Description *"
               value={description}
               onChange={(e) => { setDescription(e.target.value); setError(prev => ({ ...prev, description: "" })); }}
               error={Boolean(error.description)}
@@ -156,7 +156,7 @@ function CreatePostForm({
           {!hideGroupSelect && userGroups.length > 0 && (
             <Grid item xs={12}>
               <FormControl fullWidth>
-                <InputLabel> Group (optional)</InputLabel>
+                <InputLabel> Group </InputLabel>
                 <Select
                   value={selectedGroup}
                   label="Link to a Group (optional)"
@@ -193,7 +193,7 @@ function CreatePostForm({
 
           <Grid item xs={12}>
             <Button variant="outlined" component="label" fullWidth>
-              Attach Image (optional)
+              Attach Image
               <input type="file" accept="image/*" hidden onChange={handleImageChange} />
             </Button>
             {imagePreview && (
