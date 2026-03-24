@@ -28,6 +28,7 @@ export default function GroupDetailsPage() {
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [postsError, setPostsError] = useState("");
   const [createPostOpen, setCreatePostOpen] = useState(false);
+  const [privateGroupModalOpen, setPrivateGroupModalOpen] = useState(false);
   
   // Add a ref to track if we've manually updated the state
   const manuallyUpdated = useRef(false);
@@ -287,6 +288,27 @@ export default function GroupDetailsPage() {
     }
   }
 
+  async function handleRequestAccess() {
+    if (!groupId) return;
+    try {
+      const res = await apiRequest(`/api/groups/${groupId}/request-access`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setPrivateGroupModalOpen(false);
+        setInviteFeedback("Your request has been sent to the group owner.");
+      } else {
+        alert(data.error || "Failed to send request");
+      }
+    } catch (err) {
+      console.error("Error requesting access:", err);
+      alert("Failed to send request");
+    }
+  }
+
   async function handleLeave() {
     setIsJoining(true);
     try {
@@ -433,6 +455,30 @@ export default function GroupDetailsPage() {
             </div>
           </div>
         )}
+
+        {/* Private group invite-only modal */}
+        {privateGroupModalOpen && (
+          <div style={modalOverlay} onClick={() => setPrivateGroupModalOpen(false)}>
+            <div style={privateGroupModalCard} onClick={(e) => e.stopPropagation()}>
+              <p style={privateGroupModalText}>This group is Invite-only.</p>
+              <div style={privateGroupModalActions}>
+                <button
+                  style={privateGroupModalRequestBtn}
+                  onClick={() => handleRequestAccess()}
+                >
+                  Request Access
+                </button>
+                <button
+                  style={privateGroupModalCancelBtn}
+                  onClick={() => setPrivateGroupModalOpen(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Navigation */}
         <div style={navBar}>
           <button style={backLink} onClick={() => navigate("/groups")}>
@@ -461,7 +507,13 @@ export default function GroupDetailsPage() {
               ) : (
                 <button
                   style={btn("primary", isJoining)}
-                  onClick={handleJoin}
+                  onClick={() => {
+                    if (group.is_private && !isOwner) {
+                      setPrivateGroupModalOpen(true);
+                    } else {
+                      handleJoin();
+                    }
+                  }}
                   disabled={isJoining}
                   title={
                     group.is_private && !isOwner
@@ -573,7 +625,20 @@ export default function GroupDetailsPage() {
               <div style={membersGrid}>
                 {members.length > 0 ? (
                   members.map((member, index) => (
-                    <div key={index} style={memberCard}>
+                    <div
+                      key={index}
+                      style={memberCard}
+                      onClick={() => navigate(`/users/${member.user_id}`)}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`View profile of ${member.display_name || `User ${member.user_id}`}`}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          navigate(`/users/${member.user_id}`);
+                        }
+                      }}
+                    >
                       <div style={memberAvatar}>
                         {member.display_name ? initials(member.display_name) : "👤"}
                       </div>
@@ -887,6 +952,8 @@ const memberCard = {
   borderRadius: 8,
   backgroundColor: "#f9f9f9",
   border: "1px solid #eee",
+  cursor: "pointer",
+  transition: "background-color 0.2s",
 };
 
 const memberAvatar = {
@@ -1051,6 +1118,51 @@ const modalCard = {
   maxWidth: 400,
   width: "90%",
   boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+};
+
+const privateGroupModalCard = {
+  background: "#fff",
+  borderRadius: 16,
+  padding: 28,
+  maxWidth: 380,
+  width: "90%",
+  boxShadow: "0 4px 24px rgba(0,0,0,0.15)",
+  border: "1px solid #D6DFE2",
+};
+
+const privateGroupModalText = {
+  margin: "0 0 24px 0",
+  fontSize: 18,
+  fontWeight: 600,
+  color: "#17292B",
+};
+
+const privateGroupModalActions = {
+  display: "flex",
+  gap: 12,
+  justifyContent: "flex-end",
+};
+
+const privateGroupModalRequestBtn = {
+  padding: "12px 24px",
+  borderRadius: 30,
+  border: "none",
+  background: "#111",
+  color: "#fff",
+  fontWeight: 700,
+  fontSize: 14,
+  cursor: "pointer",
+};
+
+const privateGroupModalCancelBtn = {
+  padding: "12px 24px",
+  borderRadius: 30,
+  border: "2px solid #D6DFE2",
+  background: "transparent",
+  color: "#17292B",
+  fontWeight: 700,
+  fontSize: 14,
+  cursor: "pointer",
 };
 
 const inviteEmailInput = {
