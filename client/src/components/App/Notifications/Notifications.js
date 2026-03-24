@@ -8,6 +8,7 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import PersonRemoveIcon from '@mui/icons-material/PersonRemove'; 
 import CircleIcon from '@mui/icons-material/Circle'; 
 import apiRequest from '../../../utils/api';
+import s from './notificationStyles';
 
 const Notifications = () => {
   const { dbUser } = useUser();
@@ -53,76 +54,76 @@ const Notifications = () => {
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" mt={10}>
-        <CircularProgress />
+        <CircularProgress sx={{ color: '#17292B' }}/>
       </Box>
     );
   }
 
   return (
-    <Container maxWidth="md" sx={{ mt: 4 }}>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography variant="h4" fontWeight="bold">Notifications</Typography>
-        {notifications.length > 0 && (
-          <Button variant="text" onClick={markAllRead}>Mark all as read</Button>
-        )}
-      </Box>
+    <div style={s.pageBackground}>
+      <div style={s.pageWrapper}>
+        
+        {/* HERO SECTION */}
+        <div style={s.hero}>
+          <div style={s.heroContent}>
+            <div style={s.heroTextBlock}>
+              <h1 style={s.heroTitle}>Notifications</h1>
+              <p style={s.heroSubtitle}>Stay updated on your group activities</p>
+            </div>
+            {notifications.some(n => !n.is_read) && (
+              <button style={s.heroPrimaryBtn} onClick={markAllRead}>
+                Mark All as Read
+              </button>
+            )}
+          </div>
+        </div>
 
-      <Paper elevation={3} sx={{ borderRadius: 2, overflow: 'hidden' }}>
-        <List sx={{ p: 0 }}>
+        {/* NOTIFICATION LIST */}
+        <div style={s.panel}>
           {notifications.length > 0 ? (
-            notifications.map((notif, index) => (
-              <React.Fragment key={notif.id}>
-                <ListItem 
-                  alignItems="flex-start"
-                  sx={{ 
-                    backgroundColor: notif.is_read ? 'transparent' : '#f0f7ff',
-                    '&:hover': { backgroundColor: 'action.hover' }
-                  }}
-                >
-                  <ListItemIcon sx={{ mt: 1 }}>
-                    {notif.action_type === 'JOIN' ? (
-                      <PersonAddIcon color="success" />
-                    ) : (
-                      <PersonRemoveIcon color="error" />
-                    )}
-                  </ListItemIcon>
-                  
-                  <ListItemText
-                    primary={
-                      <Box display="flex" alignItems="center">
-                        <Typography variant="body1" fontWeight={notif.is_read ? 400 : 700}>
-                          {notif.message}
-                        </Typography>
-                        {!notif.is_read && (
-                          <CircleIcon sx={{ ml: 1, fontSize: 10, color: 'primary.main' }} />
-                        )}
-                      </Box>
-                    }
-                    secondary={
-                      <Typography variant="caption" color="text.secondary">
-                        {new Date(notif.created_at).toLocaleString()}
-                      </Typography>
-                    }
-                  />
-                  
-                  <Chip 
-                    label={notif.entity_type} 
-                    size="small" 
-                    variant="outlined" 
-                    sx={{ mt: 1, fontSize: '0.65rem' }}
-                  />
-                </ListItem>
-                {index < notifications.length - 1 && <Divider component="li" />}
-              </React.Fragment>
+            notifications.map((n) => (
+              <div 
+                key={n.id} 
+                style={{ 
+                  ...s.notificationCard, 
+                  ...(n.is_read ? {} : s.unreadCard) 
+                }}
+              >
+                <div style={s.iconBox}>
+                  {n.action_type === 'JOIN' ? 
+                    <PersonAddIcon sx={{ color: '#5D6C5C' }} /> : 
+                    <PersonRemoveIcon sx={{ color: '#C62828' }} />
+                  }
+                </div>
+                
+                <div style={{ flex: 1 }}>
+                  <Typography style={{ 
+                    ...s.messageText, 
+                    fontWeight: n.is_read ? 500 : 700 
+                  }}>
+                    {n.message}
+                  </Typography>
+                  <span style={s.timeLabel}>
+                    {new Date(n.created_at).toLocaleDateString()} at {new Date(n.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                  </span>
+                </div>
+
+                <div style={s.statusPill}>
+                  <span style={n.is_read ? s.statusEnded : s.statusOpen}>
+                    {n.is_read ? 'Read' : 'New'}
+                  </span>
+                </div>
+              </div>
             ))
           ) : (
-            <Box p={4} textAlign="center">
-              <Typography color="text.secondary">You're all caught up!</Typography>
-            </Box>
+            <div style={s.emptyState}>
+              <Typography style={s.emptyStateTitle}>All caught up!</Typography>
+              <Typography style={s.emptyStateText}>No new notifications at the moment.</Typography>
+            </div>
           )}
-        </List>
-      </Paper>
-    </Container>
+        </div>
+      </div>
+    </div>
   );
 };
 export default Notifications;
