@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useState } from 'react';
-import { Typography, Button, TextField, Box, Container, Link, Card, CardContent } from '@mui/material';
+import { Typography, Button, MenuItem, TextField, Box, Container, Link, Card, CardContent } from '@mui/material';
 import { InputAdornment, IconButton } from '@mui/material';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
@@ -18,6 +18,7 @@ const Registration = ({ onSwitchPage, firebase }) => {
     const [formData, setFormData] = useState({
             firstname: '',
             lastname: '',
+            role: '',
             email: '',
             username: '',
             password: '',
@@ -118,6 +119,7 @@ const Registration = ({ onSwitchPage, firebase }) => {
                 const dataToSave = {
                     firstname: formData.firstname,
                     lastname: formData.lastname,
+                    role: formData.role,
                     username: formData.username,
                     email: formData.email,
                     password: formData.password,
@@ -129,7 +131,7 @@ const Registration = ({ onSwitchPage, firebase }) => {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}` // Good practice to send the token
+                        'Authorization': `Bearer ${token}` 
                     },
                     body: JSON.stringify(dataToSave)
                 });
@@ -208,7 +210,22 @@ const Registration = ({ onSwitchPage, firebase }) => {
                                     error={!!errors.lastname}
                                     helperText={errors.lastname}
                                 />
-                                {/* need to wait for a later sprint to do the authentication */}
+                                <TextField
+                                    margin="normal"
+                                    required
+                                    fullWidth
+                                    id="role"
+                                    select // This makes it a dropdown
+                                    label="I am a..."
+                                    name="role"
+                                    value={formData.role}
+                                    onChange={handleChange}
+                                    error={!!errors.role}
+                                    helperText={errors.role || "Please select your role at UW"}
+                                >
+                                    <MenuItem value="Student">Student</MenuItem>
+                                    <MenuItem value="Staff">Staff</MenuItem>
+                                </TextField>
                                 <TextField
                                     margin="normal"
                                     required
