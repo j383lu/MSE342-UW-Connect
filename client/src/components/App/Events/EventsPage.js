@@ -276,11 +276,15 @@ export default function EventsPage() {
     }
   };
 
-  const loadSuggestions = async (keyword) => {
+  const loadSuggestions = async (keyword, tab = activeTab) => {
     try {
+      const headers = await getAuthHeaders(false);
+
       const res = await fetch(
-        `/api/events/suggestions?keyword=${encodeURIComponent(keyword)}`
+        `/api/events/suggestions?keyword=${encodeURIComponent(keyword)}&tab=${encodeURIComponent(tab)}`,
+        { headers }
       );
+
       const data = await res.json();
 
       if (!res.ok) {
@@ -423,7 +427,7 @@ export default function EventsPage() {
       return;
     }
 
-    await loadSuggestions(cleanValue);
+    await loadSuggestions(cleanValue, activeTab);
     setShowSearchDropdown(true);
   };
 
@@ -434,7 +438,7 @@ export default function EventsPage() {
       await loadRecentSearches();
       setSuggestions([]);
     } else {
-      await loadSuggestions(cleanValue);
+      await loadSuggestions(cleanValue, activeTab);
     }
 
     setShowSearchDropdown(true);
