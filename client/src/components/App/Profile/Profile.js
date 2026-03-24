@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import {
   Box,
   Typography,
@@ -10,9 +10,11 @@ import {
   Alert,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
+import { FirebaseContext } from "../../Firebase";
 
 function Profile() {
   const navigate = useNavigate();
+  const firebase = useContext(FirebaseContext);
 
   const [profile, setProfile] = useState(null);
   const [userCourses, setUserCourses] = useState([]);
@@ -22,13 +24,36 @@ function Profile() {
   useEffect(() => {
     const fetchProfileData = async () => {
       try {
+        setLoading(true);
+        setLoadError("");
+
+        const user = firebase?.auth?.currentUser;
+        if (!user) {
+          throw new Error("No authenticated user found.");
+        }
+
+        const token = await user.getIdToken();
+
         const [profileRes, coursesRes] = await Promise.all([
-          fetch("/api/profile"),
-          fetch("/api/profile/user-courses"),
+          fetch("/api/profile", {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }),
+          fetch("/api/profile/user-courses", {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }),
         ]);
 
         if (!profileRes.ok) {
-          throw new Error("Failed to fetch profile");
+          let msg = "Failed to fetch profile";
+          try {
+            const body = await profileRes.json();
+            if (body?.error) msg = body.error;
+          } catch (_) {}
+          throw new Error(msg);
         }
 
         const profileData = await profileRes.json();
@@ -39,6 +64,7 @@ function Profile() {
           setUserCourses(coursesData || []);
         } else {
           console.error("Failed to load user courses");
+          setUserCourses([]);
         }
       } catch (err) {
         console.error("Failed to load profile", err);
@@ -48,8 +74,10 @@ function Profile() {
       }
     };
 
-    fetchProfileData();
-  }, []);
+    if (firebase?.auth) {
+      fetchProfileData();
+    }
+  }, [firebase]);
 
   const formatBirthday = (birthday) => {
     if (!birthday) return "No birthday added yet.";
@@ -116,7 +144,11 @@ function Profile() {
     >
       <Card sx={{ width: 800 }}>
         <CardContent>
-          <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+          <Stack
+            direction="row"
+            justifyContent="space-between"
+            alignItems="flex-start"
+          >
             <Box>
               <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
                 <Typography variant="h1" sx={{ mb: 1 }}>

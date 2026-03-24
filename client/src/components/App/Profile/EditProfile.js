@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import {
   Box,
   Typography,
@@ -17,21 +17,25 @@ import {
   MenuItem,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
+import { FirebaseContext } from "../../Firebase";
 
 export function validateDisplayName(rawName) {
   const trimmed = rawName.trim();
 
   if (!trimmed) return "Name cannot be empty.";
-  if (!/^[a-zA-Z0-9 ]+$/.test(trimmed))
+  if (!/^[a-zA-Z0-9 ]+$/.test(trimmed)) {
     return "Only alphanumeric characters and spaces are allowed.";
-  if (trimmed.length > 30)
+  }
+  if (trimmed.length > 30) {
     return "Name must be 30 characters or fewer.";
+  }
 
   return "";
 }
 
 function EditProfile() {
   const navigate = useNavigate();
+  const firebase = useContext(FirebaseContext);
 
   const [draft, setDraft] = useState(null);
   const [programOptions, setProgramOptions] = useState([]);
@@ -42,69 +46,65 @@ function EditProfile() {
   const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
-    const fetchProfile = async () => {
+    const fetchInitialData = async () => {
       try {
-        const res = await fetch("/api/profile");
-        if (!res.ok) throw new Error("Failed to fetch profile");
-        const data = await res.json();
+        setSaveError("");
+
+        const user = firebase?.auth?.currentUser;
+        if (!user) {
+          throw new Error("No authenticated user found.");
+        }
+
+        const token = await user.getIdToken();
+
+        const [profileRes, programsRes, coursesRes] = await Promise.all([
+          fetch("/api/profile", {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }),
+          fetch("/api/profile/programs", {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }),
+          fetch("/api/profile/courses", {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }),
+        ]);
+
+        if (!profileRes.ok) throw new Error("Failed to fetch profile");
+        if (!programsRes.ok) throw new Error("Failed to fetch programs");
+        if (!coursesRes.ok) throw new Error("Failed to fetch courses");
+
+        const profileData = await profileRes.json();
+        const programsData = await programsRes.json();
+        const coursesData = await coursesRes.json();
 
         setDraft({
-          name: data.name || "",
-          bio: data.bio || "",
-          gender: data.gender || "",
-          birthday: data.birthday ? data.birthday.slice(0, 10) : "",
-          phone_number: data.phone_number || "",
-          program_id: data.program_id ?? "",
-          courses: Array.isArray(data.courses) ? data.courses : [],
+          name: profileData.name || "",
+          bio: profileData.bio || "",
+          gender: profileData.gender || "",
+          birthday: profileData.birthday ? profileData.birthday.slice(0, 10) : "",
+          phone_number: profileData.phone_number || "",
+          program_id: profileData.program_id ?? "",
+          courses: Array.isArray(profileData.courses) ? profileData.courses : [],
         });
+
+        setProgramOptions(programsData || []);
+        setCourseOptions(coursesData || []);
       } catch (err) {
         console.error(err);
         setSaveError("Could not load profile.");
       }
     };
 
-    fetchProfile();
-  }, []);
-
-  useEffect(() => {
-    const fetchPrograms = async () => {
-      try {
-        const res = await fetch("/api/profile/programs");
-        if (!res.ok) throw new Error("Failed to fetch programs");
-        const data = await res.json();
-        setProgramOptions(data);
-      } catch (err) {
-        console.error(err);
-        setSaveError("Could not load programs.");
-      }
-    };
-
-    fetchPrograms();
-  }, []);
-
-  useEffect(() => {
-    const fetchCourses = async () => {
-      try {
-        const res = await fetch("/api/profile/courses");
-        if (!res.ok) throw new Error("Failed to fetch courses");
-        const data = await res.json();
-        setCourseOptions(data);
-      } catch (err) {
-        console.error(err);
-        setSaveError("Could not load courses.");
-      }
-    };
-
-    fetchCourses();
-  }, []);
-
-  if (!draft) {
-    return (
-      <Box sx={{ p: 3, bgcolor: "background.default" }}>
-        <Typography color="text.secondary">Loading...</Typography>
-      </Box>
-    );
-  }
+    if (firebase?.auth) {
+      fetchInitialData();
+    }
+  }, [firebase]);
 
   const handleCancel = () => navigate("/profile");
 
@@ -141,9 +141,19 @@ function EditProfile() {
     };
 
     try {
+      const user = firebase?.auth?.currentUser;
+      if (!user) {
+        throw new Error("No authenticated user found.");
+      }
+
+      const token = await user.getIdToken();
+
       const res = await fetch("/api/profile", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify(payload),
       });
 
@@ -158,11 +168,19 @@ function EditProfile() {
 
       setSuccessOpen(true);
       setTimeout(() => navigate("/profile"), 1500);
-    } catch (err2) {
-      console.error(err2);
-      setSaveError(err2.message || "Failed to save profile.");
+    } catch (err) {
+      console.error(err);
+      setSaveError(err.message || "Failed to save profile.");
     }
   };
+
+  if (!draft) {
+    return (
+      <Box sx={{ p: 3, bgcolor: "background.default" }}>
+        <Typography color="text.secondary">Loading...</Typography>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ p: 3, display: "flex", justifyContent: "center", bgcolor: "background.default" }}>
