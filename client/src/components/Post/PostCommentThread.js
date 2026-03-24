@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Box, Card, CardContent, Typography, Button, TextField, Stack } from "@mui/material";
+import { Box, Card, CardContent, Typography, Button, TextField, Stack, Avatar } from "@mui/material";
 import ReplyIcon from "@mui/icons-material/Reply";
 import { getRelativeTime } from "../../utils/timeUtils";
 
@@ -22,7 +22,17 @@ function CommentThread({ comment, allComments, onReply }) {
             <Card variant="outlined" sx={{ mb: 1 }}>
                 <CardContent sx={{ pb: '8px !important' }}>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                        {comment.author_name ?? `User ${comment.user_id}` } · {getRelativeTime(comment.createdAt)}
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                            <Avatar
+                                src={comment.author_avatar ? `/uploads/${comment.author_avatar}` : undefined}
+                                sx={{ width: 28, height: 28, bgcolor: '#5D6C5C', fontSize: '0.75rem' }}
+                            >
+                                {!comment.author_avatar && (comment.author_name?.[0]?.toUpperCase() ?? '?')}
+                            </Avatar>
+                            <Typography variant="body2" color="text.secondary">
+                                {comment.author_name ?? `User ${comment.user_id}`} · {getRelativeTime(comment.createdAt)}
+                            </Typography>
+                        </Box>
                     </Typography>
                     <Typography variant="body1">{comment.content}</Typography>
                     <Button
