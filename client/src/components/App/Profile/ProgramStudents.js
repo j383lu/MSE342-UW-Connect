@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import {
   Box,
   Typography,
@@ -10,10 +10,12 @@ import {
   Chip,
 } from "@mui/material";
 import { useNavigate, useParams } from "react-router-dom";
+import { FirebaseContext } from "../../Firebase";
 
 function ProgramStudents() {
   const navigate = useNavigate();
   const { programId } = useParams();
+  const firebase = useContext(FirebaseContext);
 
   const [students, setStudents] = useState([]);
   const [programName, setProgramName] = useState("");
@@ -23,7 +25,17 @@ function ProgramStudents() {
   useEffect(() => {
     const fetchProgramStudents = async () => {
       try {
-        const res = await fetch(`/api/profile/programs/${programId}/students`);
+        const user = firebase?.auth?.currentUser;
+        if (!user) {
+          throw new Error("No authenticated user found.");
+        }
+        const token = await user.getIdToken();
+
+        const res = await fetch(`/api/profile/programs/${programId}/students`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
         if (!res.ok) {
           throw new Error("Failed to fetch students in this program.");
@@ -48,8 +60,10 @@ function ProgramStudents() {
       }
     };
 
-    fetchProgramStudents();
-  }, [programId]);
+    if (firebase?.auth) {
+      fetchProgramStudents();
+    }
+  }, [firebase, programId]);
 
   if (loading) {
     return (
