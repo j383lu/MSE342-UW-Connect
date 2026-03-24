@@ -1,21 +1,39 @@
-import React from "react";
-import {AppBar, Toolbar, Typography, Button, Grid
-} from "@mui/material";
+import React, { useState, useEffect } from "react";
+import {AppBar, Toolbar, Typography, Button, Grid, IconButton, Badge } from "@mui/material";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { withFirebase } from '../Firebase';
+import NotificationsIcon from '@mui/icons-material/Notifications';
+import { useUser } from '../../contexts/UserContext'; 
+import apiRequest from '../../utils/api';
 
 function Navbar({ firebase }) {
 
   const navigate = useNavigate();
+  const { dbUser } = useUser(); // Access the logged-in user
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    const fetchUnreadCount = async () => {
+      if (!dbUser?.userId) return;
+
+      try {
+        const res = await apiRequest(`/api/notifications/unread-count?userId=${dbUser.userId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setUnreadCount(data.unreadCount);
+        }
+      } catch (err) {
+        console.error("Error fetching unread count:", err);
+      }
+    };
+
+    fetchUnreadCount();
+  }, [dbUser]);
 
   const handleLogout = () => {
     firebase.doSignOut()
-      .then(() => {
-        console.log("User signed out");
-        navigate('/');
-      })
-      .catch(error => {
-        console.error("Logout Error", error);
+        .then(() => {
+          navigate('/');
       });
   };
 
@@ -69,15 +87,16 @@ function Navbar({ firebase }) {
               </Button>
             </Grid>
             <Grid item>
-              <Button 
+              <IconButton 
                 color="inherit" 
                 component={RouterLink} 
                 to="/notifications"
-                style={{ marginLeft: '10px', borderColor: 'white', color: 'white' }}
+                style={{ ml: 1 }}
               >
-                {/* Implement UI Bell Icon + notification badge */}
-                Notifications
-              </Button>
+                <Badge variant="dot" color="error" invisible={unreadCount === 0}>
+                  <NotificationsIcon style={{ color: 'white' }} />
+                </Badge>
+              </IconButton>
             </Grid>
             <Grid item>
               <Button 
