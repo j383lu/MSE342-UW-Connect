@@ -310,6 +310,9 @@ export default function EventsPage() {
     }
   };
 
+  const getStartDateTime = (ev) => new Date(`${ev.event_date}T${ev.event_time}`);
+  const getPublishedDateTime = (ev) => new Date(`${ev.published_time}`);
+
   // Sort a list of events based on the selected sorting option.
   const applySortToList = useCallback(
     (list, customSort = sortBy) => {
@@ -319,29 +322,17 @@ export default function EventsPage() {
         copied.sort((a, b) => {
           const likeDiff = Number(b.likes || 0) - Number(a.likes || 0);
           if (likeDiff !== 0) return likeDiff;
-
-          const bTime = new Date(`${b.published_time}`);
-          const aTime = new Date(`${a.published_time}`);
-          return bTime - aTime;
+          return getPublishedDateTime(b) - getPublishedDateTime(a);
         });
         return copied;
       }
 
       if (customSort === "mostRecentPublished") {
-        copied.sort((a, b) => {
-          const bTime = new Date(`${b.published_time}`);
-          const aTime = new Date(`${a.published_time}`);
-          return bTime - aTime;
-        });
+        copied.sort((a, b) => getPublishedDateTime(b) - getPublishedDateTime(a));
         return copied;
       }
 
-      copied.sort((a, b) => {
-        const aTime = new Date(`${a.event_date}T${a.event_time}`);
-        const bTime = new Date(`${b.event_date}T${b.event_time}`);
-        return aTime - bTime;
-      });
-
+      copied.sort((a, b) => getStartDateTime(a) - getStartDateTime(b));
       return copied;
     },
     [sortBy]
@@ -519,12 +510,10 @@ export default function EventsPage() {
   useEffect(() => {
     loadEvents(activeTab, showPastEvents);
     loadRecentSearches();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     loadEvents(activeTab, showPastEvents, true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showPastEvents]);
 
   useEffect(() => {
@@ -601,7 +590,7 @@ export default function EventsPage() {
       ? "Results are sorted from highest to lowest number of likes within this section."
       : sortBy === "mostRecentPublished"
       ? "Results are sorted from most recently published to least recently published within this section."
-      : "Results are sorted from earliest upcoming event to latest upcoming event within this section.";
+      : "Results are sorted from earliest start date and time to latest start date and time within this section.";
 
   const emptyUpcomingTitle =
     activeTab === "my-groups"
@@ -898,7 +887,7 @@ export default function EventsPage() {
                     ? `${sectionSubtitle} Results are currently sorted by likes.`
                     : sortBy === "mostRecentPublished"
                     ? `${sectionSubtitle} Results are currently sorted by publish time.`
-                    : `${sectionSubtitle} Results are currently sorted by upcoming event time.`}
+                    : `${sectionSubtitle} Results are currently sorted by start date and time.`}
                 </p>
               </div>
 

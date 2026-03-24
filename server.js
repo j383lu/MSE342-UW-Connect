@@ -562,14 +562,74 @@ app.get("/api/events", checkAuth, (req, res) => {
 });
 
 // POST /api/events (create event)
+// POST /api/events
 // This API creates a new event using the information provided by the user and saves it to the database.
 app.post("/api/events", checkAuth, (req, res) => {
-  const {title, description, event_date, event_time, location, capacity,
-    category, tags, event_type, group_ids,} = req.body;
+  const {
+    title,
+    description,
+    event_date,
+    event_time,
+    end_date,
+    end_time,
+    location,
+    capacity,
+    category,
+    tags,
+    event_type,
+    group_ids,
+  } = req.body;
 
-  if (!title || !description || !event_date || !event_time || !location || capacity === undefined || !category
+  if (
+    !title ||
+    !description ||
+    !event_date ||
+    !event_time ||
+    !end_date ||
+    !end_time ||
+    !location ||
+    capacity === undefined ||
+    !category
   ) {
     return res.status(400).json({ error: "Missing required fields." });
+  }
+
+  const startDateOnly = new Date(`${event_date}T00:00`);
+  const endDateOnly = new Date(`${end_date}T00:00`);
+
+  if (
+    Number.isNaN(startDateOnly.getTime()) ||
+    Number.isNaN(endDateOnly.getTime())
+  ) {
+    return res.status(400).json({ error: "Invalid start date or end date." });
+  }
+
+  if (endDateOnly < startDateOnly) {
+    return res.status(400).json({
+      error: "End date must be later than or equal to start date.",
+    });
+  }
+
+  const startDateTime = new Date(`${event_date}T${event_time}`);
+  const endDateTime = new Date(`${end_date}T${end_time}`);
+
+  if (
+    Number.isNaN(startDateTime.getTime()) ||
+    Number.isNaN(endDateTime.getTime())
+  ) {
+    return res.status(400).json({ error: "Invalid event date or time." });
+  }
+
+  if (event_date === end_date && endDateTime <= startDateTime) {
+    return res.status(400).json({
+      error: "If end date is the same as start date, end time must be later than start time.",
+    });
+  }
+
+  if (endDateTime <= startDateTime) {
+    return res.status(400).json({
+      error: "End date and end time must be later than start date and start time.",
+    });
   }
 
   const capNum = Number(capacity);
@@ -585,7 +645,13 @@ app.post("/api/events", checkAuth, (req, res) => {
   const safeTags = Array.isArray(tags) ? tags : [];
 
   const safeGroupIds = Array.isArray(group_ids)
-    ? [...new Set(group_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))]
+    ? [
+        ...new Set(
+          group_ids
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id) && id > 0)
+        ),
+      ]
     : [];
 
   if (safeEventType === "group" && safeGroupIds.length === 0) {
@@ -613,13 +679,15 @@ app.post("/api/events", checkAuth, (req, res) => {
           description,
           event_date,
           event_time,
+          end_date,
+          end_time,
           location,
           capacity,
           category,
           event_type,
           created_by
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
       db.query(
@@ -629,6 +697,8 @@ app.post("/api/events", checkAuth, (req, res) => {
           description,
           event_date,
           event_time,
+          end_date,
+          end_time,
           location,
           capNum,
           category,
@@ -764,7 +834,7 @@ app.post("/api/events/:id/join", checkAuth, (req, res) => {
   }
 
   const eventSql = `
-    SELECT id, title, event_date, event_time, capacity
+    SELECT id, title, event_date, event_time, end_date, end_time, capacity
     FROM Events
     WHERE id = ?
     LIMIT 1
@@ -783,20 +853,29 @@ app.post("/api/events/:id/join", checkAuth, (req, res) => {
     const event = rows[0];
     const cap = Number(event.capacity || 0);
 
-    const isPastSql = `
-      SELECT (TIMESTAMP(event_date, event_time) < NOW()) AS is_past
+    const statusSql = `
+      SELECT
+        CASE
+          WHEN NOW() < TIMESTAMP(event_date, event_time) THEN 'open_for_application'
+          WHEN NOW() >= TIMESTAMP(event_date, event_time) AND NOW() <= TIMESTAMP(end_date, end_time) THEN 'in_progress'
+          ELSE 'ended'
+        END AS event_status,
+        CASE
+          WHEN NOW() > TIMESTAMP(end_date, end_time) THEN 1
+          ELSE 0
+        END AS is_past
       FROM Events
       WHERE id = ?
       LIMIT 1
     `;
 
-    db.query(isPastSql, [eventId], (pastErr, pastRows) => {
-      if (pastErr || pastRows.length === 0) {
-        return res.status(500).json({ error: "Failed to check event time." });
+    db.query(statusSql, [eventId], (statusErr, statusRows) => {
+      if (statusErr || statusRows.length === 0) {
+        return res.status(500).json({ error: "Failed to check event status." });
       }
 
-      if (Number(pastRows[0].is_past) === 1) {
-        return res.status(400).json({ error: "This event already ended." });
+      if (String(statusRows[0].event_status) === "ended") {
+        return res.status(400).json({ error: "This event has already ended." });
       }
 
       const duplicateSql = `
@@ -3080,8 +3159,8 @@ app.get("/api/my-groups", checkAuth, (req, res) => {
 });
 
 // GET /api/events/public
-// Show only public events with default of upcoming events only
-// if includePast=true then return all public events
+// Show public events and group events visible to this user.
+// If includePast=false, only return events that have not ended yet.
 app.get("/api/events/public", checkAuth, (req, res) => {
   const includePast = String(req.query.includePast).toLowerCase() === "true";
   const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
@@ -3098,7 +3177,7 @@ app.get("/api/events/public", checkAuth, (req, res) => {
 
     const pastClause = includePast
       ? ""
-      : "AND TIMESTAMP(e.event_date, e.event_time) >= NOW()";
+      : "AND NOW() <= TIMESTAMP(e.end_date, e.end_time)";
 
     const sql = `
       SELECT 
@@ -3107,6 +3186,8 @@ app.get("/api/events/public", checkAuth, (req, res) => {
         e.description,
         DATE_FORMAT(e.event_date, '%Y-%m-%d') AS event_date,
         TIME_FORMAT(e.event_time, '%H:%i') AS event_time,
+        DATE_FORMAT(e.end_date, '%Y-%m-%d') AS end_date,
+        TIME_FORMAT(e.end_time, '%H:%i') AS end_time,
         e.location,
         e.capacity,
         COUNT(DISTINCT el.id) AS likes,
@@ -3116,7 +3197,15 @@ app.get("/api/events/public", checkAuth, (req, res) => {
         DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
         COUNT(DISTINCT a.id) AS current_count,
         GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
-        (TIMESTAMP(e.event_date, e.event_time) < NOW()) AS is_past,
+        CASE
+          WHEN NOW() > TIMESTAMP(e.end_date, e.end_time) THEN 1
+          ELSE 0
+        END AS is_past,
+        CASE
+          WHEN NOW() < TIMESTAMP(e.event_date, e.event_time) THEN 'open_for_application'
+          WHEN NOW() >= TIMESTAMP(e.event_date, e.event_time) AND NOW() <= TIMESTAMP(e.end_date, e.end_time) THEN 'in_progress'
+          ELSE 'ended'
+        END AS event_status,
         MAX(CASE WHEN LOWER(a.attendee_name) = ? THEN 1 ELSE 0 END) AS has_joined,
         MAX(CASE WHEN el.user_id = ? THEN 1 ELSE 0 END) AS has_liked
       FROM Events e
@@ -3144,6 +3233,8 @@ app.get("/api/events/public", checkAuth, (req, res) => {
         e.description,
         e.event_date,
         e.event_time,
+        e.end_date,
+        e.end_time,
         e.location,
         e.capacity,
         e.category,
@@ -3156,7 +3247,7 @@ app.get("/api/events/public", checkAuth, (req, res) => {
     db.query(sql, [currentUserEmail, currentUserId, currentUserId], (err, rows) => {
       if (err) {
         console.log("GET /api/events/public error:", err);
-        return res.status(500).json({ error: "Failed to load upcoming events." });
+        return res.status(500).json({ error: "Failed to load events." });
       }
 
       return res.json(rows);
@@ -3165,8 +3256,8 @@ app.get("/api/events/public", checkAuth, (req, res) => {
 });
 
 // GET /api/events/my-groups
-// show only group events linked to groups the current user joined with default of upcoming events only
-// if includePast=true then return all matching group events
+// Show only group events linked to groups the current user joined.
+// If includePast=false, only return events that have not ended yet.
 app.get("/api/events/my-groups", checkAuth, (req, res) => {
   const includePast = String(req.query.includePast).toLowerCase() === "true";
   const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
@@ -3183,7 +3274,7 @@ app.get("/api/events/my-groups", checkAuth, (req, res) => {
 
     const pastClause = includePast
       ? ""
-      : "AND TIMESTAMP(e.event_date, e.event_time) >= NOW()";
+      : "AND NOW() <= TIMESTAMP(e.end_date, e.end_time)";
 
     const sql = `
       SELECT 
@@ -3192,6 +3283,8 @@ app.get("/api/events/my-groups", checkAuth, (req, res) => {
         e.description,
         DATE_FORMAT(e.event_date, '%Y-%m-%d') AS event_date,
         TIME_FORMAT(e.event_time, '%H:%i') AS event_time,
+        DATE_FORMAT(e.end_date, '%Y-%m-%d') AS end_date,
+        TIME_FORMAT(e.end_time, '%H:%i') AS end_time,
         e.location,
         e.capacity,
         COUNT(DISTINCT el.id) AS likes,
@@ -3201,7 +3294,15 @@ app.get("/api/events/my-groups", checkAuth, (req, res) => {
         DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
         COUNT(DISTINCT a.id) AS current_count,
         GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
-        (TIMESTAMP(e.event_date, e.event_time) < NOW()) AS is_past,
+        CASE
+          WHEN NOW() > TIMESTAMP(e.end_date, e.end_time) THEN 1
+          ELSE 0
+        END AS is_past,
+        CASE
+          WHEN NOW() < TIMESTAMP(e.event_date, e.event_time) THEN 'open_for_application'
+          WHEN NOW() >= TIMESTAMP(e.event_date, e.event_time) AND NOW() <= TIMESTAMP(e.end_date, e.end_time) THEN 'in_progress'
+          ELSE 'ended'
+        END AS event_status,
         MAX(CASE WHEN LOWER(a.attendee_name) = ? THEN 1 ELSE 0 END) AS has_joined,
         MAX(CASE WHEN el.user_id = ? THEN 1 ELSE 0 END) AS has_liked
       FROM Events e
@@ -3218,6 +3319,8 @@ app.get("/api/events/my-groups", checkAuth, (req, res) => {
         e.description,
         e.event_date,
         e.event_time,
+        e.end_date,
+        e.end_time,
         e.location,
         e.capacity,
         e.category,
@@ -3239,8 +3342,8 @@ app.get("/api/events/my-groups", checkAuth, (req, res) => {
 });
 
 // GET /api/events/my-events
-// show events the current user joined or created with default of upcoming events only
-// if includePast=true then return all matching events
+// Show events the current user created or joined.
+// If includePast=false, only return events that have not ended yet.
 app.get("/api/events/my-events", checkAuth, (req, res) => {
   const includePast = String(req.query.includePast).toLowerCase() === "true";
   const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
@@ -3257,7 +3360,7 @@ app.get("/api/events/my-events", checkAuth, (req, res) => {
 
     const pastClause = includePast
       ? ""
-      : "AND TIMESTAMP(e.event_date, e.event_time) >= NOW()";
+      : "AND NOW() <= TIMESTAMP(e.end_date, e.end_time)";
 
     const sql = `
       SELECT 
@@ -3266,6 +3369,8 @@ app.get("/api/events/my-events", checkAuth, (req, res) => {
         e.description,
         DATE_FORMAT(e.event_date, '%Y-%m-%d') AS event_date,
         TIME_FORMAT(e.event_time, '%H:%i') AS event_time,
+        DATE_FORMAT(e.end_date, '%Y-%m-%d') AS end_date,
+        TIME_FORMAT(e.end_time, '%H:%i') AS end_time,
         e.location,
         e.capacity,
         COUNT(DISTINCT el.id) AS likes,
@@ -3275,7 +3380,15 @@ app.get("/api/events/my-events", checkAuth, (req, res) => {
         DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
         COUNT(DISTINCT a.id) AS current_count,
         GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
-        (TIMESTAMP(e.event_date, e.event_time) < NOW()) AS is_past,
+        CASE
+          WHEN NOW() > TIMESTAMP(e.end_date, e.end_time) THEN 1
+          ELSE 0
+        END AS is_past,
+        CASE
+          WHEN NOW() < TIMESTAMP(e.event_date, e.event_time) THEN 'open_for_application'
+          WHEN NOW() >= TIMESTAMP(e.event_date, e.event_time) AND NOW() <= TIMESTAMP(e.end_date, e.end_time) THEN 'in_progress'
+          ELSE 'ended'
+        END AS event_status,
         MAX(CASE WHEN LOWER(a.attendee_name) = ? THEN 1 ELSE 0 END) AS has_joined,
         MAX(CASE WHEN el.user_id = ? THEN 1 ELSE 0 END) AS has_liked
       FROM Events e
@@ -3314,6 +3427,8 @@ app.get("/api/events/my-events", checkAuth, (req, res) => {
         e.description,
         e.event_date,
         e.event_time,
+        e.end_date,
+        e.end_time,
         e.location,
         e.capacity,
         e.category,
