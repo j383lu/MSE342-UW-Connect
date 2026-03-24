@@ -4,5 +4,7 @@ import theme from '../Theme';
 import { useState } from 'react';
 
 const Notifications = () => {
-    
+
 }
+
+export default Notifications;

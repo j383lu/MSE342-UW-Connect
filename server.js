@@ -2161,12 +2161,12 @@ app.get("/api/events/suggestions", (req, res) => {
 
 // for registration
 app.post('/api/register', checkAuth, (req, res) => {
-   const { email, password, username, firebase_uid } = req.body;
+   const { email, password, username, firebase_uid, role } = req.body;
     
-    const sqlCredentials = "INSERT INTO User_Credentials (email, password_hash, firebase_uid) VALUES (?, ?, ?)";
+    const sqlCredentials = "INSERT INTO User_Credentials (email, password_hash, firebase_uid, role) VALUES (?, ?, ?, ?)";
     
     // insert into Credentials
-    db.query(sqlCredentials, [email, password, firebase_uid], (err, result) => {
+    db.query(sqlCredentials, [email, password, firebase_uid, role], (err, result) => {
         if (err) {
             console.error("Credentials Error:", err);
             return res.status(500).json({ error: "Database error during registration." });

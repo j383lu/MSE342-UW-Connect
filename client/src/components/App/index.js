@@ -62,7 +62,7 @@ function AppContent({ authUser }) {
         <Route path="/groups/:groupId/edit" element={authenticated ? <EditGroupForm /> : <Navigate to="/" />} />
         <Route path="/events" element={authenticated ? <EventsPage /> : <Navigate to="/" />} />
         <Route path="/events/new" element={authenticated ? <CreateEventForm /> : <Navigate to="/" />} />
-        <Route path="notifications" element={authenticated ? <Notifications /> :<Navigate to="/"/>}/>
+        <Route path="/notifications" element={authenticated ? <Notifications /> :<Navigate to="/"/>}/>
       </Routes>
     </ThemeProvider>
   );

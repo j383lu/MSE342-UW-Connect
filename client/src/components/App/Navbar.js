@@ -72,7 +72,7 @@ function Navbar({ firebase }) {
               <Button 
                 color="inherit" 
                 component={RouterLink} 
-                to="/events"
+                to="/notifications"
                 style={{ marginLeft: '10px', borderColor: 'white', color: 'white' }}
               >
                 {/* Implement UI Bell Icon + notification badge */}
