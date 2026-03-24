@@ -377,6 +377,58 @@ app.get("/api/profile/search-users", checkAuth, (req, res) => {
   });
 });
 
+// GET /api/profile/:userId - fetch another user's public profile (for View Profile from search)
+app.get("/api/profile/:userId", checkAuth, (req, res) => {
+  const targetUserId = Number(req.params.userId);
+  if (!targetUserId || Number.isNaN(targetUserId)) {
+    return res.status(400).json({ error: "Invalid user id" });
+  }
+  const profileSql = `
+    SELECT up.profile_id, up.user_id, up.display_name, up.bio, up.avatar_url, up.program_id,
+      up.department, up.gender, up.birthday, up.phone_number, p.program_name, uc.role
+    FROM User_Profiles up
+    LEFT JOIN Programs p ON p.program_id = up.program_id
+    LEFT JOIN User_Credentials uc ON uc.user_id = up.user_id
+    WHERE up.user_id = ? LIMIT 1;
+  `;
+  db.query(profileSql, [targetUserId], (err, results) => {
+    if (err) {
+      console.error("Database error:", err.message);
+      return res.status(500).json({ error: "Failed to fetch profile" });
+    }
+    if (!results || results.length === 0) {
+      return res.status(404).json({ error: "Profile not found" });
+    }
+    const row = results[0];
+    const coursesSql = `
+      SELECT upc.course_id, c.course_code FROM User_Profile_Courses upc
+      JOIN Courses c ON c.course_id = upc.course_id
+      JOIN User_Profiles up ON up.profile_id = upc.profile_id
+      WHERE up.user_id = ? ORDER BY c.course_code ASC;
+    `;
+    db.query(coursesSql, [targetUserId], (err2, courseResults) => {
+      if (err2) {
+        console.error("Database error:", err2.message);
+        return res.status(500).json({ error: "Failed to fetch profile" });
+      }
+      return res.json({
+        name: row.display_name || "",
+        bio: row.bio || "",
+        avatar_url: row.avatar_url || null,
+        role: row.role || "",
+        department: row.department || "",
+        gender: row.gender || "",
+        birthday: row.birthday || null,
+        phone_number: row.phone_number || "",
+        program_id: row.program_id ?? null,
+        program_name: row.program_name || "",
+        program: row.program_name || "",
+        courses: (courseResults || []).map((c) => ({ course_id: c.course_id, course_code: c.course_code })),
+      });
+    });
+  });
+});
+
 const getCurrentUserIdByEmail = (email, callback) => {
   const sql = `
     SELECT user_id
