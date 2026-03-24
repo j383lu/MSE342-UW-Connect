@@ -91,11 +91,7 @@ describe('Signup Component', () => {
 
     // Now it will correctly find the text inside the error state
     expect(await screen.findByText(/email is already in use/i)).toBeInTheDocument();
-  });
-
-// Acceptance Criteria 4: 
-
-// Acceptance Criteria 5&6: Account verification (waiting until later sprint)
+  }); 
 
 // Acceptance Criteria 7: User refresh - must wait for a later sprint
 

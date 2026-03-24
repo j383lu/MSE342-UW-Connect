@@ -41,6 +41,30 @@ const checkAuth = (req, res, next) => {
     });
 };
 
+// to create notifications
+const createNotification = (recipientId, actorId, entityId, entityType, actionType, message) => {
+  const sql = `
+    INSERT INTO Notifications (recipient_id, actor_id, entity_id, entity_type, action_type, message) 
+    VALUES (?, ?, ?, ?, ?, ?)`;
+  
+  db.query(sql, [recipientId, actorId, entityId, entityType, actionType, message], (err) => {
+    if (err) {
+      console.error("Critical: Notification failed to save:", err);
+    } else {
+      console.log(`Notification sent to User ${recipientId} for ${actionType}`);
+    }
+  });
+};
+
+const triggerNotification = (recipientId, actorId, entityId, entityType, actionType, message) => {
+  const sql = `
+    INSERT INTO Notifications (recipient_id, actor_id, entity_id, entity_type, action_type, message) 
+    VALUES (?, ?, ?, ?, ?, ?)`;
+  db.query(sql, [recipientId, actorId, entityId, entityType, actionType, message], (err) => {
+    if (err) console.error("Notification Error:", err);
+  });
+};
+
 // Create database connection using your config (ONLY ONE DECLARATION)
 const db = mysql.createConnection({
   host: config.host,
@@ -371,6 +395,58 @@ app.get("/api/profile/search-users", checkAuth, (req, res) => {
       return res.status(500).json({ error: "Failed to search users" });
     }
     return res.json({ users: results || [] });
+  });
+});
+
+// GET /api/profile/:userId - fetch another user's public profile (for View Profile from search)
+app.get("/api/profile/:userId", checkAuth, (req, res) => {
+  const targetUserId = Number(req.params.userId);
+  if (!targetUserId || Number.isNaN(targetUserId)) {
+    return res.status(400).json({ error: "Invalid user id" });
+  }
+  const profileSql = `
+    SELECT up.profile_id, up.user_id, up.display_name, up.bio, up.avatar_url, up.program_id,
+      up.department, up.gender, up.birthday, up.phone_number, p.program_name, uc.role
+    FROM User_Profiles up
+    LEFT JOIN Programs p ON p.program_id = up.program_id
+    LEFT JOIN User_Credentials uc ON uc.user_id = up.user_id
+    WHERE up.user_id = ? LIMIT 1;
+  `;
+  db.query(profileSql, [targetUserId], (err, results) => {
+    if (err) {
+      console.error("Database error:", err.message);
+      return res.status(500).json({ error: "Failed to fetch profile" });
+    }
+    if (!results || results.length === 0) {
+      return res.status(404).json({ error: "Profile not found" });
+    }
+    const row = results[0];
+    const coursesSql = `
+      SELECT upc.course_id, c.course_code FROM User_Profile_Courses upc
+      JOIN Courses c ON c.course_id = upc.course_id
+      JOIN User_Profiles up ON up.profile_id = upc.profile_id
+      WHERE up.user_id = ? ORDER BY c.course_code ASC;
+    `;
+    db.query(coursesSql, [targetUserId], (err2, courseResults) => {
+      if (err2) {
+        console.error("Database error:", err2.message);
+        return res.status(500).json({ error: "Failed to fetch profile" });
+      }
+      return res.json({
+        name: row.display_name || "",
+        bio: row.bio || "",
+        avatar_url: row.avatar_url || null,
+        role: row.role || "",
+        department: row.department || "",
+        gender: row.gender || "",
+        birthday: row.birthday || null,
+        phone_number: row.phone_number || "",
+        program_id: row.program_id ?? null,
+        program_name: row.program_name || "",
+        program: row.program_name || "",
+        courses: (courseResults || []).map((c) => ({ course_id: c.course_id, course_code: c.course_code })),
+      });
+    });
   });
 });
 
@@ -930,6 +1006,30 @@ app.post("/api/groups", checkAuth, upload.single('coverImage'), (req, res) => {
   const { name, description, category, isOpen, maxMembers } = req.body;
   const explicitCreatorId = Number(req.body.user_id);
 
+  const explicitCreatorId = Number(req.body.user_id);
+
+  const createGroupWithCreator = (creator_id) => {
+    if (!creator_id) {
+      return res.status(400).json({ error: "Missing or invalid user_id for group creator" });
+    }
+
+    // Convert isOpen (public = true, private = false) to is_private (1 for private, 0 for public)
+    const is_private = isOpen === 'true' ? 0 : 1;
+
+    // Handle max_members (if empty/null, set to NULL for unlimited)
+    const max_members = maxMembers ? parseInt(maxMembers) : null;
+
+    // Get the uploaded file path if exists
+    const image_url = req.file ? req.file.filename : null;
+
+    const sql = `
+      INSERT INTO Social_Group 
+      (creator_id, name, description, category, is_private, max_members, image_url) 
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    db.query(sql, [creator_id, name, description, category, is_private, max_members, image_url],
+      (err, result) => {
   const createGroupWithCreator = (creator_id) => {
     if (!creator_id) {
       return res.status(400).json({ error: "Missing or invalid user_id for group creator" });
@@ -1158,8 +1258,24 @@ app.post("/api/groups/:groupId/join", checkAuth, (req, res) => {
           console.error("Error joining group:", err);
           return res.status(500).json({ error: "Failed to join group" });
         }
+        
+        const creatorId = group.creator_id;
+        const groupName = group.name;
 
-        return res.status(201).json({
+        // get the display name of the person joining
+        db.query("SELECT display_name FROM User_Profiles WHERE user_id = ?", [userId], (err, profile) => {
+            if (!err && profile.length > 0) {
+                const actorName = profile[0].display_name || "A student";
+                const message = `${actorName} joined your group: ${groupName}`;
+
+                // trigger the notification for the creator
+                if (creatorId !== userId) {
+                    triggerNotification(creatorId, userId, groupId, 'GROUP', 'JOIN', message);
+                }
+            }
+        });
+        
+        return res.status(201).json({ 
           message: "Successfully joined group",
           groupId: groupId,
           userId: userId
@@ -1173,21 +1289,41 @@ app.post("/api/groups/:groupId/join", checkAuth, (req, res) => {
 app.delete("/api/groups/:groupId/leave", (req, res) => {
   const groupId = req.params.groupId;
   // Prefer explicit userId from client, fallback to 1 for now
-  const userId = Number(req.body.userId) || 1;
+  const userId = Number(req.body.userId);
 
+  const infoSql = `
+    SELECT sg.name, sg.creator_id, up.display_name 
+    FROM Social_Group sg
+    JOIN User_Profiles up ON up.user_id = ?
+    WHERE sg.group_id = ?`;
+  
   const sql = "DELETE FROM Group_Members WHERE group_id = ? AND user_id = ?";
 
   db.query(sql, [groupId, userId], (err, result) => {
-    if (err) {
-      console.error("Error leaving group:", err);
-      return res.status(500).json({ error: "Failed to leave group" });
+    if (infoErr || rows.length === 0) {
+        // Just proceed with delete if info lookup fails
+        performDelete();
+        return;
     }
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: "Not a member of this group" });
+    const { name, creator_id, display_name } = rows[0];
+
+    function performDelete() {
+      const sql = "DELETE FROM Group_Members WHERE group_id = ? AND user_id = ?";
+      db.query(sql, [groupId, userId], (err, result) => {
+        if (err) return res.status(500).json({ error: "Failed to leave group" });
+        
+        // 2. Trigger Notification if delete worked
+        if (result.affectedRows > 0 && creator_id !== userId) {
+          const msg = `${display_name || "A student"} left your group: ${name}`;
+          triggerNotification(creator_id, userId, groupId, 'GROUP', 'LEAVE', msg);
+        }
+        
+        return res.json({ message: "Successfully left group" });
+      });
     }
 
-    return res.json({ message: "Successfully left group" });
+    performDelete();
   });
 });
 
@@ -2880,34 +3016,34 @@ app.get("/api/events/suggestions", checkAuth, (req, res) => {
 
 // for registration
 app.post('/api/register', checkAuth, (req, res) => {
-  const { email, password, username, firebase_uid } = req.body;
-
-  const sqlCredentials = "INSERT INTO User_Credentials (email, password_hash, firebase_uid) VALUES (?, ?, ?)";
-
-  // insert into Credentials
-  db.query(sqlCredentials, [email, password, firebase_uid], (err, result) => {
-    if (err) {
-      console.error("Credentials Error:", err);
-      return res.status(500).json({ error: "Database error during registration." });
-    }
-
-    const newUserId = result.insertId;
-    const sqlProfile = "INSERT INTO User_Profiles (user_id, display_name) VALUES (?, ?)";
-
-    // insert into Profile
-    db.query(sqlProfile, [newUserId, username], (profileErr) => {
-      if (profileErr) {
-        console.error("Profile Error:", profileErr);
-        return res.status(500).json({ error: "Profile creation failed." });
-      }
-
-      console.log(`User ${newUserId} fully registered!`);
-      return res.status(201).json({
-        message: "User created successfully!",
-        userId: newUserId
-      });
+   const { email, password, username, firebase_uid, role } = req.body;
+    
+    const sqlCredentials = "INSERT INTO User_Credentials (email, password_hash, firebase_uid, role) VALUES (?, ?, ?, ?)";
+    
+    // insert into Credentials
+    db.query(sqlCredentials, [email, password, firebase_uid, role], (err, result) => {
+        if (err) {
+            console.error("Credentials Error:", err);
+            return res.status(500).json({ error: "Database error during registration." });
+        }
+        
+        const newUserId = result.insertId;
+        const sqlProfile = "INSERT INTO User_Profiles (user_id, display_name) VALUES (?, ?)";
+        
+        // insert into Profile
+        db.query(sqlProfile, [newUserId, username], (profileErr) => {
+            if (profileErr) {
+                console.error("Profile Error:", profileErr);
+                return res.status(500).json({ error: "Profile creation failed." });
+            }
+            
+            console.log(`User ${newUserId} fully registered!`);
+            return res.status(201).json({ 
+                message: "User created successfully!",
+                userId: newUserId 
+            });
+        });
     });
-  });
 });
 
 // Lookup app user_id by email (used after Firebase login)
@@ -3232,6 +3368,52 @@ app.get("/api/events/my-events", checkAuth, (req, res) => {
   });
 });
 
+// notifications
+app.get('/api/notifications', checkAuth, async (req, res) => {
+    try {
+        const currentUserId = await getNumericUserId(req.user.email);
+        
+        const sql = `
+            SELECT * FROM Notifications 
+            WHERE recipient_id = ? 
+            ORDER BY created_at DESC 
+            LIMIT 50`;
 
-app.listen(port, () => console.log(`Listening on port ${port}`));
+        db.query(sql, [currentUserId], (err, rows) => {
+            if (err) return res.status(500).json({ error: "Failed to fetch notifications" });
+            res.json(rows);
+        });
+    } catch (err) {
+        res.status(404).json({ error: "User not found" });
+    }
+});
 
+app.put('/api/notifications/read-all', checkAuth, async (req, res) => {
+    try {
+        const currentUserId = await getNumericUserId(req.user.email);
+        const sql = "UPDATE Notifications SET is_read = 1 WHERE recipient_id = ?";
+        
+        db.query(sql, [currentUserId], (err) => {
+            if (err) return res.status(500).json({ error: "Update failed" });
+            res.json({ message: "All notifications marked as read" });
+        });
+    } catch (err) {
+        res.status(404).json({ error: "User not found" });
+    }
+});
+
+app.get('/api/notifications/unread-count', checkAuth, async (req, res) => {
+  try {
+    const currentUserId = await getNumericUserId(req.user.email);
+    const sql = "SELECT COUNT(*) as unreadCount FROM Notifications WHERE recipient_id = ? AND is_read = 0";
+    
+    db.query(sql, [currentUserId], (err, results) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ unreadCount: results[0].unreadCount });
+    });
+  } catch (err) {
+    res.status(404).json({ error: "User not found" });
+  }
+});
+
+app.listen(port, () => console.log(`Listening on port ${port}`)); 

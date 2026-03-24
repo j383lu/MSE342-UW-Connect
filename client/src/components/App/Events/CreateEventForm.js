@@ -333,7 +333,7 @@ export default function CreateEventForm() {
                     cursor: "pointer",
                   }}
                 >
-                  Group
+                  Private
                 </button>
               </div>
             </div>
