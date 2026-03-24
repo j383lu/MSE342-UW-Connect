@@ -4,7 +4,6 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import bodyParser from 'body-parser';
-import profileRoutes from "./profileRoutes.js";
 import multer from 'multer'; // For file uploads
 import fs from 'fs'; // For file system operations
 import admin from 'firebase-admin';
@@ -101,8 +100,282 @@ const upload = multer({
 
 app.use(express.static(path.join(__dirname, "client/build")));
 
-// Profile routes
-app.use("/api/profile", profileRoutes);
+// Profile routes (inline - migrated from profileRoutes.js)
+app.get("/api/profile", checkAuth, (req, res) => {
+  const currentUserEmail = String(req.user?.email || "").trim().toLowerCase();
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, userId) => {
+    if (userErr) {
+      return res.status(404).json({ error: "No database user found for this authenticated account." });
+    }
+    const profileSql = `
+      SELECT up.profile_id, up.user_id, up.display_name, up.bio, up.avatar_url, up.updated_at,
+        up.program_id, up.department, up.gender, up.birthday, up.phone_number,
+        p.program_name, uc.role
+      FROM User_Profiles up
+      LEFT JOIN Programs p ON p.program_id = up.program_id
+      LEFT JOIN User_Credentials uc ON uc.user_id = up.user_id
+      WHERE up.user_id = ? LIMIT 1;
+    `;
+    db.query(profileSql, [userId], (err, results) => {
+      if (err) {
+        console.error("Database error:", err.message);
+        return res.status(500).json({ error: "Failed to fetch profile" });
+      }
+      if (!results || results.length === 0) {
+        return res.status(404).json({ error: "Profile not found" });
+      }
+      const row = results[0];
+      const coursesSql = `
+        SELECT upc.course_id FROM User_Profile_Courses upc
+        JOIN User_Profiles up ON up.profile_id = upc.profile_id
+        WHERE up.user_id = ? ORDER BY upc.course_id ASC;
+      `;
+      db.query(coursesSql, [userId], (err2, courseResults) => {
+        if (err2) {
+          console.error("Database error:", err2.message);
+          return res.status(500).json({ error: "Failed to fetch profile" });
+        }
+        return res.json({
+          name: row.display_name || "",
+          bio: row.bio || "",
+          avatar_url: row.avatar_url || null,
+          role: row.role || "",
+          department: row.department || "",
+          gender: row.gender || "",
+          birthday: row.birthday || null,
+          phone_number: row.phone_number || "",
+          program_id: row.program_id ?? null,
+          program_name: row.program_name || "",
+          program: row.program_name || "",
+          courses: (courseResults || []).map((c) => c.course_id),
+        });
+      });
+    });
+  });
+});
+
+app.get("/api/profile/programs", checkAuth, (req, res) => {
+  const sql = `SELECT program_id, program_name FROM Programs ORDER BY program_name ASC;`;
+  db.query(sql, [], (err, results) => {
+    if (err) {
+      console.error("Database error:", err.message);
+      return res.status(500).json({ error: "Failed to fetch programs" });
+    }
+    return res.json(results || []);
+  });
+});
+
+app.get("/api/profile/courses", checkAuth, (req, res) => {
+  const sql = `SELECT course_id, course_code FROM Courses ORDER BY course_code ASC;`;
+  db.query(sql, [], (err, results) => {
+    if (err) {
+      console.error("Database error:", err.message);
+      return res.status(500).json({ error: "Failed to fetch courses" });
+    }
+    return res.json(results || []);
+  });
+});
+
+app.get("/api/profile/user-courses", checkAuth, (req, res) => {
+  const currentUserEmail = String(req.user?.email || "").trim().toLowerCase();
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, userId) => {
+    if (userErr) {
+      return res.status(404).json({ error: "No database user found for this authenticated account." });
+    }
+    const sql = `
+      SELECT c.course_id, c.course_code FROM User_Profile_Courses upc
+      JOIN Courses c ON c.course_id = upc.course_id
+      JOIN User_Profiles up ON up.profile_id = upc.profile_id
+      WHERE up.user_id = ? ORDER BY c.course_code ASC;
+    `;
+    db.query(sql, [userId], (err, results) => {
+      if (err) {
+        console.error("Database error:", err.message);
+        return res.status(500).json({ error: "Failed to fetch user courses" });
+      }
+      return res.json(results || []);
+    });
+  });
+});
+
+app.put("/api/profile/avatar", checkAuth, upload.single('avatar'), (req, res) => {
+  const currentUserEmail = String(req.user?.email || "").trim().toLowerCase();
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+  if (!req.file || !req.file.filename) {
+    return res.status(400).json({ error: "No image file provided." });
+  }
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, userId) => {
+    if (userErr) {
+      return res.status(404).json({ error: "No database user found for this authenticated account." });
+    }
+    const avatarUrl = req.file.filename;
+    const updateSql = `UPDATE User_Profiles SET avatar_url = ?, updated_at = NOW() WHERE user_id = ?;`;
+    db.query(updateSql, [avatarUrl, userId], (err, result) => {
+      if (err) {
+        console.error("Database error:", err.message);
+        return res.status(500).json({ error: "Failed to update avatar" });
+      }
+      if (!result || result.affectedRows === 0) {
+        return res.status(404).json({ error: "Profile not found" });
+      }
+      return res.json({ ok: true, avatar_url: avatarUrl });
+    });
+  });
+});
+
+app.put("/api/profile", checkAuth, (req, res) => {
+  const currentUserEmail = String(req.user?.email || "").trim().toLowerCase();
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+  const { name, bio, gender, birthday, phone_number, program_id, courses } = req.body;
+  if (!name || typeof name !== "string" || !name.trim()) {
+    return res.status(400).json({ error: "Display name is required." });
+  }
+  const programIdValue = Number(program_id);
+  if (!program_id || Number.isNaN(programIdValue) || programIdValue <= 0) {
+    return res.status(400).json({ error: "Program is required." });
+  }
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, userId) => {
+    if (userErr) {
+      return res.status(404).json({ error: "No database user found for this authenticated account." });
+    }
+    const updateSql = `
+      UPDATE User_Profiles SET display_name = ?, bio = ?, gender = ?, birthday = ?,
+        phone_number = ?, program_id = ?, updated_at = NOW()
+      WHERE user_id = ?;
+    `;
+    const updateData = [name.trim(), bio ?? "", gender ?? "", birthday || null, phone_number?.trim() || "", programIdValue, userId];
+    db.query(updateSql, updateData, (err, result) => {
+      if (err) {
+        console.error("Database error:", err.message);
+        return res.status(500).json({ error: "Failed to save profile" });
+      }
+      if (!result || result.affectedRows === 0) {
+        return res.status(404).json({ error: "Profile not found" });
+      }
+      const pidSql = `SELECT profile_id FROM User_Profiles WHERE user_id = ? LIMIT 1;`;
+      db.query(pidSql, [userId], (err2, pidRows) => {
+        if (err2 || !pidRows || pidRows.length === 0) {
+          return res.status(404).json({ error: "Profile ID not found" });
+        }
+        const profileId = pidRows[0].profile_id;
+        const delSql = `DELETE FROM User_Profile_Courses WHERE profile_id = ?`;
+        db.query(delSql, [profileId], (err3) => {
+          if (err3) {
+            console.error("Database error:", err3.message);
+            return res.status(500).json({ error: "Failed to save profile" });
+          }
+          if (Array.isArray(courses) && courses.length > 0) {
+            const validCourseValues = courses
+              .map((cid) => Number(cid))
+              .filter((cid) => !Number.isNaN(cid) && cid > 0)
+              .map((cid) => [profileId, cid]);
+            if (validCourseValues.length > 0) {
+              const placeholders = validCourseValues.map(() => "(?, ?)").join(", ");
+              const flatParams = validCourseValues.flat();
+              const insertSql = `INSERT INTO User_Profile_Courses (profile_id, course_id) VALUES ${placeholders}`;
+              db.query(insertSql, flatParams, (err4) => {
+                if (err4) {
+                  console.error("Database error:", err4.message);
+                  return res.status(500).json({ error: "Failed to save profile" });
+                }
+                return res.json({ ok: true, name: name.trim(), bio: bio ?? "", gender: gender ?? "", phone_number: phone_number?.trim() || "", birthday: birthday || null, program_id: programIdValue, courses: Array.isArray(courses) ? courses : [] });
+              });
+              return;
+            }
+          }
+          return res.json({ ok: true, name: name.trim(), bio: bio ?? "", gender: gender ?? "", phone_number: phone_number?.trim() || "", birthday: birthday || null, program_id: programIdValue, courses: Array.isArray(courses) ? courses : [] });
+        });
+      });
+    });
+  });
+});
+
+app.get("/api/profile/programs/:programId/students", checkAuth, (req, res) => {
+  const programId = Number(req.params.programId);
+  if (!programId) {
+    return res.status(400).json({ error: "Invalid program id" });
+  }
+  const sql = `
+    SELECT up.user_id, up.profile_id, up.display_name, up.bio, up.program_id, p.program_name, uc.role, c.course_id, c.course_code
+    FROM User_Profiles up
+    JOIN Programs p ON p.program_id = up.program_id
+    JOIN User_Credentials uc ON uc.user_id = up.user_id
+    LEFT JOIN User_Profile_Courses upc ON upc.profile_id = up.profile_id
+    LEFT JOIN Courses c ON c.course_id = upc.course_id
+    WHERE up.program_id = ?
+    ORDER BY up.display_name ASC, c.course_code ASC;
+  `;
+  db.query(sql, [programId], (err, results) => {
+    if (err) {
+      console.error("Database error:", err.message);
+      return res.status(500).json({ error: "Failed to fetch program students" });
+    }
+    if (!results || results.length === 0) {
+      return res.json({ program_name: "", students: [] });
+    }
+    const studentsMap = new Map();
+    results.forEach((row) => {
+      if (!studentsMap.has(row.user_id)) {
+        studentsMap.set(row.user_id, {
+          user_id: row.user_id,
+          profile_id: row.profile_id,
+          display_name: row.display_name,
+          bio: row.bio || "",
+          program_id: row.program_id,
+          program_name: row.program_name || "",
+          role: row.role || "",
+          courses: [],
+        });
+      }
+      if (row.course_id && row.course_code) {
+        studentsMap.get(row.user_id).courses.push({ course_id: row.course_id, course_code: row.course_code });
+      }
+    });
+    return res.json({ program_name: results[0]?.program_name || "", students: Array.from(studentsMap.values()) });
+  });
+});
+
+app.get("/api/profile/search-users", checkAuth, (req, res) => {
+  const userQuery = (req.query.query || "").trim();
+  let sql;
+  let params = [];
+  if (userQuery) {
+    sql = `
+      SELECT up.user_id, up.display_name, up.bio, up.department, p.program_name, uc.role
+      FROM User_Profiles up
+      LEFT JOIN Programs p ON p.program_id = up.program_id
+      LEFT JOIN User_Credentials uc ON uc.user_id = up.user_id
+      WHERE up.display_name LIKE ?
+      ORDER BY up.display_name ASC;
+    `;
+    params = [`%${userQuery}%`];
+  } else {
+    sql = `
+      SELECT up.user_id, up.display_name, up.bio, up.department, p.program_name, uc.role
+      FROM User_Profiles up
+      LEFT JOIN Programs p ON p.program_id = up.program_id
+      LEFT JOIN User_Credentials uc ON uc.user_id = up.user_id
+      ORDER BY up.display_name ASC;
+    `;
+  }
+  db.query(sql, params, (err, results) => {
+    if (err) {
+      console.error("Database error:", err.message);
+      return res.status(500).json({ error: "Failed to search users" });
+    }
+    return res.json({ users: results || [] });
+  });
+});
 
 const getCurrentUserIdByEmail = (email, callback) => {
   const sql = `
