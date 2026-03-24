@@ -370,9 +370,18 @@ app.get("/api/profile/search-users", checkAuth, (req, res) => {
   const userQuery = (req.query.query || "").trim();
   let sql;
   let params = [];
+
   if (userQuery) {
     sql = `
-      SELECT up.user_id, up.display_name, up.bio, up.department, p.program_name, uc.role
+      SELECT
+        up.user_id,
+        up.display_name,
+        up.bio,
+        up.department,
+        up.gender,
+        up.program_id,
+        p.program_name,
+        uc.role
       FROM User_Profiles up
       LEFT JOIN Programs p ON p.program_id = up.program_id
       LEFT JOIN User_Credentials uc ON uc.user_id = up.user_id
@@ -382,13 +391,22 @@ app.get("/api/profile/search-users", checkAuth, (req, res) => {
     params = [`%${userQuery}%`];
   } else {
     sql = `
-      SELECT up.user_id, up.display_name, up.bio, up.department, p.program_name, uc.role
+      SELECT
+        up.user_id,
+        up.display_name,
+        up.bio,
+        up.department,
+        up.gender,
+        up.program_id,
+        p.program_name,
+        uc.role
       FROM User_Profiles up
       LEFT JOIN Programs p ON p.program_id = up.program_id
       LEFT JOIN User_Credentials uc ON uc.user_id = up.user_id
       ORDER BY up.display_name ASC;
     `;
   }
+
   db.query(sql, params, (err, results) => {
     if (err) {
       console.error("Database error:", err.message);
