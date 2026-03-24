@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styles from "./eventStyles";
 import EventCard from "./EventCard";
@@ -298,38 +298,41 @@ export default function EventsPage() {
     }
   };
 
-  const applySortToList = (list, customSort = sortBy) => {
-    const copied = [...list];
+  const applySortToList = useCallback(
+    (list, customSort = sortBy) => {
+      const copied = [...list];
 
-    if (customSort === "mostLiked") {
+      if (customSort === "mostLiked") {
+        copied.sort((a, b) => {
+          const likeDiff = Number(b.likes || 0) - Number(a.likes || 0);
+          if (likeDiff !== 0) return likeDiff;
+
+          const bTime = new Date(`${b.published_time}`);
+          const aTime = new Date(`${a.published_time}`);
+          return bTime - aTime;
+        });
+        return copied;
+      }
+
+      if (customSort === "mostRecentPublished") {
+        copied.sort((a, b) => {
+          const bTime = new Date(`${b.published_time}`);
+          const aTime = new Date(`${a.published_time}`);
+          return bTime - aTime;
+        });
+        return copied;
+      }
+
       copied.sort((a, b) => {
-        const likeDiff = Number(b.likes || 0) - Number(a.likes || 0);
-        if (likeDiff !== 0) return likeDiff;
-
-        const bTime = new Date(`${b.published_time}`);
-        const aTime = new Date(`${a.published_time}`);
-        return bTime - aTime;
+        const aTime = new Date(`${a.event_date}T${a.event_time}`);
+        const bTime = new Date(`${b.event_date}T${b.event_time}`);
+        return aTime - bTime;
       });
+
       return copied;
-    }
-
-    if (customSort === "mostRecentPublished") {
-      copied.sort((a, b) => {
-        const bTime = new Date(`${b.published_time}`);
-        const aTime = new Date(`${a.published_time}`);
-        return bTime - aTime;
-      });
-      return copied;
-    }
-
-    copied.sort((a, b) => {
-      const aTime = new Date(`${a.event_date}T${a.event_time}`);
-      const bTime = new Date(`${b.event_date}T${b.event_time}`);
-      return aTime - bTime;
-    });
-
-    return copied;
-  };
+    },
+    [sortBy]
+  );
 
   const handleSearch = async (rawTerm, customSort = sortBy) => {
     const term = String(rawTerm || "").trim();
@@ -521,15 +524,15 @@ export default function EventsPage() {
 
   const sortedEvents = useMemo(() => {
     return applySortToList(events, sortBy);
-  }, [events, sortBy]);
+  }, [events, sortBy, applySortToList]);
 
   const upcoming = sortedEvents.filter((e) => Number(e.is_past) === 0);
   const past = sortedEvents.filter((e) => Number(e.is_past) === 1);
 
   const sortedSearchResults = useMemo(() => {
     return applySortToList(searchResults, sortBy);
-  }, [searchResults, sortBy]);
-
+  }, [searchResults, sortBy, applySortToList]);
+  
   const upcomingSearchResults = sortedSearchResults.filter(
     (e) => Number(e.is_past) === 0
   );
