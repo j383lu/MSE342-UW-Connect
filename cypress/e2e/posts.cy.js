@@ -2,6 +2,7 @@ describe("Post Feed - Create, Search, Filter by Tag", () => {
 
   beforeEach(() => {
     cy.visit("/");
+    cy.contains('Sign In').click(); 
 
     // login
     cy.get('input[name="email"]').type('jc@uwaterloo.ca');
