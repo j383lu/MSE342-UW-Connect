@@ -1006,87 +1006,60 @@ app.post("/api/groups", checkAuth, upload.single('coverImage'), (req, res) => {
   const { name, description, category, isOpen, maxMembers } = req.body;
   const explicitCreatorId = Number(req.body.user_id);
 
-  const explicitCreatorId = Number(req.body.user_id);
-
   const createGroupWithCreator = (creator_id) => {
     if (!creator_id) {
       return res.status(400).json({ error: "Missing or invalid user_id for group creator" });
     }
 
-    // Convert isOpen (public = true, private = false) to is_private (1 for private, 0 for public)
     const is_private = isOpen === 'true' ? 0 : 1;
-
-    // Handle max_members (if empty/null, set to NULL for unlimited)
     const max_members = maxMembers ? parseInt(maxMembers) : null;
-
-    // Get the uploaded file path if exists
     const image_url = req.file ? req.file.filename : null;
 
     const sql = `
-      INSERT INTO Social_Group 
-      (creator_id, name, description, category, is_private, max_members, image_url) 
+      INSERT INTO Social_Group
+      (creator_id, name, description, category, is_private, max_members, image_url)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
 
-    db.query(sql, [creator_id, name, description, category, is_private, max_members, image_url],
+    db.query(
+      sql,
+      [creator_id, name, description, category, is_private, max_members, image_url],
       (err, result) => {
-  const createGroupWithCreator = (creator_id) => {
-    if (!creator_id) {
-      return res.status(400).json({ error: "Missing or invalid user_id for group creator" });
-    }
-
-    // Convert isOpen (public = true, private = false) to is_private (1 for private, 0 for public)
-    const is_private = isOpen === 'true' ? 0 : 1;
-
-    // Handle max_members (if empty/null, set to NULL for unlimited)
-    const max_members = maxMembers ? parseInt(maxMembers) : null;
-
-    // Get the uploaded file path if exists
-    const image_url = req.file ? req.file.filename : null;
-
-    const sql = `
-      INSERT INTO Social_Group 
-      (creator_id, name, description, category, is_private, max_members, image_url) 
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `;
-
-    db.query(sql, [creator_id, name, description, category, is_private, max_members, image_url], (err, result) => {
-      if (err) {
-        console.error("POST /api/groups error:", err);
-        return res.status(500).json({
-          error: "Failed to create group",
-          details: err.message
-        });
-      }
-
-      const groupId = result.insertId;
-
-      // For both public and private: creator is automatically a member (shows in "My Groups")
-      db.query(
-        "INSERT INTO Group_Members (group_id, user_id) VALUES (?, ?)",
-        [groupId, creator_id],
-        (errMember) => {
-          if (errMember) {
-            console.error("POST /api/groups: auto-join creator failed:", errMember);
-          }
-          return res.status(201).json({
-            id: groupId,
-            creator_id,
-            name,
-            description,
-            category,
-            is_private,
-            max_members,
-            image_url,
-            message: "Group created successfully"
+        if (err) {
+          console.error("POST /api/groups error:", err);
+          return res.status(500).json({
+            error: "Failed to create group",
+            details: err.message
           });
         }
-      );
+
+        const groupId = result.insertId;
+
+        db.query(
+          "INSERT INTO Group_Members (group_id, user_id) VALUES (?, ?)",
+          [groupId, creator_id],
+          (errMember) => {
+            if (errMember) {
+              console.error("POST /api/groups: auto-join creator failed:", errMember);
+            }
+
+            return res.status(201).json({
+              id: groupId,
+              creator_id,
+              name,
+              description,
+              category,
+              is_private,
+              max_members,
+              image_url,
+              message: "Group created successfully"
+            });
+          }
+        );
       }
     );
   };
 
-  // Prefer explicit user_id if provided, otherwise resolve from auth token email.
   if (explicitCreatorId) {
     return createGroupWithCreator(explicitCreatorId);
   }
@@ -1096,6 +1069,7 @@ app.post("/api/groups", checkAuth, upload.single('coverImage'), (req, res) => {
       console.error("POST /api/groups user lookup error:", lookupErr);
       return res.status(400).json({ error: "Missing or invalid user_id for group creator" });
     }
+
     return createGroupWithCreator(resolvedUserId);
   });
 });
