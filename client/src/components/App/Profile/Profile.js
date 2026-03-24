@@ -8,6 +8,7 @@ import {
   CardContent,
   Button,
   Alert,
+  Avatar,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import { FirebaseContext } from "../../Firebase";
@@ -149,12 +150,25 @@ function Profile() {
             justifyContent="space-between"
             alignItems="flex-start"
           >
-            <Box>
-              <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
-                <Typography variant="h1" sx={{ mb: 1 }}>
-                  {profile.name}
-                </Typography>
-              </Stack>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
+              <Avatar
+                src={profile.avatar_url ? `/uploads/${profile.avatar_url}` : undefined}
+                alt={profile.name}
+                sx={{
+                  width: 80,
+                  height: 80,
+                  bgcolor: "primary.main",
+                  fontSize: "2rem",
+                }}
+              >
+                {!profile.avatar_url && (profile.name?.[0]?.toUpperCase() ?? "?")}
+              </Avatar>
+              <Box>
+                <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
+                  <Typography variant="h1" sx={{ mb: 1 }}>
+                    {profile.name}
+                  </Typography>
+                </Stack>
 
               {profile.gender && profile.gender !== "Prefer not to say" && (
                 <Typography
@@ -173,6 +187,7 @@ function Profile() {
                   Staff
                 </Typography>
               )}
+              </Box>
             </Box>
 
             <Stack direction="row" spacing={1}>

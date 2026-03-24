@@ -15,6 +15,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Avatar,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import { FirebaseContext } from "../../Firebase";
@@ -86,6 +87,7 @@ function EditProfile() {
         setDraft({
           name: profileData.name || "",
           bio: profileData.bio || "",
+          avatar_url: profileData.avatar_url || null,
           gender: profileData.gender || "",
           birthday: profileData.birthday ? profileData.birthday.slice(0, 10) : "",
           phone_number: profileData.phone_number || "",
@@ -114,6 +116,41 @@ function EditProfile() {
       ...draft,
       courses: typeof value === "string" ? value.split(",") : value,
     });
+  };
+
+  const handleAvatarChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!/^image\/(jpeg|jpg|png|gif)$/i.test(file.type)) {
+      setSaveError("Please select a valid image file (JPEG, PNG, or GIF).");
+      return;
+    }
+    try {
+      const user = firebase?.auth?.currentUser;
+      if (!user) throw new Error("No authenticated user found.");
+      const token = await user.getIdToken();
+      const formData = new FormData();
+      formData.append("avatar", file);
+      const res = await fetch("/api/profile/avatar", {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || "Failed to upload profile picture.");
+      }
+      const data = await res.json();
+      setDraft({
+        ...draft,
+        avatar_url: data.avatar_url,
+      });
+      setSaveError("");
+    } catch (err) {
+      console.error(err);
+      setSaveError(err.message || "Failed to upload profile picture.");
+    }
+    e.target.value = "";
   };
 
   const handleSave = async () => {
@@ -193,6 +230,35 @@ function EditProfile() {
           <Divider sx={{ my: 3, borderColor: "divider" }} />
 
           <Stack spacing={2}>
+            <Box>
+              <Typography variant="h2" sx={{ fontSize: "1rem", color: "text.primary", mb: 2 }}>
+                Profile Picture
+              </Typography>
+              <Stack direction="row" alignItems="center" spacing={2}>
+                <Avatar
+                  src={draft.avatar_url ? `/uploads/${draft.avatar_url}` : undefined}
+                  alt={draft.name}
+                  sx={{
+                    width: 80,
+                    height: 80,
+                    bgcolor: "primary.main",
+                    fontSize: "2rem",
+                  }}
+                >
+                  {!draft.avatar_url && (draft.name?.[0]?.toUpperCase() ?? "?")}
+                </Avatar>
+                <Button variant="outlined" component="label">
+                  Change Photo
+                  <input
+                    type="file"
+                    hidden
+                    accept="image/jpeg,image/jpg,image/png,image/gif"
+                    onChange={handleAvatarChange}
+                  />
+                </Button>
+              </Stack>
+            </Box>
+
             <TextField
               label="Display Name"
               value={draft.name}

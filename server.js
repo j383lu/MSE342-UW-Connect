@@ -141,6 +141,7 @@ app.get("/api/profile", checkAuth, (req, res) => {
         return res.json({
           name: row.display_name || "",
           bio: row.bio || "",
+          avatar_url: row.avatar_url || null,
           role: row.role || "",
           department: row.department || "",
           gender: row.gender || "",
@@ -199,6 +200,33 @@ app.get("/api/profile/user-courses", checkAuth, (req, res) => {
         return res.status(500).json({ error: "Failed to fetch user courses" });
       }
       return res.json(results || []);
+    });
+  });
+});
+
+app.put("/api/profile/avatar", checkAuth, upload.single('avatar'), (req, res) => {
+  const currentUserEmail = String(req.user?.email || "").trim().toLowerCase();
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+  if (!req.file || !req.file.filename) {
+    return res.status(400).json({ error: "No image file provided." });
+  }
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, userId) => {
+    if (userErr) {
+      return res.status(404).json({ error: "No database user found for this authenticated account." });
+    }
+    const avatarUrl = req.file.filename;
+    const updateSql = `UPDATE User_Profiles SET avatar_url = ?, updated_at = NOW() WHERE user_id = ?;`;
+    db.query(updateSql, [avatarUrl, userId], (err, result) => {
+      if (err) {
+        console.error("Database error:", err.message);
+        return res.status(500).json({ error: "Failed to update avatar" });
+      }
+      if (!result || result.affectedRows === 0) {
+        return res.status(404).json({ error: "Profile not found" });
+      }
+      return res.json({ ok: true, avatar_url: avatarUrl });
     });
   });
 });
