@@ -2945,4 +2945,23 @@ app.get('/api/notifications/unread-count', checkAuth, async (req, res) => {
   }
 });
 
+app.delete('/api/notifications/:id', (req, res) => {
+  const notificationId = req.params.id;
+
+  const query = 'DELETE FROM Notifications WHERE id = ?';
+
+  db.query(query, [notificationId], (err, result) => {
+    if (err) {
+      console.error('Error deleting notification:', err);
+      return res.status(500).json({ error: 'Database deletion failed' });
+    }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Notification not found' });
+    }
+
+    res.status(200).json({ message: 'Deleted successfully' });
+  });
+});
+
 app.listen(port, () => console.log(`Listening on port ${port}`)); 

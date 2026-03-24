@@ -1,12 +1,13 @@
 import * as React from 'react';
 import { 
-  Typography, Container, List, ListItem, ListItemText, ListItemIcon, Divider, Paper, Button, Box,Chip, CircularProgress
+  Typography, Box, CircularProgress, Tabs, Tab
 } from '@mui/material';
 import { useEffect, useState, useCallback } from 'react';
 import { useUser } from '../../../contexts/UserContext';
 import PersonAddIcon from '@mui/icons-material/PersonAdd'; 
 import PersonRemoveIcon from '@mui/icons-material/PersonRemove'; 
-import CircleIcon from '@mui/icons-material/Circle'; 
+import IconButton from '@mui/material/IconButton';
+import DeleteIcon from '@mui/icons-material/Delete';
 import apiRequest from '../../../utils/api';
 import s from './notificationStyles';
 
@@ -14,6 +15,18 @@ const Notifications = () => {
   const { dbUser } = useUser();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const [tabValue, setTabValue] = useState(0);
+
+  const handleTabChange = (event, newValue) => {
+    setTabValue(newValue);
+  };
+
+  const filteredNotifications = notifications.filter(n => {
+    if (tabValue === 1) return n.is_read === 0; // New
+    if (tabValue === 2) return n.is_read === 1; // Read
+    return true; // All
+  });
 
   // fetch  notifications from the Backend
   const fetchNotifications = useCallback(async () => {
@@ -51,6 +64,21 @@ const Notifications = () => {
     }
   };
 
+  const deleteNotification = async (id) => {
+  try {
+    const res = await apiRequest(`/api/notifications/${id}`, {
+      method: 'DELETE'
+    });
+    
+    if (res.ok) {
+      // Remove from local state immediately
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }
+  } catch (err) {
+    console.error("Error deleting notification:", err);
+  }
+};
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" mt={10}>
@@ -63,7 +91,6 @@ const Notifications = () => {
     <div style={s.pageBackground}>
       <div style={s.pageWrapper}>
         
-        {/* HERO SECTION */}
         <div style={s.hero}>
           <div style={s.heroContent}>
             <div style={s.heroTextBlock}>
@@ -78,10 +105,23 @@ const Notifications = () => {
           </div>
         </div>
 
-        {/* NOTIFICATION LIST */}
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+          <Tabs 
+            value={tabValue} 
+            onChange={handleTabChange} 
+            textColor="inherit"
+            TabIndicatorProps={{ style: { background: '#5D6C5C' } }} // Matches your icon color
+            sx={{ '& .MuiTab-root': { fontWeight: 600, color: 'rgba(0,0,0,0.6)' } }}
+          >
+            <Tab label={`All (${notifications.length})`} />
+            <Tab label={`New (${notifications.filter(n => !n.is_read).length})`} />
+            <Tab label={`Read (${notifications.filter(n => n.is_read).length})`} />
+          </Tabs>
+        </Box>
+
         <div style={s.panel}>
-          {notifications.length > 0 ? (
-            notifications.map((n) => (
+          {filteredNotifications.length > 0 ? (
+            filteredNotifications.map((n) => (
               <div 
                 key={n.id} 
                 style={{ 
@@ -113,6 +153,18 @@ const Notifications = () => {
                     {n.is_read ? 'Read' : 'New'}
                   </span>
                 </div>
+
+                <IconButton 
+                  onClick={() => deleteNotification(n.id)}
+                  sx={{ 
+                    ml: 1, 
+                    color: 'rgba(0,0,0,0.3)', 
+                    '&:hover': { color: '#C62828' } 
+                  }}
+                  aria-label="delete notification"
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
               </div>
             ))
           ) : (
