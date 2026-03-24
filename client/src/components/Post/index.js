@@ -242,6 +242,7 @@ function Post({ firebase }) {
             label="Search posts..."
             value={searchKeyword}
             onChange={(e) => setSearchKeyword(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleSearch();}}
             error={Boolean(searchError)}
             helperText={searchError}
             sx={{
@@ -329,7 +330,7 @@ function Post({ firebase }) {
           </Button>
         </Box>
       </Grid>
-      
+
       {/* Post List */}
       <Grid item xs={12}>
         <PostList
