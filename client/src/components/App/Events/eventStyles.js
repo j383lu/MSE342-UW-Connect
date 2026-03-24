@@ -874,6 +874,33 @@ const eventStyles = {
     boxShadow: "0 8px 18px rgba(198,40,40,0.18)",
     transition: "all 0.2s ease",
   },
+
+  filterChip: {
+    padding: "10px 18px",
+    borderRadius: "999px",
+    border: "1px solid #c8d0d8",
+    background: "#f7f4ee",
+    color: "#22343c",
+    fontWeight: 600,
+    fontSize: "15px",
+  },
+
+  filterChipActive: {
+    background: "#dfe8dc",
+    border: "1px solid #a9b8a2",
+  },
+
+  eventTypeChip: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "6px 12px",
+    borderRadius: "999px",
+    background: "#eef6ff",
+    color: "#1d4f91",
+    fontWeight: 600,
+    fontSize: "13px",
+    border: "1px solid #c7dcf7",
+  },
   
 };
 
