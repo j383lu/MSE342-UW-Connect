@@ -21,6 +21,7 @@ export default function EventCard({
   const [liked, setLiked] = useState(Number(ev.has_liked || 0) === 1);
   const [likeLoading, setLikeLoading] = useState(false);
 
+  // This hook updates the like data when the event props change
   useEffect(() => {
     setLikes(Number(ev.likes || 0));
     setLiked(Number(ev.has_liked || 0) === 1);
@@ -28,6 +29,8 @@ export default function EventCard({
 
   const current = Number(ev.current_count || 0);
   const max = Number(ev.capacity || 0);
+
+  // Check if the event is max and whether the user has joined the event.
   const isFull = max > 0 && current >= max;
   const hasJoined = Number(ev.has_joined || 0) === 1;
 
@@ -38,12 +41,16 @@ export default function EventCard({
     : styles.statusOpen;
 
   const statusText = isPast ? "Ended" : isFull ? "Full" : "Open";
+
   const eventTags = ev.tags ? ev.tags.split(",") : [];
+
+  // Sets event type with public or group
   const eventTypeText =
     String(ev.event_type || "public").toLowerCase() === "group"
       ? "Group"
       : "Public";
 
+  // This handler function allows the user to like or unlike an event and update the result
   const handleLikeToggle = async (e) => {
     e.preventDefault();
 
@@ -101,6 +108,7 @@ export default function EventCard({
         ...(isPast ? styles.cardPast : null),
         ...(hover ? styles.cardHover : null),
       }}
+      // This handles hover effect for better UI interaction.
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
@@ -193,6 +201,7 @@ export default function EventCard({
       </div>
 
       <div style={styles.actions}>
+        {/* This switches between join and leave buttons based on user status */}
         {hasJoined ? (
           <button
             type="button"

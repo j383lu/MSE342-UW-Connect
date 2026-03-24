@@ -31,7 +31,10 @@ export default function CreateEventForm() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
+  // This hook runs once when the page loads and fetches category data from the server
   useEffect(() => {
+
+    // The loadCategories function loads event categories from the backend when the page first opens
     const loadCategories = async () => {
       try {
         const res = await fetch("/api/categories");
@@ -51,6 +54,7 @@ export default function CreateEventForm() {
     loadCategories();
   }, []);
 
+  // This function loads the groups that user has joined so they can create group events
   const loadMyGroups = async () => {
     try {
       setGroupsLoading(true);
@@ -98,6 +102,7 @@ export default function CreateEventForm() {
     }
   };
 
+  // This function changes between public and private event types and loads group data
   const handleEventTypeChange = async (type) => {
     setEventType(type);
     setError("");
@@ -118,6 +123,7 @@ export default function CreateEventForm() {
     }
   };
 
+  // This handler function adds a new tag to the event if it is not empty or already added
   const handleAddTag = () => {
     const cleanTag = tagInput.trim();
 
@@ -136,10 +142,12 @@ export default function CreateEventForm() {
     setTagInput("");
   };
 
+  // This handler function removes a selected tag from the tag list
   const handleRemoveTag = (tagToRemove) => {
     setTags((prev) => prev.filter((tag) => tag !== tagToRemove));
   };
 
+  // This handler function adds a selected group to the event
   const handleAddGroup = () => {
     if (!groupSelectValue) return;
 
@@ -162,25 +170,20 @@ export default function CreateEventForm() {
     setGroupSelectValue("");
   };
 
+  // This handler function removes a selected group from the group list
   const handleRemoveGroup = (groupIdToRemove) => {
     setSelectedGroups((prev) =>
       prev.filter((group) => String(group.group_id) !== String(groupIdToRemove))
     );
   };
 
+  // Check the input fields and send request to the backend and create a new event
   const handleCreate = async (e) => {
     e.preventDefault();
     setError("");
     setMessage("");
 
-    if (
-      !title ||
-      !description ||
-      !eventDate ||
-      !eventTime ||
-      !location ||
-      !capacity ||
-      !category
+    if ( !title || !description || !eventDate || !eventTime || !location || !capacity || !category
     ) {
       setError("Please fill in all fields.");
       return;

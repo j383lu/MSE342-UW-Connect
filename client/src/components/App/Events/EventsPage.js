@@ -32,6 +32,7 @@ export default function EventsPage() {
   const [sortBy, setSortBy] = useState("mostUpcoming");
   const [activeTab, setActiveTab] = useState("public");
 
+  // This function gets authentication headers and includes the user token if logged in.
   const getAuthHeaders = async (includeJson = false) => {
     const headers = {};
 
@@ -48,6 +49,7 @@ export default function EventsPage() {
     return headers;
   };
 
+  // Return the correct API route based on the selected tab.
   const getEventsRouteByTab = (tab, includePastValue = true) => {
     const includePastParam = includePastValue ? "true" : "false";
 
@@ -62,6 +64,7 @@ export default function EventsPage() {
     return `/api/events/public?includePast=${includePastParam}`;
   };
 
+  // Update event data in both the main list and search results.
   const updateEventStateEverywhere = (eventId, updates) => {
     setEvents((prev) =>
       prev.map((item) => (item.id === eventId ? { ...item, ...updates } : item))
@@ -72,6 +75,7 @@ export default function EventsPage() {
     );
   };
 
+  // This function loads events from the backend based on the selected tab and filter.
   const loadEvents = async (
     tab = activeTab,
     includePastValue = showPastEvents,
@@ -109,6 +113,7 @@ export default function EventsPage() {
     }
   };
 
+  // Load attendees of a specific event
   const loadAttendees = async (eventId) => {
     try {
       setDetailsLoading(true);
@@ -132,6 +137,7 @@ export default function EventsPage() {
     }
   };
 
+  // This function shows or hides the attendee list for a event.
   const toggleAttendees = async (eventId) => {
     if (openDetailsId === eventId) {
       setOpenDetailsId(null);
@@ -144,6 +150,7 @@ export default function EventsPage() {
     await loadAttendees(eventId);
   };
 
+  // handleJoin function allows the user to join an event and updates the event state.
   const handleJoin = async (ev) => {
     const user = firebase?.auth?.currentUser;
 
@@ -184,6 +191,7 @@ export default function EventsPage() {
     }
   };
 
+  // handleLeave function allows the user to leave an event and updates the event state
   const handleLeave = async (ev) => {
     const user = firebase?.auth?.currentUser;
 
@@ -224,6 +232,7 @@ export default function EventsPage() {
     }
   };
 
+  // Load user's recent search history from the backend
   const loadRecentSearches = async () => {
     try {
       const headers = await getAuthHeaders(false);
@@ -237,6 +246,7 @@ export default function EventsPage() {
     }
   };
 
+  // Save a new search term into the user's search history
   const saveSearchHistory = async (term) => {
     try {
       const headers = await getAuthHeaders(true);
@@ -251,6 +261,7 @@ export default function EventsPage() {
     }
   };
 
+  // Delete a specific search item from user's search history
   const deleteSearchHistory = async (term) => {
     try {
       const headers = await getAuthHeaders(true);
@@ -276,6 +287,7 @@ export default function EventsPage() {
     }
   };
 
+  // Load search suggestions based on the keyword input
   const loadSuggestions = async (keyword, tab = activeTab) => {
     try {
       const headers = await getAuthHeaders(false);
@@ -298,6 +310,7 @@ export default function EventsPage() {
     }
   };
 
+  // Sort a list of events based on the selected sorting option.
   const applySortToList = useCallback(
     (list, customSort = sortBy) => {
       const copied = [...list];
@@ -334,6 +347,7 @@ export default function EventsPage() {
     [sortBy]
   );
 
+  // The handleSearch function handles searching events based on the input keyword and updates results.
   const handleSearch = async (rawTerm, customSort = sortBy) => {
     const term = String(rawTerm || "").trim();
 
@@ -389,6 +403,7 @@ export default function EventsPage() {
     }
   };
 
+  // Update the sorting option and re-applies search if needed.
   const handleSortChange = async (e) => {
     const newSort = e.target.value;
     setSortBy(newSort);
@@ -399,6 +414,7 @@ export default function EventsPage() {
     }
   };
 
+  // Reload search results after updates of likes or joins
   const reloadSearchResultsIfNeeded = async () => {
     const currentTerm = searchTerm.trim();
     if (!currentTerm || !isSearching) return;
@@ -406,6 +422,7 @@ export default function EventsPage() {
     await handleSearch(currentTerm, sortBy);
   };
 
+  // Update event like data and refresh search results
   const handleLikeRefresh = async (eventId, newLikes, newHasLiked) => {
     updateEventStateEverywhere(eventId, {
       likes: newLikes,
@@ -417,6 +434,7 @@ export default function EventsPage() {
     }
   };
 
+  // This handler function handles input changes and loads suggestions or recent searches
   const handleSearchInputChange = async (e) => {
     const value = e.target.value;
     setSearchTerm(value);
@@ -434,6 +452,7 @@ export default function EventsPage() {
     setShowSearchDropdown(true);
   };
 
+  // When user click the search box, show recent searches or suggestions
   const handleSearchFocus = async () => {
     const cleanValue = searchTerm.trim();
 
@@ -447,6 +466,7 @@ export default function EventsPage() {
     setShowSearchDropdown(true);
   };
 
+  // Handle the search submission
   const handleSearchSubmit = async (e) => {
     e.preventDefault();
 
@@ -481,6 +501,7 @@ export default function EventsPage() {
     setShowSearchDropdown(false);
   };
 
+  // This function switches between tabs and reloads events for the selected section.
   const handleTabChange = async (tab) => {
     setActiveTab(tab);
     setSearchTerm("");
@@ -532,7 +553,7 @@ export default function EventsPage() {
   const sortedSearchResults = useMemo(() => {
     return applySortToList(searchResults, sortBy);
   }, [searchResults, sortBy, applySortToList]);
-  
+
   const upcomingSearchResults = sortedSearchResults.filter(
     (e) => Number(e.is_past) === 0
   );

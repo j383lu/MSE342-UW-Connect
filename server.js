@@ -472,6 +472,7 @@ const getCurrentUserIdByEmail = (email, callback) => {
 };
 
 // Set up helper function to get the current like count
+// This function gets the total number of likes for a specific event from the database.
 const getCurrentLikeCount = (eventId, callback) => {
   const countSql = `
     SELECT COUNT(*) AS likes
@@ -489,8 +490,9 @@ const getCurrentLikeCount = (eventId, callback) => {
 };
 
 // GET /api/events
-// default: upcoming only
-// if includePast=true: return all events
+// This API is used to get a list of events from the database.
+// If includePast=true is passed in the query, it will return all events including past ones.
+// It also checks the current user to see if they have joined or liked each event.
 app.get("/api/events", checkAuth, (req, res) => {
   const includePast = String(req.query.includePast).toLowerCase() === "true";
   const whereClause = includePast
@@ -558,28 +560,12 @@ app.get("/api/events", checkAuth, (req, res) => {
 });
 
 // POST /api/events (create event)
+// This API creates a new event using the information provided by the user and saves it to the database.
 app.post("/api/events", checkAuth, (req, res) => {
-  const {
-    title,
-    description,
-    event_date,
-    event_time,
-    location,
-    capacity,
-    category,
-    tags,
-    event_type,
-    group_ids,
-  } = req.body;
+  const {title, description, event_date, event_time, location, capacity,
+    category, tags, event_type, group_ids,} = req.body;
 
-  if (
-    !title ||
-    !description ||
-    !event_date ||
-    !event_time ||
-    !location ||
-    capacity === undefined ||
-    !category
+  if (!title || !description || !event_date || !event_time || !location || capacity === undefined || !category
   ) {
     return res.status(400).json({ error: "Missing required fields." });
   }
@@ -762,6 +748,7 @@ app.post("/api/events", checkAuth, (req, res) => {
 });
 
 // POST /api/events/:id/join
+// This API lets a user join an event if it is not full, not ended, and they have not joined before.
 app.post("/api/events/:id/join", checkAuth, (req, res) => {
   const eventId = Number(req.params.id);
   const attendeeEmail = String(req.user.email || "").trim().toLowerCase();
@@ -875,6 +862,7 @@ app.post("/api/events/:id/join", checkAuth, (req, res) => {
 });
 
 // DELETE /api/events/:id/leave
+// This API allows a user to leave an event they joined and updates the attendee count.
 app.delete("/api/events/:id/leave", checkAuth, (req, res) => {
   const eventId = Number(req.params.id);
   const attendeeEmail = String(req.user.email || "").trim().toLowerCase();
@@ -946,6 +934,7 @@ app.delete("/api/events/:id/leave", checkAuth, (req, res) => {
 });
 
 // GET /api/events/:id/attendees
+// This API returns the list of users who joined a specific event with their basic information.
 app.get("/api/events/:id/attendees", checkAuth, (req, res) => {
   const eventId = Number(req.params.id);
 
@@ -2827,6 +2816,7 @@ app.get("/api/events/search", checkAuth, (req, res) => {
   });
 });
 
+// Delete API route to delete a search history for the logged-in user
 app.delete("/api/events/search-history", checkAuth, (req, res) => {
   const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
   const term = String(req.body.search_term || "").trim();
@@ -2861,6 +2851,7 @@ app.delete("/api/events/search-history", checkAuth, (req, res) => {
   });
 });
 
+// Get API route for search suggestions in the event page.
 app.get("/api/events/suggestions", checkAuth, (req, res) => {
   const keyword = String(req.query.keyword || "").trim();
   const tab = String(req.query.tab || "public").trim();
