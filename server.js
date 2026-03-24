@@ -29,9 +29,9 @@ const checkAuth = (req, res, next) => {
     return res.status(401).json({ message: 'No token provided' });
   }
 
-  const idToken = authHeader.startsWith('Bearer ') 
-      ? authHeader.split('Bearer ')[1] 
-      : authHeader;
+  const idToken = authHeader.startsWith('Bearer ')
+    ? authHeader.split('Bearer ')[1]
+    : authHeader;
 
   admin.auth().verifyIdToken(idToken)
     .then(decodedToken => {
@@ -39,7 +39,7 @@ const checkAuth = (req, res, next) => {
       next();
     })
     .catch((error) => {
-       res.status(403).json({ error: 'Unauthorized', message: 'Token invalid' });
+      res.status(403).json({ error: 'Unauthorized', message: 'Token invalid' });
     });
 };
 
@@ -83,14 +83,14 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ 
+const upload = multer({
   storage: storage,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|gif/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
     const mimetype = allowedTypes.test(file.mimetype);
-    
+
     if (mimetype && extname) {
       return cb(null, true);
     } else {
@@ -660,35 +660,35 @@ app.get("/api/tags", checkAuth, (req, res) => {
 // CREATE GROUP API (with optional image upload):
 app.post("/api/groups", checkAuth, upload.single('coverImage'), (req, res) => {
   const { name, description, category, isOpen, maxMembers } = req.body;
-  
+
   // Creator comes from the logged-in app user (sent by client)
   const creator_id = Number(req.body.user_id);
   if (!creator_id) {
     return res.status(400).json({ error: "Missing or invalid user_id for group creator" });
   }
-  
+
   // Convert isOpen (public = true, private = false) to is_private (1 for private, 0 for public)
   const is_private = isOpen === 'true' ? 0 : 1;
-  
+
   // Handle max_members (if empty/null, set to NULL for unlimited)
   const max_members = maxMembers ? parseInt(maxMembers) : null;
-  
+
   // Get the uploaded file path if exists
   const image_url = req.file ? req.file.filename : null;
-  
+
   const sql = `
     INSERT INTO Social_Group 
     (creator_id, name, description, category, is_private, max_members, image_url) 
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `;
-  
-  db.query(sql, [creator_id, name, description, category, is_private, max_members, image_url], 
+
+  db.query(sql, [creator_id, name, description, category, is_private, max_members, image_url],
     (err, result) => {
       if (err) {
         console.error("POST /api/groups error:", err);
-        return res.status(500).json({ 
-          error: "Failed to create group", 
-          details: err.message 
+        return res.status(500).json({
+          error: "Failed to create group",
+          details: err.message
         });
       }
 
@@ -722,7 +722,7 @@ app.post("/api/groups", checkAuth, upload.single('coverImage'), (req, res) => {
 // GET ALL GROUPS (for discovery page):
 app.get("/api/groups", checkAuth, (req, res) => {
   const { category, search } = req.query;
-  
+
   let sql = `
     SELECT sg.*, up.display_name as creator_name, 
     (SELECT COUNT(*) FROM Group_Members gm WHERE gm.group_id = sg.group_id) as member_count
@@ -730,21 +730,21 @@ app.get("/api/groups", checkAuth, (req, res) => {
     LEFT JOIN User_Profiles up ON sg.creator_id = up.user_id
     WHERE 1=1
   `;
-  
+
   const params = [];
-  
+
   if (category && category !== 'All') {
     sql += " AND sg.category = ?";
     params.push(category);
   }
-  
+
   if (search) {
     sql += " AND (sg.name LIKE ? OR sg.description LIKE ?)";
     params.push(`%${search}%`, `%${search}%`);
   }
-  
+
   sql += " ORDER BY sg.group_id DESC";
-  
+
   db.query(sql, params, (err, rows) => {
     if (err) {
       console.error("GET /api/groups error:", err);
@@ -757,7 +757,7 @@ app.get("/api/groups", checkAuth, (req, res) => {
 // GET SINGLE GROUP BY ID:
 app.get("/api/groups/:groupId", checkAuth, (req, res) => {
   const groupId = req.params.groupId;
-  
+
   const sql = `
     SELECT sg.*, up.display_name as creator_name,
     (SELECT COUNT(*) FROM Group_Members gm WHERE gm.group_id = sg.group_id) as member_count
@@ -765,17 +765,17 @@ app.get("/api/groups/:groupId", checkAuth, (req, res) => {
     LEFT JOIN User_Profiles up ON sg.creator_id = up.user_id
     WHERE sg.group_id = ?
   `;
-  
+
   db.query(sql, [groupId], (err, rows) => {
     if (err) {
       console.error("GET /api/groups/:groupId error:", err);
       return res.status(500).json({ error: "Failed to fetch group" });
     }
-    
+
     if (rows.length === 0) {
       return res.status(404).json({ error: "Group not found" });
     }
-    
+
     return res.json(rows[0]);
   });
 });
@@ -783,7 +783,7 @@ app.get("/api/groups/:groupId", checkAuth, (req, res) => {
 // GET GROUPS CREATED BY USER (Owned Groups):
 app.get("/api/users/:userId/groups/owned", checkAuth, (req, res) => {
   const userId = req.params.userId;
-  
+
   const sql = `
     SELECT sg.*, 
     (SELECT COUNT(*) FROM Group_Members gm WHERE gm.group_id = sg.group_id) as member_count
@@ -791,7 +791,7 @@ app.get("/api/users/:userId/groups/owned", checkAuth, (req, res) => {
     WHERE sg.creator_id = ?
     ORDER BY sg.group_id DESC
   `;
-  
+
   db.query(sql, [userId], (err, rows) => {
     if (err) {
       console.error("GET /api/users/:userId/groups/owned error:", err);
@@ -804,9 +804,9 @@ app.get("/api/users/:userId/groups/owned", checkAuth, (req, res) => {
 // GET GROUPS USER IS A MEMBER OF (My Groups):
 app.get("/api/users/:userId/groups/member", checkAuth, (req, res) => {
   const userId = req.params.userId;
-  
+
   console.log(`GET /api/users/${userId}/groups/member - Fetching user's groups`);
-  
+
   const sql = `
     SELECT sg.*, 
     (SELECT COUNT(*) FROM Group_Members gm2 WHERE gm2.group_id = sg.group_id) as member_count
@@ -815,7 +815,7 @@ app.get("/api/users/:userId/groups/member", checkAuth, (req, res) => {
     WHERE gm.user_id = ?
     ORDER BY sg.group_id DESC
   `;
-  
+
   db.query(sql, [userId], (err, rows) => {
     if (err) {
       console.error("GET /api/users/:userId/groups/member error:", err);
@@ -831,7 +831,7 @@ app.post("/api/groups/:groupId/join", checkAuth, (req, res) => {
   const groupId = req.params.groupId;
   // Prefer explicit userId from client, fallback to 1 for now
   const userId = Number(req.body.userId) || 1;
-  
+
   // First check if group exists and has space
   const checkSql = `
     SELECT sg.*, COUNT(gm.user_id) as current_members
@@ -840,24 +840,24 @@ app.post("/api/groups/:groupId/join", checkAuth, (req, res) => {
     WHERE sg.group_id = ?
     GROUP BY sg.group_id
   `;
-  
+
   db.query(checkSql, [groupId], (err, rows) => {
     if (err) {
       console.error("Error checking group:", err);
       return res.status(500).json({ error: "Failed to check group" });
     }
-    
+
     if (rows.length === 0) {
       return res.status(404).json({ error: "Group not found" });
     }
-    
+
     const group = rows[0];
-    
+
     // Check if group is full
     if (group.max_members && group.current_members >= group.max_members) {
       return res.status(400).json({ error: "Group is full" });
     }
-    
+
     // Check if user is already a member
     const memberCheckSql = "SELECT * FROM Group_Members WHERE group_id = ? AND user_id = ?";
     db.query(memberCheckSql, [groupId, userId], (err, memberRows) => {
@@ -865,11 +865,11 @@ app.post("/api/groups/:groupId/join", checkAuth, (req, res) => {
         console.error("Error checking membership:", err);
         return res.status(500).json({ error: "Failed to check membership" });
       }
-      
+
       if (memberRows.length > 0) {
         return res.status(400).json({ error: "Already a member of this group" });
       }
-      
+
       // Add user to group
       const joinSql = "INSERT INTO Group_Members (group_id, user_id) VALUES (?, ?)";
       db.query(joinSql, [groupId, userId], (err, result) => {
@@ -877,8 +877,8 @@ app.post("/api/groups/:groupId/join", checkAuth, (req, res) => {
           console.error("Error joining group:", err);
           return res.status(500).json({ error: "Failed to join group" });
         }
-        
-        return res.status(201).json({ 
+
+        return res.status(201).json({
           message: "Successfully joined group",
           groupId: groupId,
           userId: userId
@@ -893,19 +893,19 @@ app.delete("/api/groups/:groupId/leave", (req, res) => {
   const groupId = req.params.groupId;
   // Prefer explicit userId from client, fallback to 1 for now
   const userId = Number(req.body.userId) || 1;
-  
+
   const sql = "DELETE FROM Group_Members WHERE group_id = ? AND user_id = ?";
-  
+
   db.query(sql, [groupId, userId], (err, result) => {
     if (err) {
       console.error("Error leaving group:", err);
       return res.status(500).json({ error: "Failed to leave group" });
     }
-    
+
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: "Not a member of this group" });
     }
-    
+
     return res.json({ message: "Successfully left group" });
   });
 });
@@ -1138,46 +1138,46 @@ app.put("/api/groups/:groupId", upload.single('coverImage'), (req, res) => {
   const groupId = req.params.groupId;
   const { name, description, category, isOpen, maxMembers } = req.body;
   const userId = 1; // Hardcoded for now
-  
+
   // Check if user is the creator
   const checkSql = "SELECT * FROM Social_Group WHERE group_id = ? AND creator_id = ?";
-  
+
   db.query(checkSql, [groupId, userId], (err, rows) => {
     if (err) {
       console.error("Error checking group ownership:", err);
       return res.status(500).json({ error: "Failed to verify ownership" });
     }
-    
+
     if (rows.length === 0) {
       return res.status(403).json({ error: "You don't have permission to edit this group" });
     }
-    
+
     const is_private = isOpen === 'true' ? 0 : 1;
     const max_members = maxMembers ? parseInt(maxMembers) : null;
-    
+
     let sql = `
       UPDATE Social_Group 
       SET name = ?, description = ?, category = ?, is_private = ?, max_members = ?
     `;
-    
+
     const params = [name, description, category, is_private, max_members];
-    
+
     // Add image_url to update if new image uploaded
     if (req.file) {
       sql += ", image_url = ?";
       params.push(req.file.filename);
     }
-    
+
     sql += " WHERE group_id = ?";
     params.push(groupId);
-    
+
     db.query(sql, params, (err, result) => {
       if (err) {
         console.error("Error updating group:", err);
         return res.status(500).json({ error: "Failed to update group" });
       }
-      
-      return res.json({ 
+
+      return res.json({
         message: "Group updated successfully",
         groupId: groupId
       });
@@ -1189,20 +1189,20 @@ app.put("/api/groups/:groupId", upload.single('coverImage'), (req, res) => {
 app.delete("/api/groups/:groupId", (req, res) => {
   const groupId = req.params.groupId;
   const userId = 1; // Hardcoded for now
-  
+
   // Check if user is the creator
   const checkSql = "SELECT * FROM Social_Group WHERE group_id = ? AND creator_id = ?";
-  
+
   db.query(checkSql, [groupId, userId], (err, rows) => {
     if (err) {
       console.error("Error checking group ownership:", err);
       return res.status(500).json({ error: "Failed to verify ownership" });
     }
-    
+
     if (rows.length === 0) {
       return res.status(403).json({ error: "You don't have permission to delete this group" });
     }
-    
+
     // First delete all members
     const deleteMembersSql = "DELETE FROM Group_Members WHERE group_id = ?";
     db.query(deleteMembersSql, [groupId], (err) => {
@@ -1210,7 +1210,7 @@ app.delete("/api/groups/:groupId", (req, res) => {
         console.error("Error deleting group members:", err);
         return res.status(500).json({ error: "Failed to delete group members" });
       }
-      
+
       // Then delete the group
       const deleteGroupSql = "DELETE FROM Social_Group WHERE group_id = ?";
       db.query(deleteGroupSql, [groupId], (err, result) => {
@@ -1218,7 +1218,7 @@ app.delete("/api/groups/:groupId", (req, res) => {
           console.error("Error deleting group:", err);
           return res.status(500).json({ error: "Failed to delete group" });
         }
-        
+
         return res.json({ message: "Group deleted successfully" });
       });
     });
@@ -1228,9 +1228,9 @@ app.delete("/api/groups/:groupId", (req, res) => {
 // GET GROUP MEMBERS with user details
 app.get("/api/groups/:groupId/members", checkAuth, (req, res) => {
   const groupId = req.params.groupId;
-  
+
   console.log(`GET /api/groups/${groupId}/members - Fetching group members`);
-  
+
   const sql = `
     SELECT gm.user_id, gm.role, gm.joined_at, up.display_name, up.avatar_url
     FROM Group_Members gm
@@ -1240,36 +1240,36 @@ app.get("/api/groups/:groupId/members", checkAuth, (req, res) => {
       CASE WHEN gm.user_id = ? THEN 0 ELSE 1 END, -- Put owner first (you'll need to pass creator_id)
       gm.joined_at ASC
   `;
-  
+
   // We need the creator_id to identify the owner
   // First get the creator_id
   const creatorSql = "SELECT creator_id FROM Social_Group WHERE group_id = ?";
-  
+
   db.query(creatorSql, [groupId], (err, creatorResult) => {
     if (err) {
       console.error("Error fetching group creator:", err);
       return res.status(500).json({ error: "Failed to fetch group creator" });
     }
-    
+
     if (creatorResult.length === 0) {
       return res.status(404).json({ error: "Group not found" });
     }
-    
+
     const creatorId = creatorResult[0].creator_id;
-    
+
     // Now fetch members with the creator_id for ordering
     db.query(sql, [groupId, creatorId], (err, rows) => {
       if (err) {
         console.error("Error fetching group members:", err);
         return res.status(500).json({ error: "Failed to fetch members" });
       }
-      
+
       // Add role information (owner vs member)
       const membersWithRole = rows.map(member => ({
         ...member,
         role: member.user_id === creatorId ? 'owner' : 'member'
       }));
-      
+
       console.log(`Found ${membersWithRole.length} members for group ${groupId}`);
       return res.json(membersWithRole);
     });
@@ -1284,34 +1284,34 @@ app.use((err, req, res, next) => {
 
 // ------------------------------FEED PAGE APIs
 const getNumericUserId = (email) => {
-    return new Promise((resolve, reject) => {
-        db.query(
-            'SELECT user_id FROM User_Credentials WHERE email = ? LIMIT 1',
-            [email],
-            (err, rows) => {
-                if (err) return reject(err);
-                if (!rows || rows.length === 0) return reject(new Error('User not found'));
-                resolve(rows[0].user_id);
-            }
-        );
-    });
+  return new Promise((resolve, reject) => {
+    db.query(
+      'SELECT user_id FROM User_Credentials WHERE email = ? LIMIT 1',
+      [email],
+      (err, rows) => {
+        if (err) return reject(err);
+        if (!rows || rows.length === 0) return reject(new Error('User not found'));
+        resolve(rows[0].user_id);
+      }
+    );
+  });
 };
 
 // GET /api/groups/:groupId/posts - get posts for a specific group
 app.get('/api/groups/:groupId/posts', checkAuth, async (req, res) => {
-    const groupId = Number(req.params.groupId);
-    if (!groupId) {
-        return res.status(400).json({ error: 'Invalid group id' });
-    }
+  const groupId = Number(req.params.groupId);
+  if (!groupId) {
+    return res.status(400).json({ error: 'Invalid group id' });
+  }
 
-    let currentUserId;
-    try {
-        currentUserId = await getNumericUserId(req.user.email);
-    } catch (err) {
-        return res.status(404).json({ error: 'User not found' });
-    }
+  let currentUserId;
+  try {
+    currentUserId = await getNumericUserId(req.user.email);
+  } catch (err) {
+    return res.status(404).json({ error: 'User not found' });
+  }
 
-    const sql = `
+  const sql = `
         SELECT p.post_id, p.title, p.content, p.author_id, p.group_id, sg.name AS group_name,
                p.is_anonymous, p.image_url, p.created_at AS createdAt,
                up.display_name AS author_name,
@@ -1330,136 +1330,136 @@ app.get('/api/groups/:groupId/posts', checkAuth, async (req, res) => {
         ORDER BY p.post_id DESC
     `;
 
-    db.query(sql, [currentUserId, groupId], (err, results) => {
-        if (err) {
-            console.error(err);
-            return res.status(500).json({ error: 'Error retrieving group posts' });
-        }
+  db.query(sql, [currentUserId, groupId], (err, results) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Error retrieving group posts' });
+    }
 
-        const formattedPosts = results.map(post => ({
-            post_id: post.post_id,
-            author_id: post.author_id,
-            author_name: post.author_name ?? `User ${post.author_id}`,
-            title: post.title,
-            description: post.content,
-            tags: post.tags ? post.tags.split(',') : [],
-            createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
-            like_count: post.like_count,
-            liked_by_me: post.liked_by_me === 1,
-            comment_count: post.comment_count ?? 0,
-            group_id: post.group_id,
-            group_name: post.group_name
-        }));
+    const formattedPosts = results.map(post => ({
+      post_id: post.post_id,
+      author_id: post.author_id,
+      author_name: post.author_name ?? `User ${post.author_id}`,
+      title: post.title,
+      description: post.content,
+      tags: post.tags ? post.tags.split(',') : [],
+      createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
+      like_count: post.like_count,
+      liked_by_me: post.liked_by_me === 1,
+      comment_count: post.comment_count ?? 0,
+      group_id: post.group_id,
+      group_name: post.group_name
+    }));
 
-        return res.json(formattedPosts);
-    });
+    return res.json(formattedPosts);
+  });
 });
 
 // Post /api/posts - create a new post
 app.post('/api/posts', checkAuth, upload.single('image'), async (req, res) => {
-    //let connection = mysql.createConnection(config);
+  //let connection = mysql.createConnection(config);
 
-    let { title, content, group_id = null, is_anonymous = 0, tags = [] } = req.body;
-    const image_url = req.file ? req.file.filename : null;
-    if (typeof tags === 'string') {
-        try { tags = JSON.parse(tags); } catch { tags = []; }
+  let { title, content, group_id = null, is_anonymous = 0, tags = [] } = req.body;
+  const image_url = req.file ? req.file.filename : null;
+  if (typeof tags === 'string') {
+    try { tags = JSON.parse(tags); } catch { tags = []; }
+  }
+
+  let author_id; // Placeholder for now, should be replaced with actual user ID from authentication
+  try {
+    author_id = await getNumericUserId(req.user.email);
+  } catch (err) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  let postSql = 'INSERT INTO Posts (author_id, group_id, title, content, is_anonymous, image_url) VALUES (?, ?, ?, ?, ?, ?)';
+  let postData = [author_id, group_id, title, content, is_anonymous, image_url];
+
+  db.query(postSql, postData, (err, result) => {
+    if (err) {
+      console.error(err);
+      //db.end();
+      return res.status(500).send('Error creating post');
     }
 
-    let author_id; // Placeholder for now, should be replaced with actual user ID from authentication
-    try {
-        author_id = await getNumericUserId(req.user.email);
-    } catch (err) {
-        return res.status(404).json({ error: 'User not found' });
-    }
+    let postId = result.insertId;
 
-    let postSql = 'INSERT INTO Posts (author_id, group_id, title, content, is_anonymous, image_url) VALUES (?, ?, ?, ?, ?, ?)';
-    let postData = [author_id, group_id, title, content, is_anonymous, image_url];
-    
-    db.query(postSql, postData, (err, result) => {
+    // Insert tags into post_tags table
+    if (tags.length > 0) {
+      let placeholders = tags.map(() => '?').join(', ');
+      let tagSql = 'SELECT tag_id, tag_name FROM Tags WHERE tag_name IN (' + placeholders + ')';
+
+
+      //let tagData = tags.map(tag => [postId, tag]);
+      db.query(tagSql, tags, (err, tagResult) => {
         if (err) {
-            console.error(err);
-            //db.end();
-            return res.status(500).send('Error creating post');
-        } 
-
-        let postId = result.insertId;
-
-        // Insert tags into post_tags table
-        if (tags.length > 0) {
-            let placeholders = tags.map(() => '?').join(', ');
-            let tagSql = 'SELECT tag_id, tag_name FROM Tags WHERE tag_name IN (' + placeholders + ')';
-
-
-            //let tagData = tags.map(tag => [postId, tag]);
-            db.query(tagSql, tags, (err, tagResult) => {
-                if (err) {
-                    console.error(err);
-                    //db.end();
-                    return res.status(500).send('Error creating post tags');
-                }
-
-                let postTagData = tagResult.map(tag => [postId, tag.tag_id]);
-                if (postTagData.length > 0) {
-                    let postTagSql = 'INSERT INTO post_tags (post_id, tag_id) VALUES ?';
-                    db.query(postTagSql, [postTagData], (err) => {
-                        //db.end();
-                        if (err) {
-                            console.error(err);
-                            return res.status(500).json({ 
-                                posts: [], 
-                                error: 'Error creating post tags' 
-                            });
-                        } 
-                        res.json({
-                            post: {
-                                post_id: postId,
-                                author_id: author_id,
-                                title,
-                                description: content,
-                                tags: tagResult.map(t => t.tag_name),
-                                createdAt: new Date().toISOString(),
-                                like_count: 0,
-                                liked_by_me: false
-                            },
-                            message: 'Post created successfully with tags'  
-                        });                  
-                    });
-                } else {
-                    //db.end();
-                    res.json({
-                        post: { post_id: postId, author_id: author_id, title, description: content, tags: [], createdAt: new Date().toISOString(), like_count: 0, liked_by_me: false },
-                        message: 'Post created successfully but no valid tags found'
-                    });                
-                }
-            });
-        } else {
-            //db.end();
-            res.json({
-                post: { post_id: postId, author_id: author_id, title, description: content, tags: [], createdAt: new Date().toISOString(), like_count: 0, liked_by_me: false },
-                message: 'Post created successfully without tags'
-            });
+          console.error(err);
+          //db.end();
+          return res.status(500).send('Error creating post tags');
         }
 
-    });
+        let postTagData = tagResult.map(tag => [postId, tag.tag_id]);
+        if (postTagData.length > 0) {
+          let postTagSql = 'INSERT INTO post_tags (post_id, tag_id) VALUES ?';
+          db.query(postTagSql, [postTagData], (err) => {
+            //db.end();
+            if (err) {
+              console.error(err);
+              return res.status(500).json({
+                posts: [],
+                error: 'Error creating post tags'
+              });
+            }
+            res.json({
+              post: {
+                post_id: postId,
+                author_id: author_id,
+                title,
+                description: content,
+                tags: tagResult.map(t => t.tag_name),
+                createdAt: new Date().toISOString(),
+                like_count: 0,
+                liked_by_me: false
+              },
+              message: 'Post created successfully with tags'
+            });
+          });
+        } else {
+          //db.end();
+          res.json({
+            post: { post_id: postId, author_id: author_id, title, description: content, tags: [], createdAt: new Date().toISOString(), like_count: 0, liked_by_me: false },
+            message: 'Post created successfully but no valid tags found'
+          });
+        }
+      });
+    } else {
+      //db.end();
+      res.json({
+        post: { post_id: postId, author_id: author_id, title, description: content, tags: [], createdAt: new Date().toISOString(), like_count: 0, liked_by_me: false },
+        message: 'Post created successfully without tags'
+      });
+    }
+
+  });
 });
 
 
 // GET API for seraching posts
 app.get('/api/posts/search', checkAuth, async (req, res) => {
-    const { keyword } = req.query;
-    if (!keyword || keyword.trim() === "") {
-        return res.status(400).json({ error: "Please enter a keyword to search" });
-    }
+  const { keyword } = req.query;
+  if (!keyword || keyword.trim() === "") {
+    return res.status(400).json({ error: "Please enter a keyword to search" });
+  }
 
-    //const connection = mysql.createConnection(config);
-    let currentUserId; // placeholder
-    try {
-        currentUserId = await getNumericUserId(req.user.email);
-    } catch (err) {
-        return res.status(404).json({ error: 'User not found' });
-    }
+  //const connection = mysql.createConnection(config);
+  let currentUserId; // placeholder
+  try {
+    currentUserId = await getNumericUserId(req.user.email);
+  } catch (err) {
+    return res.status(404).json({ error: 'User not found' });
+  }
 
-    const searchSql = `
+  const searchSql = `
         SELECT p.post_id, p.title, p.content AS description, p.author_id, 
           p.group_id, sg.name AS group_name, p.created_at AS createdAt,
           up.display_name AS author_name,
@@ -1479,50 +1479,50 @@ app.get('/api/posts/search', checkAuth, async (req, res) => {
         LIMIT 50
     `;
 
-    const keywordParam = `%${keyword.toLowerCase()}%`;
+  const keywordParam = `%${keyword.toLowerCase()}%`;
 
-    db.query(searchSql, [currentUserId, keywordParam, keywordParam], (err, results) => {
-        //db.end();
-        if (err) {
-            console.error(err);
-            return res.status(500).json({ error: "Database error while searching posts" });
-        }
+  db.query(searchSql, [currentUserId, keywordParam, keywordParam], (err, results) => {
+    //db.end();
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: "Database error while searching posts" });
+    }
 
-        const formattedPosts = results.map(post => ({
-            post_id: post.post_id,
-            author_id: post.author_id,
-            author_name: post.author_name ?? `User ${post.author_id}`,
-            title: post.title,
-            description: post.description,
-            tags: post.tags ? post.tags.split(',') : [],
-            createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
-            like_count: post.like_count ?? 0,
-            liked_by_me: post.liked_by_me === 1,
-            comment_count: post.comment_count ?? 0,
-            group_id: post.group_id,        // new
-            group_name: post.group_name     // new
-        }));
+    const formattedPosts = results.map(post => ({
+      post_id: post.post_id,
+      author_id: post.author_id,
+      author_name: post.author_name ?? `User ${post.author_id}`,
+      title: post.title,
+      description: post.description,
+      tags: post.tags ? post.tags.split(',') : [],
+      createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
+      like_count: post.like_count ?? 0,
+      liked_by_me: post.liked_by_me === 1,
+      comment_count: post.comment_count ?? 0,
+      group_id: post.group_id,        // new
+      group_name: post.group_name     // new
+    }));
 
-        if (formattedPosts.length === 0) {
-            return res.json({ message: "No results found.", posts: [] });
-        }
+    if (formattedPosts.length === 0) {
+      return res.json({ message: "No results found.", posts: [] });
+    }
 
-        res.json({ posts: formattedPosts });
-    });
+    res.json({ posts: formattedPosts });
+  });
 });
 
 // GET /api/posts/tag/:tagName - filter posts by tag
 app.get('/api/posts/tag/:tagName', checkAuth, async (req, res) => {
-    //const connection = mysql.createConnection(config);
-    const tagName = req.params.tagName;
-    let currentUserId; // placeholder
-    try {
-        currentUserId = await getNumericUserId(req.user.email);
-    } catch (err) {
-        return res.status(404).json({ error: 'User not found' });
-    }
+  //const connection = mysql.createConnection(config);
+  const tagName = req.params.tagName;
+  let currentUserId; // placeholder
+  try {
+    currentUserId = await getNumericUserId(req.user.email);
+  } catch (err) {
+    return res.status(404).json({ error: 'User not found' });
+  }
 
-    const sql = `
+  const sql = `
         SELECT p.post_id, p.title, p.content, p.author_id, p.group_id, sg.name AS group_name, 
                 p.created_at AS createdAt, up.display_name AS author_name,
                GROUP_CONCAT(DISTINCT t.tag_name) AS tags,
@@ -1544,47 +1544,62 @@ app.get('/api/posts/tag/:tagName', checkAuth, async (req, res) => {
         ORDER BY p.created_at DESC
     `;
 
-    db.query(sql, [currentUserId, tagName], (err, results) => {
-        //db.end();
-        if (err) {
-            console.error(err);
-            return res.status(500).json({ error: 'Error filtering posts by tag' });
-        }
+  db.query(sql, [currentUserId, tagName], (err, results) => {
+    //db.end();
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Error filtering posts by tag' });
+    }
 
-        const formattedPosts = (Array.isArray(results) ? results : []).map(post => ({
-            post_id: post.post_id,
-            author_id: post.author_id,
-            author_name: post.author_name ?? `User ${post.author_id}`,
-            title: post.title,
-            description: post.content,
-            tags: post.tags ? post.tags.split(',') : [],
-            createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
-            like_count: post.like_count ?? 0,
-            liked_by_me: post.liked_by_me === 1,
-            comment_count: post.comment_count ?? 0,
-            group_id: post.group_id,        // new
-            group_name: post.group_name     // new
-        }));
+    const formattedPosts = (Array.isArray(results) ? results : []).map(post => ({
+      post_id: post.post_id,
+      author_id: post.author_id,
+      author_name: post.author_name ?? `User ${post.author_id}`,
+      title: post.title,
+      description: post.content,
+      tags: post.tags ? post.tags.split(',') : [],
+      createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
+      like_count: post.like_count ?? 0,
+      liked_by_me: post.liked_by_me === 1,
+      comment_count: post.comment_count ?? 0,
+      group_id: post.group_id,        // new
+      group_name: post.group_name     // new
+    }));
 
-        if (formattedPosts.length === 0) {
-            return res.json({ message: "No posts found for this tag.", posts: [] });
-        }
+    if (formattedPosts.length === 0) {
+      return res.json({ message: "No posts found for this tag.", posts: [] });
+    }
 
-        res.json({ posts: formattedPosts });
-    });
+    res.json({ posts: formattedPosts });
+  });
 });
 
 // GET API for posts
 app.get('/api/posts', checkAuth, async (req, res) => {
-    //let connection = mysql.createConnection(config);
-    let currentUserId; //Placeholde, need to replace with actually user id later
-    try {
-        currentUserId = await getNumericUserId(req.user.email);
-    } catch (err) {
-        return res.status(404).json({ error: 'User not found' });
-    }
+  const { filter } = req.query
+  let currentUserId; //Placeholde, need to replace with actually user id later
+  try {
+    currentUserId = await getNumericUserId(req.user.email);
+  } catch (err) {
+    return res.status(404).json({ error: 'User not found' });
+  }
 
-    let sql = `
+  // Base where clause depending on filter
+  const whereClause = filter === 'mygroups'
+    ? `WHERE (
+            p.group_id IS NOT NULL AND
+            EXISTS (
+                SELECT 1 FROM Group_Members gm
+                WHERE gm.group_id = p.group_id
+                AND gm.user_id = ?
+            )
+          )`
+    : `WHERE (
+            p.group_id IS NULL
+            OR sg.is_private = 0
+          )`;
+
+  let sql = `
          SELECT p.post_id, p.title, p.content, p.author_id, p.group_id, sg.name AS group_name,
                p.is_anonymous, p.image_url, p.created_at AS createdAt,
                up.display_name AS author_name,
@@ -1598,51 +1613,50 @@ app.get('/api/posts', checkAuth, async (req, res) => {
         LEFT JOIN post_tags pt ON p.post_id = pt.post_id
         LEFT JOIN Tags t ON pt.tag_id = t.tag_id
         LEFT JOIN Likes l ON p.post_id = l.post_id
+        ${whereClause}
         GROUP BY p.post_id
         ORDER BY p.post_id DESC
     `;
 
-    db.query(sql, [currentUserId], (err, results) => {
-        //db.end();
+  db.query(sql, filter === 'mygroups' ? [currentUserId, currentUserId] : [currentUserId], (err, results) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).send('Error retrieving posts');
+    }
 
-        if (err) {
-            console.error(err);
-            return res.status(500).send('Error retrieving posts');
-        }
+    const formattedPosts = results.map(post => ({
+      post_id: post.post_id,
+      author_id: post.author_id,
+      author_name: post.author_name ?? `User ${post.author_id}`,
+      title: post.title,
+      description: post.content,
+      image_url: post.image_url,
+      tags: post.tags ? post.tags.split(',') : [],
+      createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
+      like_count: post.like_count,
+      liked_by_me: post.liked_by_me === 1,
+      comment_count: post.comment_count ?? 0,
+      group_id: post.group_id,
+      group_name: post.group_name,
+      is_anonymous: post.is_anonymous === 1
+    }));
 
-        const formattedPosts = results.map(post => ({
-            post_id: post.post_id,
-            author_id: post.author_id,
-            author_name: post.author_name ?? `User ${post.author_id}`,
-            title: post.title,
-            description: post.content, // map content to description
-            image_url: post.image_url,
-            tags: post.tags ? post.tags.split(',') : [],
-            createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
-            like_count: post.like_count,
-            liked_by_me: post.liked_by_me === 1, 
-            comment_count: post.comment_count ?? 0,
-            group_id: post.group_id,        
-            group_name: post.group_name,
-            is_anonymous: post.is_anonymous === 1     
-        }));
-
-        res.json(formattedPosts);
-    });
+    res.json(formattedPosts);
+  });
 });
 
 // GET /api/posts/:id - get a single post
 app.get('/api/posts/:id', checkAuth, async (req, res) => {
-    //const connection = mysql.createConnection(config);
-    const postId = req.params.id;
-    let currentUserId; // placeholder
-    try {
-        currentUserId = await getNumericUserId(req.user.email);
-    } catch (err) {
-        return res.status(404).json({ error: 'User not found' });
-    }
+  //const connection = mysql.createConnection(config);
+  const postId = req.params.id;
+  let currentUserId; // placeholder
+  try {
+    currentUserId = await getNumericUserId(req.user.email);
+  } catch (err) {
+    return res.status(404).json({ error: 'User not found' });
+  }
 
-    const sql = `
+  const sql = `
         SELECT p.post_id, p.title, p.content, p.author_id, p.created_at AS createdAt,
               up.display_name AS author_name, sg.name AS group_name, p.group_id, p.is_anonymous,
                GROUP_CONCAT(DISTINCT t.tag_name) AS tags,
@@ -1658,41 +1672,41 @@ app.get('/api/posts/:id', checkAuth, async (req, res) => {
         GROUP BY p.post_id
     `;
 
-    db.query(sql, [currentUserId, postId], (err, results) => {
-        //db.end();
-        if (err) {
-            console.error(err);
-            return res.status(500).json({ error: 'Error retrieving post' });
-        }
-        if (results.length === 0) {
-            return res.status(404).json({ error: 'Post not found' });
-        }
+  db.query(sql, [currentUserId, postId], (err, results) => {
+    //db.end();
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Error retrieving post' });
+    }
+    if (results.length === 0) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
 
-        const post = results[0];
-        res.json({
-            post_id: post.post_id,
-            author_id: post.author_id,
-            author_name: post.is_anonymous ? 'Anonymous' : (post.author_name ?? 'Unknown'),
-            title: post.title,
-            description: post.content,
-            group_id: post.group_name,
-            tags: post.tags ? post.tags.split(',') : [],
-            createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
-            like_count: post.like_count ?? 0,
-            liked_by_me: post.liked_by_me === 1,
-            group_name: post.group_name,  
-            is_anonymous: post.is_anonymous === 1
+    const post = results[0];
+    res.json({
+      post_id: post.post_id,
+      author_id: post.author_id,
+      author_name: post.is_anonymous ? 'Anonymous' : (post.author_name ?? 'Unknown'),
+      title: post.title,
+      description: post.content,
+      group_id: post.group_name,
+      tags: post.tags ? post.tags.split(',') : [],
+      createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
+      like_count: post.like_count ?? 0,
+      liked_by_me: post.liked_by_me === 1,
+      group_name: post.group_name,
+      is_anonymous: post.is_anonymous === 1
 
-        });
     });
+  });
 });
 
 // GET /api/posts/:id/comments - get all comments for a post
 app.get('/api/posts/:id/comments', checkAuth, async (req, res) => {
-    //const connection = mysql.createConnection(config);
-    const postId = req.params.id
+  //const connection = mysql.createConnection(config);
+  const postId = req.params.id
 
-    const sql = `
+  const sql = `
         SELECT c.comment_id, c.post_id, c.user_id, c.parent_comment_id,
                c.content, c.created_at AS createdAt, up.display_name as author_name
         FROM Comments c
@@ -1701,251 +1715,249 @@ app.get('/api/posts/:id/comments', checkAuth, async (req, res) => {
         ORDER BY c.created_at ASC
     `;
 
-    db.query(sql, [postId], (err, results) => {
-        //db.end();
-        if (err) {
-            console.error(err);
-            return res.status(500).json({ error: 'Error retrieving comments' });
-        }
-        res.json(results);
-    });
+  db.query(sql, [postId], (err, results) => {
+    //db.end();
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Error retrieving comments' });
+    }
+    res.json(results);
+  });
 });
 
 // POST /api/posts/:id/comments - add a comment or reply
 app.post('/api/posts/:id/comments', checkAuth, async (req, res) => {
-    //const connection = mysql.createConnection(config);
-    const postId = req.params.id;
-    const { content, parent_comment_id = null } = req.body;
-    let currentUserId; // placeholder
-    try {
-        currentUserId = await getNumericUserId(req.user.email);
-    } catch (err) {
-        return res.status(404).json({ error: 'User not found' });
-    }
+  //const connection = mysql.createConnection(config);
+  const postId = req.params.id;
+  const { content, parent_comment_id = null } = req.body;
+  let currentUserId; // placeholder
+  try {
+    currentUserId = await getNumericUserId(req.user.email);
+  } catch (err) {
+    return res.status(404).json({ error: 'User not found' });
+  }
 
-    if (!content || !content.trim()) {
-        //db.end();
-        return res.status(400).json({ error: 'Comment content is required' });
-    }
+  if (!content || !content.trim()) {
+    //db.end();
+    return res.status(400).json({ error: 'Comment content is required' });
+  }
 
-    const sql = 'INSERT INTO Comments (post_id, user_id, parent_comment_id, content) VALUES (?, ?, ?, ?)';
-    db.query(sql, [postId, currentUserId, parent_comment_id, content], (err, result) => {
-        //db.end();
-        if (err) {
-            console.error(err);
-            return res.status(500).json({ error: 'Error creating comment' });
-        }
-       db.query(
-        'SELECT display_name FROM User_Profiles WHERE user_id = ?',
-        [currentUserId],
-        (err2, profileRows) => {
-            const author_name = profileRows?.[0]?.display_name ?? `User ${currentUserId}`;
-            res.json({
-                comment_id: result.insertId,
-                post_id: parseInt(postId),
-                user_id: currentUserId,
-                author_name,
-                parent_comment_id,
-                content,
-                createdAt: new Date().toISOString()
-            });
-        }
+  const sql = 'INSERT INTO Comments (post_id, user_id, parent_comment_id, content) VALUES (?, ?, ?, ?)';
+  db.query(sql, [postId, currentUserId, parent_comment_id, content], (err, result) => {
+    //db.end();
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Error creating comment' });
+    }
+    db.query(
+      'SELECT display_name FROM User_Profiles WHERE user_id = ?',
+      [currentUserId],
+      (err2, profileRows) => {
+        const author_name = profileRows?.[0]?.display_name ?? `User ${currentUserId}`;
+        res.json({
+          comment_id: result.insertId,
+          post_id: parseInt(postId),
+          user_id: currentUserId,
+          author_name,
+          parent_comment_id,
+          content,
+          createdAt: new Date().toISOString()
+        });
+      }
     );
-    });
+  });
 });
 
 // DELETE /api/posts/:id - delete a post (only by author)
-app.delete('/api/posts/:id', checkAuth, async(req, res) => {
-    //let connection = mysql.createConnection(config);
-    const postId = req.params.id;
-    let requestingUserId; // Placeholder need to replace with real auth user ID later
-    try {
-        requestingUserId = await getNumericUserId(req.user.email);
-    } catch (err) {
-        return res.status(404).json({ error: 'User not found' });
+app.delete('/api/posts/:id', checkAuth, async (req, res) => {
+  //let connection = mysql.createConnection(config);
+  const postId = req.params.id;
+  let requestingUserId; // Placeholder need to replace with real auth user ID later
+  try {
+    requestingUserId = await getNumericUserId(req.user.email);
+  } catch (err) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  const checkSql = 'SELECT author_id FROM Posts WHERE post_id = ?';
+  db.query(checkSql, [postId], (err, results) => {
+    if (err) {
+      console.error(err);
+      //db.end();
+      return res.status(500).json({ error: 'Error finding post' });
     }
 
-    const checkSql = 'SELECT author_id FROM Posts WHERE post_id = ?';
-    db.query(checkSql, [postId], (err, results) => {
+    if (results.length === 0) {
+      //db.end();
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    if (results[0].author_id !== requestingUserId) {
+      //db.end();
+      return res.status(403).json({ error: 'Not authorized to delete this post' });
+    }
+
+    const deleteTagsSql = 'DELETE FROM post_tags WHERE post_id = ?';
+    db.query(deleteTagsSql, [postId], (err) => {
+      if (err) {
+        console.error(err);
+        //db.end();
+        return res.status(500).json({ error: 'Error deleting post tags' });
+      }
+
+      const deletePostSql = 'DELETE FROM Posts WHERE post_id = ?';
+      db.query(deletePostSql, [postId], (err) => {
+        //db.end();
         if (err) {
-            console.error(err);
-            //db.end();
-            return res.status(500).json({ error: 'Error finding post' });
+          console.error(err);
+          return res.status(500).json({ error: 'Error deleting post' });
         }
-
-        if (results.length === 0) {
-            //db.end();
-            return res.status(404).json({ error: 'Post not found' });
-        }
-
-        if (results[0].author_id !== requestingUserId) {
-            //db.end();
-            return res.status(403).json({ error: 'Not authorized to delete this post' });
-        }
-
-        const deleteTagsSql = 'DELETE FROM post_tags WHERE post_id = ?';
-        db.query(deleteTagsSql, [postId], (err) => {
-            if (err) {
-                console.error(err);
-                //db.end();
-                return res.status(500).json({ error: 'Error deleting post tags' });
-            }
-
-            const deletePostSql = 'DELETE FROM Posts WHERE post_id = ?';
-            db.query(deletePostSql, [postId], (err) => {
-                //db.end();
-                if (err) {
-                    console.error(err);
-                    return res.status(500).json({ error: 'Error deleting post' });
-                }
-                res.json({ message: 'Post deleted successfully', post_id: postId });
-            });
-        });
+        res.json({ message: 'Post deleted successfully', post_id: postId });
+      });
     });
+  });
 });
 
 // PUT /api/posts/:id - edit a post (only by author)
-app.put('/api/posts/:id', checkAuth, async (req, res) => {
-    //let connection = mysql.createConnection(config);
-    const postId = req.params.id;
-    const { title, content, tags = [], group_id = null, is_anonymous = 0 } = req.body;
+app.put('/api/posts/:id', checkAuth, upload.single('image'), async (req, res) => {
+  const postId = req.params.id;
+  let { title, content, tags = [], group_id = null, is_anonymous = 0, remove_image = '0' } = req.body;
 
-    let requestingUserId; // Placeholder - replace with real auth user ID later
-    try {
-        requestingUserId = await getNumericUserId(req.user.email);
-    } catch (err) {
-        return res.status(404).json({ error: 'User not found' });
-    }
+  // parse tags since they come as JSON string via FormData
+  if (typeof tags === 'string') {
+    try { tags = JSON.parse(tags); } catch { tags = []; }
+  }
 
-    const checkSql = 'SELECT author_id FROM Posts WHERE post_id = ?';
-    db.query(checkSql, [postId], (err, results) => {
-        if (err) {
-            //db.end();
-            return res.status(500).json({ error: 'Error finding post' });
+  //const image_url = req.file ? req.file.filename : null;
+  let imageUpdateSql = '';
+  let imageValue = undefined;
+
+  if (req.file) {
+    imageUpdateSql = ', image_url = ?';
+    imageValue = req.file.filename;
+  } else if (remove_image === '1') {
+    imageUpdateSql = ', image_url = NULL';
+  }
+
+  let requestingUserId;
+  try {
+    requestingUserId = await getNumericUserId(req.user.email);
+  } catch (err) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  const checkSql = 'SELECT author_id FROM Posts WHERE post_id = ?';
+  db.query(checkSql, [postId], (err, results) => {
+    if (err) return res.status(500).json({ error: 'Error finding post' });
+    if (results.length === 0) return res.status(404).json({ error: 'Post not found' });
+    if (results[0].author_id !== requestingUserId) return res.status(403).json({ error: 'Not authorized' });
+
+    // Only update image_url if a new image was uploaded
+    const updateSql = `UPDATE Posts SET title = ?, content = ?, group_id = ?, is_anonymous = ?${imageUpdateSql} WHERE post_id = ?`;
+
+    const updateParams = imageValue !== undefined
+      ? [title, content, group_id || null, is_anonymous, imageValue, postId]
+      : [title, content, group_id || null, is_anonymous, postId]
+
+    db.query(updateSql, updateParams, (err) => {
+      if (err) return res.status(500).json({ error: 'Error updating post' });
+
+      const deleteTagsSql = 'DELETE FROM post_tags WHERE post_id = ?';
+      db.query(deleteTagsSql, [postId], (err) => {
+        if (err) return res.status(500).json({ error: 'Error updating tags' });
+
+        if (tags.length === 0) {
+          return res.json({
+            post: { post_id: parseInt(postId), title, description: content, tags: [] },
+            message: 'Post updated successfully'
+          });
         }
-        if (results.length === 0) {
-            //db.end();
-            return res.status(404).json({ error: 'Post not found' });
-        }
-        if (results[0].author_id !== requestingUserId) {
-            //db.end();
-            return res.status(403).json({ error: 'Not authorized to edit this post' });
-        }
 
-        const updateSql = 'UPDATE Posts SET title = ?, content = ?, group_id = ?, is_anonymous = ? WHERE post_id = ?';
-        db.query(updateSql, [title, content, group_id, is_anonymous, postId], (err) => {
-            if (err) {
-                //db.end();
-                return res.status(500).json({ error: 'Error updating post' });
-            }
+        const tagSql = 'SELECT tag_id, tag_name FROM Tags WHERE tag_name IN (' + tags.map(() => '?').join(', ') + ')';
+        db.query(tagSql, tags, (err, tagResults) => {
+          if (err) return res.status(500).json({ error: 'Error finding tags' });
 
-            const deleteTagsSql = 'DELETE FROM post_tags WHERE post_id = ?';
-            db.query(deleteTagsSql, [postId], (err) => {
-                if (err) {
-                    //db.end();
-                    return res.status(500).json({ error: 'Error updating tags' });
-                }
-
-                if (tags.length === 0) {
-                    //db.end();
-                    return res.json({
-                        post: { post_id: parseInt(postId), title, description: content, tags: [] },
-                        message: 'Post updated successfully'
-                    });
-                }
-
-                const tagSql = 'SELECT tag_id, tag_name FROM Tags WHERE tag_name IN (' + tags.map(() => '?').join(', ') + ')';
-                db.query(tagSql, tags, (err, tagResults) => {
-                    if (err) {
-                        //db.end();
-                        return res.status(500).json({ error: 'Error finding tags' });
-                    }
-
-                    const postTagData = tagResults.map(tag => [postId, tag.tag_id]);
-                    if (postTagData.length === 0) {
-                        //db.end();
-                        return res.json({
-                            post: { post_id: parseInt(postId), title, description: content, tags: [] },
-                            message: 'Post updated successfully but no valid tags found'
-                        });
-                    }
-
-                    const postTagSql = 'INSERT INTO post_tags (post_id, tag_id) VALUES ?';
-                    db.query(postTagSql, [postTagData], (err) => {
-                        //db.end();
-                        if (err) {
-                            return res.status(500).json({ error: 'Error inserting tags' });
-                        }
-                        res.json({
-                            post: {
-                                post_id: parseInt(postId),
-                                title,
-                                description: content,
-                                tags: tagResults.map(t => t.tag_name)
-                            },
-                            message: 'Post updated successfully'
-                        });
-                    });
-                });
+          const postTagData = tagResults.map(tag => [postId, tag.tag_id]);
+          if (postTagData.length === 0) {
+            return res.json({
+              post: { post_id: parseInt(postId), title, description: content, tags: [] },
+              message: 'Post updated successfully but no valid tags found'
             });
+          }
+
+          const postTagSql = 'INSERT INTO post_tags (post_id, tag_id) VALUES ?';
+          db.query(postTagSql, [postTagData], (err) => {
+            if (err) return res.status(500).json({ error: 'Error inserting tags' });
+            res.json({
+              post: {
+                post_id: parseInt(postId),
+                title,
+                description: content,
+                tags: tagResults.map(t => t.tag_name)
+              },
+              message: 'Post updated successfully'
+            });
+          });
         });
+      });
     });
+  });
 });
 
 // POST /api/posts/:id/like - toggle like/unlike
 app.post('/api/posts/:id/like', checkAuth, async (req, res) => {
-    //let connection = mysql.createConnection(config);
-    const postId = req.params.id;
-    let currentUserId; // Placeholder - replace with real auth user ID later
-    try {
-        currentUserId = await getNumericUserId(req.user.email);
-    } catch (err) {
-        return res.status(404).json({ error: 'User not found' });
+  //let connection = mysql.createConnection(config);
+  const postId = req.params.id;
+  let currentUserId; // Placeholder - replace with real auth user ID later
+  try {
+    currentUserId = await getNumericUserId(req.user.email);
+  } catch (err) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  const checkSql = 'SELECT like_id FROM Likes WHERE post_id = ? AND user_id = ?';
+  db.query(checkSql, [postId, currentUserId], (err, results) => {
+    if (err) {
+      //db.end();
+      return res.status(500).json({ error: 'Error checking like status' });
     }
 
-    const checkSql = 'SELECT like_id FROM Likes WHERE post_id = ? AND user_id = ?';
-    db.query(checkSql, [postId, currentUserId], (err, results) => {
+    if (results.length > 0) {
+      const deleteSql = 'DELETE FROM Likes WHERE post_id = ? AND user_id = ?';
+      db.query(deleteSql, [postId, currentUserId], (err) => {
         if (err) {
-            //db.end();
-            return res.status(500).json({ error: 'Error checking like status' });
+          //db.end();
+          return res.status(500).json({ error: 'Error unliking post' });
         }
-
-        if (results.length > 0) {
-            const deleteSql = 'DELETE FROM Likes WHERE post_id = ? AND user_id = ?';
-            db.query(deleteSql, [postId, currentUserId], (err) => {
-                if (err) {
-                    //db.end();
-                    return res.status(500).json({ error: 'Error unliking post' });
-                }
-                const countSql = 'SELECT COUNT(*) AS like_count FROM Likes WHERE post_id = ?';
-                db.query(countSql, [postId], (err, countResult) => {
-                    //db.end();
-                    if (err) return res.status(500).json({ error: 'Error getting like count' });
-                    res.json({ liked_by_me: false, like_count: countResult[0].like_count });
-                });
-            });
-        } else {
-            const insertSql = 'INSERT INTO Likes (post_id, user_id) VALUES (?, ?)';
-            db.query(insertSql, [postId, currentUserId], (err) => {
-                if (err) {
-                    return res.status(500).json({ error: 'Error liking post' });
-                }
-                const countSql = 'SELECT COUNT(*) AS like_count FROM Likes WHERE post_id = ?';
-                db.query(countSql, [postId], (err, countResult) => {
-                    //db.end();
-                    if (err) return res.status(500).json({ error: 'Error getting like count' });
-                    res.json({ liked_by_me: true, like_count: countResult[0].like_count });
-                });
-            });
+        const countSql = 'SELECT COUNT(*) AS like_count FROM Likes WHERE post_id = ?';
+        db.query(countSql, [postId], (err, countResult) => {
+          //db.end();
+          if (err) return res.status(500).json({ error: 'Error getting like count' });
+          res.json({ liked_by_me: false, like_count: countResult[0].like_count });
+        });
+      });
+    } else {
+      const insertSql = 'INSERT INTO Likes (post_id, user_id) VALUES (?, ?)';
+      db.query(insertSql, [postId, currentUserId], (err) => {
+        if (err) {
+          return res.status(500).json({ error: 'Error liking post' });
         }
-    });
+        const countSql = 'SELECT COUNT(*) AS like_count FROM Likes WHERE post_id = ?';
+        db.query(countSql, [postId], (err, countResult) => {
+          //db.end();
+          if (err) return res.status(500).json({ error: 'Error getting like count' });
+          res.json({ liked_by_me: true, like_count: countResult[0].like_count });
+        });
+      });
+    }
+  });
 });
 
 // GET /api/posts/:id/likes - get list of users who liked a post
 app.get('/api/posts/:id/likes', checkAuth, async (req, res) => {
-    const postId = req.params.id;
+  const postId = req.params.id;
 
-    const sql = `
+  const sql = `
         SELECT l.user_id, up.display_name
         FROM Likes l
         LEFT JOIN User_Profiles up ON l.user_id = up.user_id
@@ -1953,13 +1965,13 @@ app.get('/api/posts/:id/likes', checkAuth, async (req, res) => {
         ORDER BY up.display_name ASC
     `;
 
-    db.query(sql, [postId], (err, results) => {
-        if (err) {
-            console.error(err);
-            return res.status(500).json({ error: 'Error retrieving likes' });
-        }
-        res.json(results);
-    });
+  db.query(sql, [postId], (err, results) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Error retrieving likes' });
+    }
+    res.json(results);
+  });
 });
 
 //---------------------EVENTs-------------------------------------
@@ -2417,34 +2429,34 @@ app.get("/api/events/suggestions", checkAuth, (req, res) => {
 
 // for registration
 app.post('/api/register', checkAuth, (req, res) => {
-   const { email, password, username, firebase_uid } = req.body;
-    
-    const sqlCredentials = "INSERT INTO User_Credentials (email, password_hash, firebase_uid) VALUES (?, ?, ?)";
-    
-    // insert into Credentials
-    db.query(sqlCredentials, [email, password, firebase_uid], (err, result) => {
-        if (err) {
-            console.error("Credentials Error:", err);
-            return res.status(500).json({ error: "Database error during registration." });
-        }
-        
-        const newUserId = result.insertId;
-        const sqlProfile = "INSERT INTO User_Profiles (user_id, display_name) VALUES (?, ?)";
-        
-        // insert into Profile
-        db.query(sqlProfile, [newUserId, username], (profileErr) => {
-            if (profileErr) {
-                console.error("Profile Error:", profileErr);
-                return res.status(500).json({ error: "Profile creation failed." });
-            }
-            
-            console.log(`User ${newUserId} fully registered!`);
-            return res.status(201).json({ 
-                message: "User created successfully!",
-                userId: newUserId 
-            });
-        });
+  const { email, password, username, firebase_uid } = req.body;
+
+  const sqlCredentials = "INSERT INTO User_Credentials (email, password_hash, firebase_uid) VALUES (?, ?, ?)";
+
+  // insert into Credentials
+  db.query(sqlCredentials, [email, password, firebase_uid], (err, result) => {
+    if (err) {
+      console.error("Credentials Error:", err);
+      return res.status(500).json({ error: "Database error during registration." });
+    }
+
+    const newUserId = result.insertId;
+    const sqlProfile = "INSERT INTO User_Profiles (user_id, display_name) VALUES (?, ?)";
+
+    // insert into Profile
+    db.query(sqlProfile, [newUserId, username], (profileErr) => {
+      if (profileErr) {
+        console.error("Profile Error:", profileErr);
+        return res.status(500).json({ error: "Profile creation failed." });
+      }
+
+      console.log(`User ${newUserId} fully registered!`);
+      return res.status(201).json({
+        message: "User created successfully!",
+        userId: newUserId
+      });
     });
+  });
 });
 
 // Lookup app user_id by email (used after Firebase login)
@@ -2770,5 +2782,5 @@ app.get("/api/events/my-events", checkAuth, (req, res) => {
 });
 
 
-app.listen(port, () => console.log(`Listening on port ${port}`)); 
+app.listen(port, () => console.log(`Listening on port ${port}`));
 

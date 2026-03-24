@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Grid, Button, Typography, TextField, Stack, Chip } from "@mui/material";
+import { Grid, Button, Typography, TextField, Stack, Chip, Box } from "@mui/material";
 import PostList from "./PostList";
 import CreatePostForm from "./CreatePostForm";
 import EditPostForm from "./EditPostForm";
@@ -15,18 +15,21 @@ function Post({ firebase }) {
   const [editOpen, setEditOpen] = useState(false);
   const [editingPost, setEditingPost] = useState(null);
   const [activeTag, setActiveTag] = useState(null);
+  const [activeView, setActiveView] = useState('all');
 
   useEffect(() => {
     if (!loading && dbUser) {
       fetchPosts();
     }
-  }, [dbUser, loading]);
+  }, [dbUser, loading, activeView]);
 
   const fetchPosts = async () => {
     try {
       const token = await firebase.auth.currentUser?.getIdToken();
-
-      const response = await fetch('/api/posts', {
+      const url = activeView === 'groups'
+        ? '/api/posts?filter=mygroups'
+        : '/api/posts';
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -150,25 +153,30 @@ function Post({ firebase }) {
   const handleEditPost = async (updatedFields) => {
     try {
       const token = await firebase.auth.currentUser?.getIdToken();
+
+      const formData = new FormData();
+      formData.append('title', updatedFields.title);
+      formData.append('content', updatedFields.description);
+      formData.append('tags', JSON.stringify(updatedFields.tags));
+      formData.append('is_anonymous', updatedFields.is_anonymous ?? 0);
+      formData.append('remove_image', updatedFields.removeImage ? '1' : '0');
+      if (updatedFields.group_id) {
+        formData.append('group_id', updatedFields.group_id);
+      }
+      if (updatedFields.imageFile) {
+        formData.append('image', updatedFields.imageFile);
+      }
+
       const response = await fetch(`/api/posts/${editingPost.post_id}`, {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          title: updatedFields.title,
-          content: updatedFields.description,
-          tags: updatedFields.tags,
-          group_id: updatedFields.group_id ?? null,
-          is_anonymous: updatedFields.is_anonymous ?? 0
-        })
+        body: formData
       });
+
       const data = await response.json();
       if (!response.ok) { console.error(data.error); return; }
-      //setPosts(prev => prev.map(p =>
-      //  p.post_id === editingPost.post_id ? { ...p, ...data.post } : p
-      //));
       await fetchPosts();
       setEditOpen(false);
       setEditingPost(null);
@@ -277,6 +285,51 @@ function Post({ firebase }) {
         </Button>
       </Grid>
 
+
+      <Grid item xs={12}>
+        <Box sx={{
+          display: 'flex',
+          width: '100%',
+          background: '#F0F3F0',
+          border: '1px solid #D6DFE2',
+          borderRadius: '800px',
+          padding: '3px',
+          gap: '2px'
+        }}>
+          <Button
+            fullWidth
+            onClick={() => { setActiveView('all'); setActiveTag(null); }}
+            sx={{
+              borderRadius: '30px',
+              padding: '4px 20px',
+              fontSize: '13px',
+              textTransform: 'none',
+              fontWeight: activeView === 'all' ? 600 : 400,
+              background: activeView === 'all' ? '#5D6C5C' : 'transparent',
+              color: activeView === 'all' ? '#FDFDF6' : '#686967',
+            }}
+          >
+            All posts
+          </Button>
+
+          <Button
+            fullWidth
+            onClick={() => { setActiveView('groups'); setActiveTag(null); }}
+            sx={{
+              borderRadius: '30px',
+              padding: '4px 20px',
+              fontSize: '13px',
+              textTransform: 'none',
+              fontWeight: activeView === 'groups' ? 600 : 400,
+              background: activeView === 'groups' ? '#5D6C5C' : 'transparent',
+              color: activeView === 'groups' ? '#FDFDF6' : '#686967',
+            }}
+          >
+            My Groups
+          </Button>
+        </Box>
+      </Grid>
+      
       {/* Post List */}
       <Grid item xs={12}>
         <PostList
