@@ -39,6 +39,10 @@ export default function EventCard({
 
   const statusText = isPast ? "Ended" : isFull ? "Full" : "Open";
   const eventTags = ev.tags ? ev.tags.split(",") : [];
+  const eventTypeText =
+    String(ev.event_type || "public").toLowerCase() === "group"
+      ? "Group"
+      : "Public";
 
   const handleLikeToggle = async (e) => {
     e.preventDefault();
@@ -139,10 +143,23 @@ export default function EventCard({
         </div>
       </div>
 
-      {ev.category ? (
+      {ev.category || ev.event_type ? (
         <div style={styles.categoryRow}>
-          <span style={styles.categoryLabel}>Category</span>
-          <span style={styles.categoryChip}>{ev.category}</span>
+          {ev.category ? (
+            <>
+              <span style={styles.categoryLabel}>Category</span>
+              <span style={styles.categoryChip}>{ev.category}</span>
+            </>
+          ) : null}
+
+          <span
+            style={{
+              ...styles.eventTypeChip,
+              marginLeft: ev.category ? "8px" : "0",
+            }}
+          >
+            {eventTypeText}
+          </span>
         </div>
       ) : null}
 

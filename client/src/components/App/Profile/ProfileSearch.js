@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useContext, useEffect, useMemo, useState } from "react";
 import {
   Box,
   Typography,
@@ -13,9 +13,11 @@ import {
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import { useNavigate } from "react-router-dom";
+import { FirebaseContext } from "../../Firebase";
 
 function ProfileSearch() {
   const navigate = useNavigate();
+  const firebase = useContext(FirebaseContext);
 
   const [searchText, setSearchText] = useState("");
   const [users, setUsers] = useState([]);
@@ -25,12 +27,22 @@ function ProfileSearch() {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
+        const user = firebase?.auth?.currentUser;
+        if (!user) {
+          throw new Error("No authenticated user found.");
+        }
+        const token = await user.getIdToken();
+
         const trimmedQuery = searchText.trim();
         const url = trimmedQuery
           ? `/api/profile/search-users?query=${encodeURIComponent(trimmedQuery)}`
           : `/api/profile/search-users`;
 
-        const res = await fetch(url);
+        const res = await fetch(url, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
         if (!res.ok) {
           throw new Error("Failed to load users.");
@@ -53,8 +65,10 @@ function ProfileSearch() {
 
     setLoading(true);
     setLoadError("");
-    fetchUsers();
-  }, [searchText]);
+    if (firebase?.auth) {
+      fetchUsers();
+    }
+  }, [firebase, searchText]);
 
   const displayedUsers = useMemo(() => {
     const trimmedQuery = searchText.trim().toLowerCase();
