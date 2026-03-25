@@ -18,7 +18,6 @@ function Post({ firebase }) {
   const [activeTag, setActiveTag] = useState(null);
   const [activeView, setActiveView] = useState('all');
   const [sortBy, setSortBy] = useState('recent');
-  const [filtersOpen, setFiltersOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && dbUser) {
@@ -35,9 +34,7 @@ function Post({ firebase }) {
 
       const url = `/api/posts?${params.toString()}`;
       const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
 
       const data = await response.json();
@@ -45,7 +42,7 @@ function Post({ firebase }) {
       if (response.ok && Array.isArray(data)) {
         setPosts(data);
       } else {
-        setPosts([]); // Fallback to empty array if 401 or error
+        setPosts([]);
       }
 
     } catch (error) {
@@ -75,8 +72,6 @@ function Post({ firebase }) {
       });
 
       const data = await response.json();
-      console.log(data)
-
       if (data.posts) {
         setPosts(data.posts);
         setSearchError("");
@@ -102,30 +97,24 @@ function Post({ firebase }) {
       formData.append('tags', JSON.stringify(newPost.tags));
       formData.append('is_anonymous', newPost.is_anonymous ?? 0);
       if (newPost.group_id) {
-        formData.append('group_id', newPost.group_id); // only append if actually set
-      }
+        formData.append('group_id', newPost.group_id);
+      } 
       if (newPost.imageFile) {
         formData.append('image', newPost.imageFile);
       }
 
       const response = await fetch('/api/posts', {
         method: 'POST',
-        headers: {
-          //'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers: { 'Authorization': `Bearer ${token}` },
         body: formData
       });
 
       const data = await response.json();
-
+      
       if (!response.ok) {
         console.error(data);
         return;
       }
-
-      // After successful insert, refresh posts
-      //setPosts([data.post, ...posts]);\
       await fetchPosts();
 
       setOpen(false);
@@ -135,7 +124,7 @@ function Post({ firebase }) {
     }
   };
 
-  // handler for liking posts
+    // handler for liking posts
   const handleLikePost = async (postId) => {
     try {
       const token = await firebase.auth.currentUser?.getIdToken();
@@ -174,8 +163,8 @@ function Post({ firebase }) {
 
       const response = await fetch(`/api/posts/${editingPost.post_id}`, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`
+        headers: { 
+          'Authorization': `Bearer ${token}` 
         },
         body: formData
       });
@@ -233,11 +222,27 @@ function Post({ firebase }) {
   return (
     <Grid container spacing={3} sx={{ maxWidth: 1000, margin: '0 auto', px: 2 }}>
 
-      {/* Header Section */}
+      {/* Header card*/}
       <Grid item xs={12}>
-        <Typography variant="h4">
-          Posts
-        </Typography>
+        <MuiCard sx={{
+          border: '1px solid #D6DFE2',
+          borderRadius: 3,
+          boxShadow: '0px 2px 8px rgba(0,0,0,0.05)',
+          px: 5,
+          py: 2
+        }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between">
+            <Typography variant="h4" fontWeight={600}>
+              Posts
+            </Typography>
+            <Button
+              variant="contained"
+              onClick={() => setOpen(true)}
+            >
+              Create Post
+            </Button>
+          </Stack>
+        </MuiCard>
       </Grid>
 
       {/* Search + Sort Card */}
@@ -308,17 +313,7 @@ function Post({ firebase }) {
         </MuiCard>
       </Grid>
 
-      {/* Create Button */}
-      <Grid item xs={12}>
-        <Button
-          variant="contained"
-          onClick={() => setOpen(true)}
-        >
-          Create Post
-        </Button>
-      </Grid>
-
-
+      {/* All Posts / My Groups toggle */}
       <Grid item xs={12}>
         <Box sx={{
           display: 'flex',

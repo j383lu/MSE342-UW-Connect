@@ -6,11 +6,11 @@ import {
   Divider, Box, Avatar, Menu, MenuItem
 } from "@mui/material";
 import FavoriteIcon from "@mui/icons-material/Favorite";
+import EditIcon from "@mui/icons-material/Edit"
 import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import CloseIcon from "@mui/icons-material/Close";
-import MoreVertIcon from "@mui/icons-material/MoreVert";
-import EditIcon from "@mui/icons-material/Edit";
+import MoreHorizIcon from "@mui/icons-material/MoreHoriz"; 
 import DeleteIcon from "@mui/icons-material/Delete";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "../../contexts/UserContext";
@@ -66,11 +66,13 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter, fir
           action={
             isAuthor && (
               <>
+                {/* ↓ Horizontal 3-dot icon, anchored top-right */}
                 <IconButton
                   size="small"
                   onClick={(e) => setAnchorEl(e.currentTarget)}
+                  sx={{ mt: 0.5 }}
                 >
-                  <MoreVertIcon fontSize="small" />
+                  <MoreHorizIcon fontSize="small" />
                 </IconButton>
 
                 <Menu
@@ -198,7 +200,7 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter, fir
         </CardActions>
       </Card>
 
-      {/* Delete Dialog */}
+      {/* Delete Confirmation Dialog */}
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
         <DialogTitle>Delete Post?</DialogTitle>
         <DialogContent>
@@ -214,7 +216,7 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter, fir
         </DialogActions>
       </Dialog>
 
-      {/* Likes Dialog */}
+      {/* Likes Dialog — avatar now uses avatar_url from API */}
       <Dialog
         open={likesOpen}
         onClose={() => setLikesOpen(false)}
@@ -253,8 +255,10 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter, fir
                   py: 1.2
                 }}
               >
+                {/* use avatar for the likes image*/}
                 <Avatar
                   src={user.avatar_url ? `/uploads/${user.avatar_url}` : undefined}
+                  sx={{ bgcolor: '#5D6C5C' }}
                 >
                   {!user.avatar_url && (user.display_name?.[0]?.toUpperCase() ?? '?')}
                 </Avatar>

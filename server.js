@@ -1927,6 +1927,8 @@ app.get('/api/groups/:groupId/posts', checkAuth, async (req, res) => {
   });
 });
 
+// ------------------------------POST/FEED APIs---------------------------------
+
 // Post /api/posts - create a new post
 app.post('/api/posts', checkAuth, upload.single('image'), async (req, res) => {
   //let connection = mysql.createConnection(config);
@@ -2494,9 +2496,8 @@ app.put('/api/posts/:id', checkAuth, upload.single('image'), async (req, res) =>
 
 // POST /api/posts/:id/like - toggle like/unlike
 app.post('/api/posts/:id/like', checkAuth, async (req, res) => {
-  //let connection = mysql.createConnection(config);
   const postId = req.params.id;
-  let currentUserId; // Placeholder - replace with real auth user ID later
+  let currentUserId; 
   try {
     currentUserId = await getNumericUserId(req.user.email);
   } catch (err) {
@@ -2506,7 +2507,7 @@ app.post('/api/posts/:id/like', checkAuth, async (req, res) => {
   const checkSql = 'SELECT like_id FROM Likes WHERE post_id = ? AND user_id = ?';
   db.query(checkSql, [postId, currentUserId], (err, results) => {
     if (err) {
-      //db.end();
+
       return res.status(500).json({ error: 'Error checking like status' });
     }
 
@@ -2546,7 +2547,7 @@ app.get('/api/posts/:id/likes', checkAuth, async (req, res) => {
   const postId = req.params.id;
 
   const sql = `
-        SELECT l.user_id, up.display_name
+        SELECT l.user_id, up.display_name, up.avatar_url
         FROM Likes l
         LEFT JOIN User_Profiles up ON l.user_id = up.user_id
         WHERE l.post_id = ?
