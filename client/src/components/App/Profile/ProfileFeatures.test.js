@@ -28,6 +28,7 @@ describe("Profile feature tests", () => {
               gender: "Woman",
               birthday: "2005-12-19",
               phone_number: "519-555-1234",
+              email: "alex@uwaterloo.ca",
               department: "",
               program_id: 1,
               program: "Management Engineering",
@@ -231,15 +232,16 @@ describe("Profile feature tests", () => {
     expect(screen.queryByText("Prefer not to say")).not.toBeInTheDocument();
   });
 
-  test("4. Profile displays birthday and phone number under Bio", async () => {
+  test("4. Profile displays email, phone number, and birthday under Bio", async () => {
     render(
       <MemoryRouter>
         <Profile />
       </MemoryRouter>
     );
 
-    expect(await screen.findByText("Birthday: 12/19/2005")).toBeInTheDocument();
+    expect(await screen.findByText("Email: alex@uwaterloo.ca")).toBeInTheDocument();
     expect(screen.getByText("Phone Number: 519-555-1234")).toBeInTheDocument();
+    expect(screen.getByText("Birthday: 12/19/2005")).toBeInTheDocument();
   });
 
   test("5. Staff profile displays Staff label and Staff Department", async () => {
