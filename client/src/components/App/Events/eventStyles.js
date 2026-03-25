@@ -914,7 +914,67 @@ const eventStyles = {
     border: "1px solid #bfd2f2",
   },
   
-  
+  cardBottomRow: {
+    marginTop: 18,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+
+  ownerActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: 10,
+    flexWrap: "wrap",
+    marginLeft: "auto",
+  },
+
+  ownerEditBtn: {
+    height: 40,
+    borderRadius: 999,
+    border: "1px solid #D6DFE2",
+    background: "#FFFFFF",
+    color: "#17292B",
+    fontWeight: 700,
+    cursor: "pointer",
+    padding: "0 18px",
+    transition: "all 0.2s ease",
+  },
+
+  ownerDeleteBtn: {
+    height: 40,
+    borderRadius: 999,
+    border: "none",
+    background: "#8B1E1E",
+    color: "#FFFFFF",
+    fontWeight: 700,
+    cursor: "pointer",
+    padding: "0 18px",
+    boxShadow: "0 8px 18px rgba(139,30,30,0.18)",
+    transition: "all 0.2s ease",
+  },
+
+  editTitleRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 16,
+    flexWrap: "wrap",
+    marginBottom: 12,
+  },
+
+  inlineSuccess: {
+    background: "rgba(223,232,219,0.55)",
+    border: "1px solid #B9CAB7",
+    color: "#49654B",
+    padding: "12px 14px",
+    borderRadius: 14,
+    marginBottom: 18,
+    fontWeight: 600,
+  },
+
 };
 
 export default eventStyles;
