@@ -91,7 +91,11 @@ export default function EventCard({
     return String(ev.tags)
       .split(",")
       .map((tag) => tag.trim())
-      .filter(Boolean);
+      .filter((tag) => {
+        if (!tag) return false;
+        const lower = String(tag).toLowerCase();
+        return !(lower === "__calendar__" || lower.startsWith("__cal"));
+      });
   }, [ev.tags]);
 
   const visibleEventTags = useMemo(
