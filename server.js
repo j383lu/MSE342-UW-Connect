@@ -2096,7 +2096,7 @@ app.get('/api/posts/search', checkAuth, async (req, res) => {
   const searchSql = `
         SELECT p.post_id, p.title, p.content AS description, p.author_id, 
           p.group_id, sg.name AS group_name, p.created_at AS createdAt,
-          up.display_name AS author_name,
+          up.display_name AS author_name, up.avatar_url AS author_avatar,
           GROUP_CONCAT(DISTINCT t.tag_name) AS tags,
           COUNT(DISTINCT l.like_id) AS like_count,
           MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me,
@@ -2133,8 +2133,10 @@ app.get('/api/posts/search', checkAuth, async (req, res) => {
       like_count: post.like_count ?? 0,
       liked_by_me: post.liked_by_me === 1,
       comment_count: post.comment_count ?? 0,
-      group_id: post.group_id,        // new
-      group_name: post.group_name     // new
+      group_id: post.group_id,        
+      group_name: post.group_name,
+      is_anonymous: post.is_anonymous === 1,
+      author_avatar: post.is_anonymous ? null : post.author_avatar,     
     }));
 
     if (formattedPosts.length === 0) {
@@ -2158,7 +2160,7 @@ app.get('/api/posts/tag/:tagName', checkAuth, async (req, res) => {
 
   const sql = `
         SELECT p.post_id, p.title, p.content, p.author_id, p.group_id, sg.name AS group_name, 
-                p.created_at AS createdAt, up.display_name AS author_name,
+                p.created_at AS createdAt, up.display_name AS author_name, up.avatar_url AS author_avatar,
                GROUP_CONCAT(DISTINCT t.tag_name) AS tags,
                COUNT(DISTINCT l.like_id) AS like_count,
                MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me,
@@ -2196,8 +2198,11 @@ app.get('/api/posts/tag/:tagName', checkAuth, async (req, res) => {
       like_count: post.like_count ?? 0,
       liked_by_me: post.liked_by_me === 1,
       comment_count: post.comment_count ?? 0,
-      group_id: post.group_id,        // new
-      group_name: post.group_name     // new
+      group_id: post.group_id,       
+      group_name: post.group_name,
+      is_anonymous: post.is_anonymous === 1,
+      author_avatar: post.is_anonymous ? null : post.author_avatar,
+
     }));
 
     if (formattedPosts.length === 0) {
@@ -2210,8 +2215,8 @@ app.get('/api/posts/tag/:tagName', checkAuth, async (req, res) => {
 
 // GET API for posts
 app.get('/api/posts', checkAuth, async (req, res) => {
-  const { filter } = req.query
-  let currentUserId; //Placeholde, need to replace with actually user id later
+  const { filter, sort } = req.query
+  let currentUserId; 
   try {
     currentUserId = await getNumericUserId(req.user.email);
   } catch (err) {
@@ -2233,10 +2238,16 @@ app.get('/api/posts', checkAuth, async (req, res) => {
             OR sg.is_private = 0
           )`;
 
+  // sort clause
+  const orderClause = sort === 'likes'
+    ? 'ORDER BY like_count DESC, p.post_id DESC'
+    : sort ==='comments'
+    ? 'ORDER BY comment_count DESC, p.post_id DESC'
+    :'ORDER BY p.post_id DESC'; // default is most recent
   let sql = `
          SELECT p.post_id, p.title, p.content, p.author_id, p.group_id, sg.name AS group_name,
                p.is_anonymous, p.image_url, p.created_at AS createdAt,
-               up.display_name AS author_name,
+               up.display_name AS author_name,up.avatar_url AS author_avatar,
                GROUP_CONCAT(DISTINCT t.tag_name) AS tags,
                COUNT(DISTINCT l.like_id) AS like_count,
                MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me,
@@ -2249,7 +2260,7 @@ app.get('/api/posts', checkAuth, async (req, res) => {
         LEFT JOIN Likes l ON p.post_id = l.post_id
         ${whereClause}
         GROUP BY p.post_id
-        ORDER BY p.post_id DESC
+        ${orderClause}
     `;
 
   db.query(sql, filter === 'mygroups' ? [currentUserId, currentUserId] : [currentUserId], (err, results) => {
@@ -2272,7 +2283,8 @@ app.get('/api/posts', checkAuth, async (req, res) => {
       comment_count: post.comment_count ?? 0,
       group_id: post.group_id,
       group_name: post.group_name,
-      is_anonymous: post.is_anonymous === 1
+      is_anonymous: post.is_anonymous === 1,
+      author_avatar: post.is_anonymous ? null : post.author_avatar,
     }));
 
     res.json(formattedPosts);
@@ -2323,7 +2335,7 @@ app.get('/api/posts/:id', checkAuth, async (req, res) => {
       author_name: post.is_anonymous ? 'Anonymous' : (post.author_name ?? 'Unknown'),
       title: post.title,
       description: post.content,
-      group_id: post.group_name,
+      group_id: post.group_id,
       tags: post.tags ? post.tags.split(',') : [],
       createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
       like_count: post.like_count ?? 0,
@@ -2342,7 +2354,8 @@ app.get('/api/posts/:id/comments', checkAuth, async (req, res) => {
 
   const sql = `
         SELECT c.comment_id, c.post_id, c.user_id, c.parent_comment_id,
-               c.content, c.created_at AS createdAt, up.display_name as author_name
+               c.content, c.created_at AS createdAt, 
+               up.display_name as author_name, up.avatar_url AS author_avatar
         FROM Comments c
         LEFT JOIN User_Profiles up ON c.user_id = up.user_id
         WHERE c.post_id = ?
@@ -2388,11 +2401,14 @@ app.post('/api/posts/:id/comments', checkAuth, async (req, res) => {
       [currentUserId],
       (err2, profileRows) => {
         const author_name = profileRows?.[0]?.display_name ?? `User ${currentUserId}`;
+        const author_avatar = profileRows?.[0]?.avatar_url ?? null;
+
         res.json({
           comment_id: result.insertId,
           post_id: parseInt(postId),
           user_id: currentUserId,
           author_name,
+          author_avatar,
           parent_comment_id,
           content,
           createdAt: new Date().toISOString()
