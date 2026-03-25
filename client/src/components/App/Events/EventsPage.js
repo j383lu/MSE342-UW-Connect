@@ -1,4 +1,11 @@
-import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import styles from "./eventStyles";
 import EventCard from "./EventCard";
@@ -75,6 +82,28 @@ export default function EventsPage() {
     );
   };
 
+  const filterEventsByTerm = (list, rawTerm) => {
+    const term = String(rawTerm || "").trim().toLowerCase();
+
+    if (!term) return [];
+
+    return list.filter((ev) => {
+      const title = String(ev.title || "").toLowerCase();
+      const category = String(ev.category || "").toLowerCase();
+      const tags = String(ev.tags || "").toLowerCase();
+      const description = String(ev.description || "").toLowerCase();
+      const eventType = String(ev.event_type || "").toLowerCase();
+
+      return (
+        title.includes(term) ||
+        category.includes(term) ||
+        tags.includes(term) ||
+        description.includes(term) ||
+        eventType.includes(term)
+      );
+    });
+  };
+
   // This function loads events from the backend based on the selected tab and filter.
   const loadEvents = async (
     tab = activeTab,
@@ -94,7 +123,7 @@ export default function EventsPage() {
       if (!res.ok) {
         setError(data.error || "Failed to load events.");
         setEvents([]);
-        return;
+        return [];
       }
 
       const rows = Array.isArray(data) ? data : [];
@@ -105,9 +134,12 @@ export default function EventsPage() {
         setSearchResults([]);
         setSearchMessage("");
       }
+
+      return rows;
     } catch (e) {
       setError("Cannot connect to backend.");
       setEvents([]);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -137,7 +169,7 @@ export default function EventsPage() {
     }
   };
 
-  // This function shows or hides the attendee list for a event.
+  // This function shows or hides the attendee list for an event.
   const toggleAttendees = async (eventId) => {
     if (openDetailsId === eventId) {
       setOpenDetailsId(null);
@@ -339,7 +371,11 @@ export default function EventsPage() {
   );
 
   // The handleSearch function handles searching events based on the input keyword and updates results.
-  const handleSearch = async (rawTerm, customSort = sortBy) => {
+  const handleSearch = async (
+    rawTerm,
+    customSort = sortBy,
+    baseEvents = events
+  ) => {
     const term = String(rawTerm || "").trim();
 
     if (!term) {
@@ -354,24 +390,7 @@ export default function EventsPage() {
       setSearchMessage("");
       setShowSearchDropdown(false);
 
-      const lowered = term.toLowerCase();
-
-      const matched = events.filter((ev) => {
-        const title = String(ev.title || "").toLowerCase();
-        const category = String(ev.category || "").toLowerCase();
-        const tags = String(ev.tags || "").toLowerCase();
-        const description = String(ev.description || "").toLowerCase();
-        const eventType = String(ev.event_type || "").toLowerCase();
-
-        return (
-          title.includes(lowered) ||
-          category.includes(lowered) ||
-          tags.includes(lowered) ||
-          description.includes(lowered) ||
-          eventType.includes(lowered)
-        );
-      });
-
+      const matched = filterEventsByTerm(baseEvents, term);
       const sortedMatched = applySortToList(matched, customSort);
 
       setSearchResults(sortedMatched);
@@ -394,7 +413,7 @@ export default function EventsPage() {
     }
   };
 
-  // Update the sorting option and re-applies search if needed.
+  // Update the sorting option and re-apply search if needed.
   const handleSortChange = async (e) => {
     const newSort = e.target.value;
     setSortBy(newSort);
@@ -406,11 +425,11 @@ export default function EventsPage() {
   };
 
   // Reload search results after updates of likes or joins
-  const reloadSearchResultsIfNeeded = async () => {
+  const reloadSearchResultsIfNeeded = async (rows = null) => {
     const currentTerm = searchTerm.trim();
     if (!currentTerm || !isSearching) return;
 
-    await handleSearch(currentTerm, sortBy);
+    await handleSearch(currentTerm, sortBy, Array.isArray(rows) ? rows : events);
   };
 
   // Update event like data and refresh search results
@@ -422,6 +441,72 @@ export default function EventsPage() {
 
     if (isSearching && searchTerm.trim()) {
       await reloadSearchResultsIfNeeded();
+    }
+  };
+
+  const handleUpdateEvent = async (eventId, payload) => {
+    try {
+      const headers = await getAuthHeaders(true);
+
+      const res = await fetch(`/api/events/${eventId}`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        window.alert(data.error || "Failed to update event.");
+        return false;
+      }
+
+      const refreshedRows = await loadEvents(activeTab, showPastEvents, false);
+
+      if (openDetailsId === eventId) {
+        await loadAttendees(eventId);
+      }
+
+      await reloadSearchResultsIfNeeded(refreshedRows);
+
+      window.alert(data.message || "Event updated successfully.");
+      return true;
+    } catch (e) {
+      window.alert("Cannot connect to backend.");
+      return false;
+    }
+  };
+
+  const handleDeleteEvent = async (ev) => {
+    try {
+      const headers = await getAuthHeaders(false);
+
+      const res = await fetch(`/api/events/${ev.id}`, {
+        method: "DELETE",
+        headers,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        window.alert(data.error || "Failed to delete event.");
+        return false;
+      }
+
+      if (openDetailsId === ev.id) {
+        setOpenDetailsId(null);
+        setAttendees([]);
+        setDetailsError("");
+      }
+
+      const refreshedRows = await loadEvents(activeTab, showPastEvents, false);
+      await reloadSearchResultsIfNeeded(refreshedRows);
+
+      window.alert(data.message || "Event deleted successfully.");
+      return true;
+    } catch (e) {
+      window.alert("Cannot connect to backend.");
+      return false;
     }
   };
 
@@ -443,7 +528,7 @@ export default function EventsPage() {
     setShowSearchDropdown(true);
   };
 
-  // When user click the search box, show recent searches or suggestions
+  // When user clicks the search box, show recent searches or suggestions
   const handleSearchFocus = async () => {
     const cleanValue = searchTerm.trim();
 
@@ -518,10 +603,7 @@ export default function EventsPage() {
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (
-        searchBoxRef.current &&
-        !searchBoxRef.current.contains(event.target)
-      ) {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(event.target)) {
         setShowSearchDropdown(false);
       }
     };
@@ -551,14 +633,14 @@ export default function EventsPage() {
     (e) => Number(e.is_past) === 1
   );
 
-  const renderCard = (ev, isPast) => {
+  const renderCard = (ev, isPastValue) => {
     const isOpen = openDetailsId === ev.id;
 
     return (
       <EventCard
         key={ev.id}
         ev={ev}
-        isPast={isPast}
+        isPast={isPastValue}
         isOpen={isOpen}
         attendees={attendees}
         detailsLoading={detailsLoading}
@@ -567,6 +649,8 @@ export default function EventsPage() {
         handleJoin={handleJoin}
         handleLeave={handleLeave}
         onLikeSuccess={handleLikeRefresh}
+        onUpdateEvent={handleUpdateEvent}
+        onDeleteEvent={handleDeleteEvent}
       />
     );
   };
@@ -773,7 +857,8 @@ export default function EventsPage() {
           <div style={styles.sectionHeaderBlock}>
             <h2 style={styles.panelTitle}>Browse Event Sections</h2>
             <p style={styles.panelSubtitle}>
-              Switch between public events, your group events, and your own event activity.
+              Switch between public events, your group events, and your own event
+              activity.
             </p>
           </div>
 
@@ -816,9 +901,7 @@ export default function EventsPage() {
         {isSearching ? (
           <div style={styles.panel}>
             <div style={styles.sectionHeaderBlock}>
-              <h2 style={styles.panelTitle}>
-                Search Results, {sectionTitle}
-              </h2>
+              <h2 style={styles.panelTitle}>Search Results, {sectionTitle}</h2>
               <p style={styles.panelSubtitle}>{searchSubtitleText}</p>
             </div>
 
