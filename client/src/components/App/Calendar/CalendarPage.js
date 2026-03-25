@@ -67,6 +67,32 @@ function attendeeRowsToParticipantIds(data, contactsList) {
     .filter((id) => Number.isInteger(id) && id > 0);
 }
 
+function getCalendarScope(ev) {
+  const explicit = String(ev?.calendar_scope || "").trim().toLowerCase();
+  if (explicit === "personal" || explicit === "group") return explicit;
+  const fromTags = extractCalendarScope(ev?.tags);
+  if (fromTags) return fromTags;
+  const attendeeCount = Number(ev?.attendee_count || 0);
+  return attendeeCount > 0 ? "group" : "personal";
+}
+
+function getCalendarVisibility(ev) {
+  const explicit = String(ev?.calendar_visibility || "").trim().toLowerCase();
+  if (explicit === "public" || explicit === "private") return explicit;
+  const fromTags = extractCalendarVisibility(ev?.tags);
+  if (fromTags) return fromTags;
+  return getCalendarScope(ev) === "group" ? "public" : "private";
+}
+
+function getCalendarEventTypeText(ev) {
+  const raw = String(ev?.event_type || "").trim();
+  if (!raw) return "—";
+  const t = raw.toLowerCase();
+  if (t === "group") return "Group";
+  if (t === "public") return "Public";
+  return raw;
+}
+
 const HOUR_HEIGHT = 48;
 const DAY_START_HOUR = 0;
 const DAY_END_HOUR = 24;
@@ -210,7 +236,7 @@ export default function CalendarPage() {
     const n = new Date();
     return filteredEvents
       .filter((ev) => {
-        if (extractCalendarScope(ev.tags) !== "personal") return false;
+        if (getCalendarScope(ev) !== "personal") return false;
         const { start } = eventDateRange(ev);
         return start < n;
       })
@@ -291,8 +317,8 @@ export default function CalendarPage() {
       event_time: String(ev.event_time || "09:00").slice(0, 5),
       end_date: ev.end_date || ev.event_date || "",
       end_time: String(ev.end_time || "10:00").slice(0, 5),
-      scope: extractCalendarScope(ev.tags) || "personal",
-      visibility: extractCalendarVisibility(ev.tags) || "public",
+      scope: getCalendarScope(ev),
+      visibility: getCalendarVisibility(ev),
       max_attendees: Number.isFinite(cap) ? String(cap) : "999",
       calendar_color: extractCalendarColor(ev.tags) || "blue",
       participant_user_ids: participantIds,
@@ -313,6 +339,18 @@ export default function CalendarPage() {
       setDetailAttendees(rows);
       const participantIds = attendeeRowsToParticipantIds(rows, contacts);
       syncEditFormFromEvent(ev, participantIds);
+      // Ensure we display SQL-backed fields (capacity/event_type) from the latest server response.
+      try {
+        const list = await fetchEvents();
+        const refreshed = Array.isArray(list) ? list.find((e) => Number(e.id) === Number(ev.id)) : null;
+        if (refreshed) {
+          setSelectedEvent(refreshed);
+          // Keep checkbox state synced to the latest event row.
+          syncEditFormFromEvent(refreshed, participantIds);
+        }
+      } catch {
+        // If refresh fails, fall back to the clicked event object.
+      }
     } catch {
       setDetailAttendees([]);
       syncEditFormFromEvent(ev, []);
@@ -466,7 +504,14 @@ export default function CalendarPage() {
               event_time: editEventForm.event_time,
               end_date: editEventForm.end_date,
               end_time: editEventForm.end_time,
-              capacity: optimisticCapacity,
+              // Preserve event_type/capacity during optimistic updates so the details popup stays correct.
+              event_type: prev.event_type ?? selectedEvent.event_type,
+              capacity:
+                optimisticCapacity !== undefined &&
+                optimisticCapacity !== null &&
+                optimisticCapacity !== ""
+                  ? optimisticCapacity
+                  : prev.capacity,
             }
           : prev
       );
@@ -510,7 +555,7 @@ export default function CalendarPage() {
     const overdue = isOverdue(ev);
     const mine = Number(ev.created_by) === Number(myId);
     const creatorLabel = mine ? "You" : ev.creator_name || "Peer";
-    const calScope = extractCalendarScope(ev.tags);
+    const calScope = getCalendarScope(ev);
     const scopeLabel = calScope === "personal" ? "Personal" : calScope === "group" ? "Group" : null;
     const hideCreatorRow = false;
     const isPeerOwned = visibleContactIds.has(Number(ev.created_by));
@@ -645,7 +690,7 @@ export default function CalendarPage() {
       const L = layoutMap.get(ev.id) || { leftPct: 0, widthPct: 100 };
       const colorKey = extractCalendarColor(ev.tags);
       const hex = colorHexForKey(colorKey);
-      const scope = extractCalendarScope(ev.tags);
+      const scope = getCalendarScope(ev);
       const overdueBanner = isOverdue(ev) && scope === "personal";
       const scopeShort = scope === "personal" ? "Personal" : scope === "group" ? "Group" : null;
       const isPeerOwned = visibleContactIds.has(Number(ev.created_by));
@@ -1303,40 +1348,36 @@ export default function CalendarPage() {
               </Typography>
               <Typography variant="body2">Category: {selectedEvent.category}</Typography>
               <Typography variant="body2">
-                Type: {extractCalendarScope(selectedEvent.tags) === "group" ? "Group" : "Personal"}
+                Type: {getCalendarEventTypeText(selectedEvent)}
               </Typography>
-              {extractCalendarScope(selectedEvent.tags) === "group" ? (
-                <Typography variant="body2">
-                  Maximum attendees:{" "}
-                  {selectedEvent.capacity !== undefined &&
-                  selectedEvent.capacity !== null &&
-                  selectedEvent.capacity !== ""
-                    ? Number(selectedEvent.capacity)
-                    : "—"}
-                </Typography>
-              ) : null}
+              <Typography variant="body2">
+                Capacity:{" "}
+                {selectedEvent.capacity !== undefined &&
+                selectedEvent.capacity !== null &&
+                selectedEvent.capacity !== ""
+                  ? Number(selectedEvent.capacity)
+                  : "—"}
+              </Typography>
               <Typography variant="body2" color="text.secondary">
                 Owner: {Number(selectedEvent.created_by) === Number(myId) ? "You" : selectedEvent.creator_name || "Unknown"}
               </Typography>
-              {extractCalendarScope(selectedEvent.tags) === "group" ? (
-                detailsLoading ? (
-                  <Typography variant="caption" color="text.secondary">
-                    Loading attendees…
-                  </Typography>
-                ) : detailAttendees.length > 0 ? (
-                  <Typography variant="body2" color="text.secondary">
-                    Attendees:{" "}
-                    {detailAttendees
-                      .map((a) => a.attendee_name || a.attendee_email)
-                      .filter(Boolean)
-                      .join(", ")}
-                  </Typography>
-                ) : (
-                  <Typography variant="caption" color="text.secondary">
-                    No invited attendees yet.
-                  </Typography>
-                )
-              ) : null}
+              {detailsLoading ? (
+                <Typography variant="caption" color="text.secondary">
+                  Loading attendees…
+                </Typography>
+              ) : detailAttendees.length > 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  Attendees:{" "}
+                  {detailAttendees
+                    .map((a) => a.attendee_name || a.attendee_email)
+                    .filter(Boolean)
+                    .join(", ")}
+                </Typography>
+              ) : (
+                <Typography variant="caption" color="text.secondary">
+                  No invited attendees yet.
+                </Typography>
+              )}
             </Box>
           )}
         </DialogContent>

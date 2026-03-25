@@ -929,7 +929,6 @@ app.get("/api/calendar/events", checkAuth, (req, res) => {
         TIME_FORMAT(e.event_time, '%H:%i') AS event_time,
         DATE_FORMAT(e.end_date, '%Y-%m-%d') AS end_date,
         TIME_FORMAT(e.end_time, '%H:%i') AS end_time,
-        e.capacity,
         e.category,
         e.created_by,
         COALESCE(creator_up.display_name, creator_uc.email) AS creator_name,
@@ -973,7 +972,6 @@ app.get("/api/calendar/events", checkAuth, (req, res) => {
         e.event_time,
         e.end_date,
         e.end_time,
-        e.capacity,
         e.category,
         e.created_by,
         creator_uc.email,
@@ -1008,8 +1006,6 @@ app.post("/api/calendar/todos", checkAuth, (req, res) => {
     calendar_color,
     scope,
     visibility,
-    max_attendees,
-    capacity: capacityBody,
   } = req.body;
 
   if (!title || !String(title).trim()) {
@@ -1052,25 +1048,6 @@ app.post("/api/calendar/todos", checkAuth, (req, res) => {
   const rawVisibility = String(visibility || "public").trim().toLowerCase();
   const eventVisibility =
     eventScope === "group" ? (rawVisibility === "private" ? "private" : "public") : "private";
-
-  const capRaw = max_attendees !== undefined && max_attendees !== null ? max_attendees : capacityBody;
-  let cap = 999;
-  if (eventScope === "group" && eventVisibility === "public") {
-    const n = Number(capRaw);
-    if (
-      capRaw === "" ||
-      capRaw === undefined ||
-      capRaw === null ||
-      !Number.isInteger(n) ||
-      n < 1 ||
-      n > 99999
-    ) {
-      return res.status(400).json({
-        error: "Maximum attendees is required for public group events (whole number from 1 to 99999).",
-      });
-    }
-    cap = n;
-  }
 
   const participantIds =
     eventScope === "group" && Array.isArray(participant_user_ids)
@@ -1119,6 +1096,7 @@ app.post("/api/calendar/todos", checkAuth, (req, res) => {
     `;
 
     const desc = description != null ? String(description) : "";
+    const cap = 999;
     const startTimeDb = et;
     const endTimeDb = xt;
 
@@ -1170,19 +1148,27 @@ app.post("/api/calendar/todos", checkAuth, (req, res) => {
             return done(null);
           }
           const ph = participantIds.map(() => "?").join(", ");
-          const insertSql = `
-            INSERT INTO Event_Attendees (event_id, attendee_name)
-            SELECT ?, LOWER(uc.email)
-            FROM User_Credentials uc
-            WHERE uc.user_id IN (${ph})
-              AND LOWER(uc.email) <> LOWER(?)
-          `;
-          db.query(insertSql, [eventId, ...participantIds, currentUserEmail], (attErr) => {
-            if (attErr) {
-              console.log("POST /api/calendar/todos attendees error:", attErr);
-              return done(attErr);
+          const emailSql = `SELECT user_id, LOWER(email) AS email FROM User_Credentials WHERE user_id IN (${ph})`;
+          db.query(emailSql, participantIds, (emErr, emRows) => {
+            if (emErr) {
+              console.log("POST /api/calendar/todos participant lookup error:", emErr);
+              return done(emErr);
             }
-            return done(null);
+            const emails = (emRows || [])
+              .map((r) => r.email)
+              .filter((e) => e && String(e).toLowerCase() !== currentUserEmail);
+            if (emails.length === 0) {
+              return done(null);
+            }
+            const rows = emails.map((email) => [eventId, email]);
+            const insertSql = `INSERT INTO Event_Attendees (event_id, attendee_name) VALUES ?`;
+            db.query(insertSql, [rows], (attErr) => {
+              if (attErr) {
+                console.log("POST /api/calendar/todos attendees error:", attErr);
+                return done(attErr);
+              }
+              return done(null);
+            });
           });
         };
 
@@ -1224,8 +1210,6 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
     calendar_color,
     scope,
     visibility,
-    max_attendees,
-    capacity: capacityBodyPut,
   } = req.body;
 
   if (!title || !String(title).trim()) {
@@ -1258,24 +1242,6 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
   const rawVisibility = String(visibility || "public").trim().toLowerCase();
   const eventVisibility =
     eventScope === "group" ? (rawVisibility === "private" ? "private" : "public") : "private";
-
-  const capRawPut =
-    max_attendees !== undefined && max_attendees !== null ? max_attendees : capacityBodyPut;
-  const capNumPut = Number(capRawPut);
-  const hasValidCapInput =
-    capRawPut !== "" &&
-    capRawPut !== undefined &&
-    capRawPut !== null &&
-    Number.isInteger(capNumPut) &&
-    capNumPut >= 1 &&
-    capNumPut <= 99999;
-  const requiresCapInput = eventScope === "group" && eventVisibility === "public";
-  if (requiresCapInput && !hasValidCapInput) {
-    return res.status(400).json({
-      error: "Maximum attendees is required for public group events (whole number from 1 to 99999).",
-    });
-  }
-
   const participantIds =
     eventScope === "group" && Array.isArray(participant_user_ids)
       ? [
@@ -1304,7 +1270,7 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
     }
 
     const ownershipSql = `
-      SELECT e.id, e.capacity
+      SELECT e.id
       FROM Events e
       WHERE e.id = ?
         AND e.created_by = ?
@@ -1323,12 +1289,6 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
       if (!ownRows || ownRows.length === 0) {
         return res.status(403).json({ error: "Only the owner can edit this calendar event." });
       }
-      const existingCapacity = Number(ownRows[0].capacity);
-      const updateCap = hasValidCapInput
-        ? capNumPut
-        : Number.isInteger(existingCapacity) && existingCapacity > 0
-          ? existingCapacity
-          : 999;
 
       const updateSql = `
         UPDATE Events
@@ -1339,8 +1299,7 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
           event_date = ?,
           event_time = ?,
           end_date = ?,
-          end_time = ?,
-          capacity = ?
+          end_time = ?
         WHERE id = ?
       `;
 
@@ -1354,7 +1313,6 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
           et,
           end_date,
           xt,
-          updateCap,
           eventId,
         ],
         (updErr) => {
@@ -1399,30 +1357,31 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
                   return res.status(500).json({ error: "Failed to update attendees." });
                 }
 
-                const okPayload = () => ({
-                  message: "Event updated successfully.",
-                  id: eventId,
-                  capacity: updateCap,
-                });
-
                 if (participantIds.length === 0) {
-                  return res.json(okPayload());
+                  return res.json({ message: "Event updated successfully." });
                 }
 
                 const ph = participantIds.map(() => "?").join(", ");
-                const insertSql = `
-                  INSERT INTO Event_Attendees (event_id, attendee_name)
-                  SELECT ?, LOWER(uc.email)
-                  FROM User_Credentials uc
-                  WHERE uc.user_id IN (${ph})
-                    AND LOWER(uc.email) <> LOWER(?)
-                `;
-                db.query(insertSql, [eventId, ...participantIds, currentUserEmail], (attErr) => {
-                  if (attErr) {
-                    console.log("PUT /api/calendar/events/:id insert attendees error:", attErr);
-                    return res.status(500).json({ error: "Failed to save attendees." });
+                const emailSql = `SELECT LOWER(email) AS email FROM User_Credentials WHERE user_id IN (${ph})`;
+                db.query(emailSql, participantIds, (emErr, emRows) => {
+                  if (emErr) {
+                    console.log("PUT /api/calendar/events/:id attendee lookup error:", emErr);
+                    return res.status(500).json({ error: "Failed to lookup attendees." });
                   }
-                  return res.json(okPayload());
+                  const emails = (emRows || [])
+                    .map((r) => r.email)
+                    .filter((e) => e && String(e).toLowerCase() !== currentUserEmail);
+                  if (emails.length === 0) {
+                    return res.json({ message: "Event updated successfully." });
+                  }
+                  const rows = emails.map((email) => [eventId, email]);
+                  db.query("INSERT INTO Event_Attendees (event_id, attendee_name) VALUES ?", [rows], (attErr) => {
+                    if (attErr) {
+                      console.log("PUT /api/calendar/events/:id insert attendees error:", attErr);
+                      return res.status(500).json({ error: "Failed to save attendees." });
+                    }
+                    return res.json({ message: "Event updated successfully." });
+                  });
                 });
               });
             });
@@ -1781,7 +1740,6 @@ app.get("/api/events/:id/attendees", checkAuth, (req, res) => {
           ea.id,
           ea.joined_at,
           ea.attendee_name AS attendee_email,
-          uc.user_id AS user_id,
           COALESCE(up.display_name, SUBSTRING_INDEX(ea.attendee_name, '@', 1)) AS attendee_name
         FROM Event_Attendees ea
         LEFT JOIN User_Credentials uc
@@ -1801,8 +1759,6 @@ app.get("/api/events/:id/attendees", checkAuth, (req, res) => {
         return res.json(
           rows.map((row) => ({
             attendee_name: row.attendee_name,
-            attendee_email: row.attendee_email,
-            user_id: row.user_id ? Number(row.user_id) : null,
           }))
         );
       });
@@ -1815,7 +1771,6 @@ app.get("/api/events/:id/attendees", checkAuth, (req, res) => {
         ea.id,
         ea.joined_at,
         ea.attendee_name AS attendee_email,
-        uc.user_id AS user_id,
         COALESCE(up.display_name, SUBSTRING_INDEX(ea.attendee_name, '@', 1)) AS attendee_name
       FROM Event_Attendees ea
       INNER JOIN Events e
@@ -1852,8 +1807,6 @@ app.get("/api/events/:id/attendees", checkAuth, (req, res) => {
       return res.json(
         rows.map((row) => ({
           attendee_name: row.attendee_name,
-          attendee_email: row.attendee_email,
-          user_id: row.user_id ? Number(row.user_id) : null,
         }))
       );
     });
@@ -4988,4 +4941,4 @@ app.delete("/api/events/:id", checkAuth, (req, res) => {
   });
 });
 
-app.listen(port, () => console.log(`Listening on port ${port}`));
+app.listen(port, () => console.log(`Listening on port ${port}`)); 
