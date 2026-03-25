@@ -16,6 +16,7 @@ import {
   DialogContent,
   DialogActions,
   MenuItem,
+  Divider,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
@@ -24,6 +25,8 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import EventIcon from "@mui/icons-material/Event";
 import ScheduleIcon from "@mui/icons-material/Schedule";
+import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
+import PeopleOutlineIcon from "@mui/icons-material/PeopleOutline";
 import apiRequest from "../../../utils/api";
 import { useUser } from "../../../contexts/UserContext";
 import AddTodoModal from "./AddTodoModal";
@@ -717,6 +720,21 @@ export default function CalendarPage() {
           borderRadius: 2,
           bgcolor: isPeerOwned ? alpha(theme.palette.secondary.main, 0.06) : theme.palette.background.paper,
           cursor: "pointer",
+          position: "relative",
+          zIndex: 0,
+          boxShadow: "0 1px 2px rgba(23, 41, 43, 0.06)",
+          transition: theme.transitions.create(["transform", "box-shadow"], {
+            duration: 200,
+            easing: theme.transitions.easing.easeOut,
+          }),
+          "@media (hover: hover)": {
+            "&:hover": {
+              zIndex: 1,
+              transform: "translateY(-3px) scale(1.01)",
+              boxShadow: "0 12px 28px rgba(23, 41, 43, 0.14)",
+              bgcolor: isPeerOwned ? alpha(theme.palette.secondary.main, 0.06) : theme.palette.background.paper,
+            },
+          },
         }}
       >
         <Box sx={{ display: "flex", gap: 1, alignItems: "flex-start" }}>
@@ -1439,7 +1457,16 @@ export default function CalendarPage() {
             </Box>
 
             <Box sx={{ borderTop: `1px solid ${theme.palette.divider}`, mt: 2, pt: 2 }}>
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }} onClick={() => setOverdueOpen(!overdueOpen)}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  cursor: "pointer",
+                  mb: 1,
+                }}
+                onClick={() => setOverdueOpen(!overdueOpen)}
+              >
                 <Typography variant="subtitle2" fontWeight={800} color="text.secondary">
                   Overdue ({overdueList.length})
                 </Typography>
@@ -1449,7 +1476,16 @@ export default function CalendarPage() {
             </Box>
 
             <Box sx={{ borderTop: `1px solid ${theme.palette.divider}`, mt: 2, pt: 2 }}>
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }} onClick={() => setUpcomingOpen(!upcomingOpen)}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  cursor: "pointer",
+                  mb: 1,
+                }}
+                onClick={() => setUpcomingOpen(!upcomingOpen)}
+              >
                 <Typography variant="subtitle2" fontWeight={800} color="text.primary">
                   Upcoming ({upcomingList.length})
                 </Typography>
@@ -1506,9 +1542,46 @@ export default function CalendarPage() {
           </Button>
         </DialogActions>
       </Dialog>
-      <Dialog open={detailsOpen} onClose={closeDetails} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingEvent ? "Edit Event" : "Event Details"}</DialogTitle>
-        <DialogContent dividers>
+      <Dialog
+        open={detailsOpen}
+        onClose={closeDetails}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            overflow: "hidden",
+            border: `1px solid ${theme.palette.divider}`,
+            boxShadow: "0 16px 48px rgba(23, 41, 43, 0.14)",
+          },
+        }}
+      >
+        <Box
+          sx={{
+            height: 5,
+            background: "linear-gradient(90deg, #5D6C5C 0%, #17292B 100%)",
+          }}
+        />
+        <DialogTitle
+          sx={{
+            pt: 2.25,
+            pb: 1.25,
+            px: 2.5,
+            fontWeight: 800,
+            fontSize: "1.2rem",
+            letterSpacing: "-0.02em",
+            color: "text.primary",
+          }}
+        >
+          {editingEvent ? "Edit Event" : "Event Details"}
+        </DialogTitle>
+        <DialogContent
+          sx={{
+            px: 2.5,
+            pt: 0,
+            pb: 2,
+          }}
+        >
           {detailsError ? (
             <Typography color="error" variant="body2" sx={{ mb: 1.5 }}>
               {detailsError}
@@ -1683,78 +1756,285 @@ export default function CalendarPage() {
               ) : null}
             </Box>
           ) : (
-            <Box sx={{ display: "grid", gap: 0.7 }}>
-              <Typography variant="h6" sx={{ fontWeight: 800, mt: 0.5 }}>
-                {selectedEvent.title}
-              </Typography>
-              {selectedEvent.description ? (
-                <Typography variant="body2" color="text.secondary">
-                  {selectedEvent.description}
-                </Typography>
-              ) : null}
-              <Typography variant="body2">
-                {selectedEvent.event_date} {selectedEvent.event_time} → {selectedEvent.end_date} {selectedEvent.end_time}
-              </Typography>
-              <Typography variant="body2">Category: {selectedEvent.category}</Typography>
-              <Typography variant="body2">
-                Type:{" "}
-                {(() => {
-                  const t = getCalendarEventTypeText(selectedEvent);
-                  return t === "—" && detailsLoading ? "Loading..." : t;
-                })()}
-              </Typography>
-              {!isPrivateListing(selectedEvent) ? (
-                <Typography variant="body2">
-                  Capacity:{" "}
-                  {selectedEvent.capacity !== undefined &&
-                  selectedEvent.capacity !== null &&
-                  selectedEvent.capacity !== ""
-                    ? Number(selectedEvent.capacity)
-                    : detailsLoading
-                      ? "Loading..."
-                      : "—"}
-                </Typography>
-              ) : null}
-              <Typography variant="body2" color="text.secondary">
-                Owner: {Number(selectedEvent.created_by) === Number(myId) ? "You" : selectedEvent.creator_name || "Unknown"}
-              </Typography>
-              {detailsLoading ? (
-                <Typography variant="caption" color="text.secondary">
-                  Loading attendees…
-                </Typography>
-              ) : detailAttendees.length > 0 ? (
-                <Typography variant="body2" color="text.secondary">
-                  Attendees:{" "}
-                  {detailAttendees
-                    .map((a) => a.attendee_name || a.attendee_email)
-                    .filter(Boolean)
-                    .join(", ")}
-                </Typography>
-              ) : (
-                <Typography variant="caption" color="text.secondary">
-                  No invited attendees yet.
-                </Typography>
-              )}
-            </Box>
+            (() => {
+              const { start } = eventDateRange(selectedEvent);
+              const {
+                displayLabel,
+                displayKind,
+                showAudienceChip,
+                audienceLabel,
+                visibility,
+              } = getFoldedListingChips(selectedEvent);
+              const capNum =
+                selectedEvent.capacity !== undefined &&
+                selectedEvent.capacity !== null &&
+                selectedEvent.capacity !== ""
+                  ? Number(selectedEvent.capacity)
+                  : NaN;
+              const capacityLabel =
+                !isPrivateListing(selectedEvent) && Number.isFinite(capNum) && capNum > 0
+                  ? `${capNum} spots`
+                  : null;
+              const ownerName =
+                Number(selectedEvent.created_by) === Number(myId)
+                  ? "You"
+                  : selectedEvent.creator_name || "Unknown";
+              const attendeeNames = detailAttendees
+                .map((a) => a.attendee_name || a.attendee_email)
+                .filter(Boolean);
+
+              return (
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 2.25, mt: 0.5 }}>
+                  <Typography variant="h5" sx={{ fontWeight: 800, lineHeight: 1.25, color: "text.primary" }}>
+                    {selectedEvent.title}
+                  </Typography>
+
+                  {selectedEvent.description ? (
+                    <Box
+                      sx={{
+                        p: 1.75,
+                        borderRadius: 2,
+                        bgcolor: alpha(theme.palette.text.primary, 0.04),
+                        border: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
+                      }}
+                    >
+                      <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ display: "block", mb: 0.75 }}>
+                        Description
+                      </Typography>
+                      <Typography variant="body2" color="text.primary" sx={{ lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+                        {selectedEvent.description}
+                      </Typography>
+                    </Box>
+                  ) : null}
+
+                  <Box>
+                    <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ display: "block", mb: 1 }}>
+                      When
+                    </Typography>
+                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2, alignItems: "center" }}>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 0.75,
+                          color: "text.secondary",
+                          fontSize: "0.875rem",
+                        }}
+                      >
+                        <EventIcon sx={{ fontSize: 20, color: "primary.main", opacity: 0.85 }} />
+                        <span>{formatShortDayTime(start)}</span>
+                      </Box>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 0.75,
+                          color: "text.secondary",
+                          fontSize: "0.875rem",
+                        }}
+                      >
+                        <ScheduleIcon sx={{ fontSize: 20, color: "primary.main", opacity: 0.85 }} />
+                        <span>
+                          Until {formatShortEndTime(selectedEvent)}
+                        </span>
+                      </Box>
+                    </Box>
+                    <Typography variant="caption" color="text.disabled" sx={{ display: "block", mt: 0.75 }}>
+                      {selectedEvent.event_date} {selectedEvent.event_time} → {selectedEvent.end_date}{" "}
+                      {selectedEvent.end_time}
+                    </Typography>
+                  </Box>
+
+                  <Box>
+                    <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ display: "block", mb: 1 }}>
+                      Details
+                    </Typography>
+                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, alignItems: "center" }}>
+                      {selectedEvent.category ? (
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            display: "inline-block",
+                            px: 1.25,
+                            py: 0.4,
+                            borderRadius: 999,
+                            bgcolor: alpha(theme.palette.secondary.main, 0.08),
+                            color: "text.secondary",
+                            fontWeight: 700,
+                          }}
+                        >
+                          {selectedEvent.category}
+                        </Typography>
+                      ) : null}
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          display: "inline-block",
+                          px: 1.25,
+                          py: 0.4,
+                          borderRadius: 999,
+                          bgcolor:
+                            displayKind === "personal"
+                              ? alpha(theme.palette.primary.main, 0.14)
+                              : displayKind === "group"
+                                ? alpha(theme.palette.primary.main, 0.22)
+                                : displayKind === "private"
+                                  ? alpha(theme.palette.secondary.main, 0.12)
+                                  : alpha(theme.palette.primary.main, 0.1),
+                          color: theme.palette.secondary.main,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {detailsLoading && getCalendarEventTypeText(selectedEvent) === "—"
+                          ? "Loading…"
+                          : displayLabel}
+                      </Typography>
+                      {showAudienceChip ? (
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            display: "inline-block",
+                            px: 1.25,
+                            py: 0.4,
+                            borderRadius: 999,
+                            bgcolor:
+                              visibility === "private"
+                                ? alpha(theme.palette.secondary.main, 0.12)
+                                : alpha(theme.palette.primary.main, 0.12),
+                            color: theme.palette.secondary.main,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {audienceLabel}
+                        </Typography>
+                      ) : null}
+                      {capacityLabel ? (
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            display: "inline-block",
+                            px: 1.25,
+                            py: 0.4,
+                            borderRadius: 999,
+                            bgcolor: alpha(theme.palette.secondary.main, 0.1),
+                            color: "text.primary",
+                            fontWeight: 700,
+                          }}
+                        >
+                          {capacityLabel}
+                        </Typography>
+                      ) : !isPrivateListing(selectedEvent) && detailsLoading ? (
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            display: "inline-block",
+                            px: 1.25,
+                            py: 0.4,
+                            borderRadius: 999,
+                            bgcolor: alpha(theme.palette.secondary.main, 0.06),
+                            color: "text.disabled",
+                            fontWeight: 600,
+                          }}
+                        >
+                          Capacity…
+                        </Typography>
+                      ) : null}
+                    </Box>
+                  </Box>
+
+                  <Divider sx={{ borderColor: alpha(theme.palette.divider, 0.9) }} />
+
+                  <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    <Box sx={{ display: "flex", gap: 1.25, alignItems: "flex-start" }}>
+                      <PersonOutlineIcon sx={{ fontSize: 22, color: "text.secondary", mt: 0.15, flexShrink: 0 }} />
+                      <Box>
+                        <Typography variant="caption" color="text.secondary" fontWeight={800} sx={{ display: "block", mb: 0.35 }}>
+                          Owner
+                        </Typography>
+                        <Typography variant="body2" fontWeight={600} color="text.primary">
+                          {ownerName}
+                        </Typography>
+                      </Box>
+                    </Box>
+                    <Box sx={{ display: "flex", gap: 1.25, alignItems: "flex-start" }}>
+                      <PeopleOutlineIcon sx={{ fontSize: 22, color: "text.secondary", mt: 0.15, flexShrink: 0 }} />
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="caption" color="text.secondary" fontWeight={800} sx={{ display: "block", mb: 0.35 }}>
+                          Attendees
+                        </Typography>
+                        {detailsLoading ? (
+                          <Typography variant="body2" color="text.disabled">
+                            Loading attendees…
+                          </Typography>
+                        ) : attendeeNames.length > 0 ? (
+                          <Typography variant="body2" color="text.primary" sx={{ lineHeight: 1.5 }}>
+                            {attendeeNames.join(", ")}
+                          </Typography>
+                        ) : (
+                          <Typography variant="body2" color="text.disabled" fontStyle="italic">
+                            No invited attendees yet.
+                          </Typography>
+                        )}
+                      </Box>
+                    </Box>
+                  </Box>
+                </Box>
+              );
+            })()
           )}
         </DialogContent>
-        <DialogActions sx={{ px: 2, py: 1.5 }}>
+        <DialogActions
+          sx={{
+            px: 2.5,
+            py: 2,
+            gap: 1,
+            borderTop: `1px solid ${theme.palette.divider}`,
+            bgcolor: alpha(theme.palette.text.primary, 0.02),
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
+          }}
+        >
           {selectedEvent && Number(selectedEvent.created_by) === Number(myId) && !editingEvent ? (
-            <Button onClick={beginEditingEvent} variant="outlined">
+            <Button
+              onClick={beginEditingEvent}
+              variant="outlined"
+              sx={{ borderRadius: 999, textTransform: "none", fontWeight: 800, px: 2.5 }}
+            >
               Edit Event
             </Button>
           ) : null}
           {editingEvent ? (
             <>
-              <Button onClick={() => setEditingEvent(false)} color="inherit">
+              <Button
+                onClick={() => setEditingEvent(false)}
+                variant="outlined"
+                sx={{ borderRadius: 999, textTransform: "none", fontWeight: 700, px: 2.5 }}
+              >
                 Cancel
               </Button>
-              <Button onClick={handleSaveEditedEvent} variant="contained" disabled={detailsSaving}>
+              <Button
+                onClick={handleSaveEditedEvent}
+                variant="contained"
+                disabled={detailsSaving}
+                sx={{ borderRadius: 999, textTransform: "none", fontWeight: 800, px: 2.5 }}
+              >
                 {detailsSaving ? "Saving…" : "Save Changes"}
               </Button>
             </>
           ) : (
-            <Button onClick={closeDetails} color="inherit">
+            <Button
+              onClick={closeDetails}
+              variant="contained"
+              sx={{
+                borderRadius: 999,
+                textTransform: "none",
+                fontWeight: 800,
+                px: 3,
+                boxShadow: "none",
+                bgcolor: "#111",
+                "&:hover": { bgcolor: "#222", boxShadow: "none" },
+              }}
+            >
               Close
             </Button>
           )}
