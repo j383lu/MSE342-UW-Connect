@@ -75,12 +75,14 @@ function getCalendarScope(ev) {
   // Events created via /api/events use event_type 'group' but often have no __calscope__ tag;
   // calendar list does not include attendee_count, so do not rely on that heuristic alone.
   const eventType = String(ev?.event_type || "").trim().toLowerCase();
-  if (eventType === "group") return "group";
+  if (eventType === "group" || eventType === "private") return "group";
   const attendeeCount = Number(ev?.attendee_count || 0);
   return attendeeCount > 0 ? "group" : "personal";
 }
 
 function getCalendarVisibility(ev) {
+  const etDb = String(ev?.event_type || "").trim().toLowerCase();
+  if (etDb === "private") return "private";
   const explicit = String(ev?.calendar_visibility || "").trim().toLowerCase();
   if (explicit === "public" || explicit === "private") return explicit;
   const fromTags = extractCalendarVisibility(ev?.tags);
@@ -94,6 +96,7 @@ function getCalendarEventTypeText(ev) {
   const t = raw.toLowerCase();
   if (t === "group") return "Group";
   if (t === "public") return "Public";
+  if (t === "private") return "Private";
   return raw;
 }
 
@@ -115,6 +118,7 @@ function getCalendarTypeBadge(ev) {
   }
   const et = String(ev?.event_type || "").trim().toLowerCase();
   if (et === "group") return { label: "Group", kind: "group" };
+  if (et === "private") return { label: "Private", kind: "private" };
   if (et === "public") return { label: "Public", kind: "public" };
   const scope = getCalendarScope(ev);
   if (scope === "group") return { label: "Group", kind: "group" };
@@ -127,7 +131,7 @@ function getEditFormScope(ev) {
     return getCalendarScope(ev);
   }
   const et = String(ev?.event_type || "").trim().toLowerCase();
-  if (et === "group" || et === "public") {
+  if (et === "group" || et === "public" || et === "private") {
     return "group";
   }
   return getCalendarScope(ev);
@@ -139,6 +143,9 @@ function getEditFormVisibility(ev) {
     return getCalendarVisibility(ev);
   }
   const et = String(ev?.event_type || "").trim().toLowerCase();
+  if (et === "private") {
+    return "private";
+  }
   if (et === "public" || et === "group") {
     return "public";
   }
@@ -590,8 +597,10 @@ export default function CalendarPage() {
               event_time: editEventForm.event_time,
               end_date: editEventForm.end_date,
               end_time: editEventForm.end_time,
-              // Preserve event_type/capacity during optimistic updates so the details popup stays correct.
-              event_type: prev.event_type ?? selectedEvent.event_type,
+              event_type:
+                data.event_type !== undefined && data.event_type !== null && data.event_type !== ""
+                  ? data.event_type
+                  : prev.event_type ?? selectedEvent.event_type,
               capacity:
                 optimisticCapacity !== undefined &&
                 optimisticCapacity !== null &&
@@ -736,13 +745,17 @@ export default function CalendarPage() {
                       ? "#EBF8FF"
                       : typeBadge.kind === "group"
                         ? "#F0FFF4"
-                        : "#E6FFFA",
+                        : typeBadge.kind === "private"
+                          ? "#FAF5FF"
+                          : "#E6FFFA",
                   color:
                     typeBadge.kind === "personal"
                       ? "#2B6CB0"
                       : typeBadge.kind === "group"
                         ? "#276749"
-                        : "#2C7A7B",
+                        : typeBadge.kind === "private"
+                          ? "#553C9A"
+                          : "#2C7A7B",
                   fontWeight: 700,
                 }}
               >

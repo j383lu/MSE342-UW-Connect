@@ -106,10 +106,9 @@ export default function EventCard({
     [eventTags]
   );
 
+  const eventTypeRaw = String(ev.event_type || "public").toLowerCase();
   const eventTypeText =
-    String(ev.event_type || "public").toLowerCase() === "group"
-      ? "Group"
-      : "Public";
+    eventTypeRaw === "group" ? "Group" : eventTypeRaw === "private" ? "Private" : "Public";
 
   const backendStatus =
     ev.event_status || (isPast ? "ended" : "open_for_application");
@@ -189,12 +188,10 @@ export default function EventCard({
     setTagInput("");
     setTags(eventTags);
     setEventType(
-      String(ev.event_type || "public").toLowerCase() === "group"
-        ? "group"
-        : "public"
+      eventTypeRaw === "group" ? "group" : eventTypeRaw === "private" ? "private" : "public"
     );
     setGroupSelectValue("");
-    setSelectedGroups(buildSelectedGroupsFromEvent());
+    setSelectedGroups(eventTypeRaw === "private" ? [] : buildSelectedGroupsFromEvent());
     setEditError("");
     setEditMessage("");
     setGroupMessage("");
@@ -283,10 +280,7 @@ export default function EventCard({
       await loadCategories();
     }
 
-    if (
-      String(ev.event_type || "public").toLowerCase() === "group" &&
-      !groupsLoaded
-    ) {
+    if (eventTypeRaw === "group" && !groupsLoaded) {
       await loadMyGroups();
     }
   };
@@ -302,7 +296,7 @@ export default function EventCard({
     setEditMessage("");
     clearEditFieldError("selectedGroups");
 
-    if (type === "public") {
+    if (type === "public" || type === "private") {
       setGroupSelectValue("");
       setSelectedGroups([]);
       setGroupMessage("");
@@ -691,6 +685,19 @@ export default function EventCard({
                 style={{
                   ...styles.eventTypeChip,
                   marginLeft: ev.category ? "8px" : "0",
+                  ...(eventTypeRaw === "private"
+                    ? {
+                        background: "#FAF5FF",
+                        color: "#553C9A",
+                        border: "1px solid #D6BCFA",
+                      }
+                    : eventTypeRaw === "group"
+                      ? {
+                          background: "#F0FFF4",
+                          color: "#276749",
+                          border: "1px solid #9AE6B4",
+                        }
+                      : {}),
                 }}
               >
                 {eventTypeText}
@@ -907,7 +914,19 @@ export default function EventCard({
                     cursor: "pointer",
                   }}
                 >
-                  Private
+                  Group
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleEditEventTypeChange("private")}
+                  style={{
+                    ...styles.filterChip,
+                    ...(eventType === "private" ? styles.filterChipActive : {}),
+                    cursor: "pointer",
+                  }}
+                >
+                  Invite only
                 </button>
               </div>
             </div>

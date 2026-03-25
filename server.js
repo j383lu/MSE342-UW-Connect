@@ -568,6 +568,7 @@ app.get("/api/events", checkAuth, (req, res) => {
       LEFT JOIN Event_Tags t ON t.event_id = e.id
       LEFT JOIN Event_Likes el ON el.event_id = e.id
       WHERE 1=1
+      AND e.event_type <> 'private'
       ${pastFilter}
       ${SQL_EXCLUDE_CALENDAR_PERSONAL_EVENT}
       GROUP BY
@@ -1381,10 +1382,15 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
     const ownershipSql = `
       SELECT
         e.id,
+        e.event_type AS current_event_type,
         EXISTS (
           SELECT 1 FROM Event_Tags ct
           WHERE ct.event_id = e.id AND ct.tag_name = '__calendar__'
-        ) AS has_calendar
+        ) AS has_calendar,
+        EXISTS (
+          SELECT 1 FROM Event_Groups eg
+          WHERE eg.event_id = e.id
+        ) AS has_event_groups
       FROM Events e
       WHERE e.id = ?
         AND e.created_by = ?
@@ -1401,8 +1407,18 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
       }
 
       const hasCalendar = Number(ownRows[0].has_calendar) === 1;
+      const hasEventGroups = Number(ownRows[0].has_event_groups) === 1;
 
-      const updateSql = `
+      let nextEventType = null;
+      if (eventScope === "group") {
+        if (eventVisibility === "private") {
+          nextEventType = "private";
+        } else {
+          nextEventType = hasEventGroups ? "group" : "public";
+        }
+      }
+
+      let updateSql = `
         UPDATE Events
         SET
           title = ?,
@@ -1412,12 +1428,34 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
           event_time = ?,
           end_date = ?,
           end_time = ?,
-          capacity = ?
-        WHERE id = ?
-      `;
+          capacity = ?`;
+      const updateParams = [
+        String(title).trim(),
+        description != null ? String(description) : "",
+        String(category).trim(),
+        event_date,
+        et,
+        end_date,
+        xt,
+        capacityNum,
+      ];
+      if (nextEventType !== null) {
+        updateSql += `,\n          event_type = ?`;
+        updateParams.push(nextEventType);
+      }
+      updateSql += `\n        WHERE id = ?`;
+      updateParams.push(eventId);
 
-      const respondSuccess = () =>
-        res.json({ message: "Event updated successfully.", capacity: capacityNum });
+      const respondSuccess = () => {
+        const payload = {
+          message: "Event updated successfully.",
+          capacity: capacityNum,
+        };
+        if (nextEventType !== null) {
+          payload.event_type = nextEventType;
+        }
+        return res.json(payload);
+      };
 
       const syncGroupAttendees = () => {
         if (eventScope !== "group") {
@@ -1460,30 +1498,9 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
         });
       };
 
-      db.query(
-        updateSql,
-        [
-          String(title).trim(),
-          description != null ? String(description) : "",
-          String(category).trim(),
-          event_date,
-          et,
-          end_date,
-          xt,
-          capacityNum,
-          eventId,
-        ],
-        (updErr) => {
-          if (updErr) {
-            console.log("PUT /api/calendar/events/:id update error:", updErr);
-            return res.status(500).json({ error: "Failed to update event." });
-          }
-
-          if (!hasCalendar) {
-            return syncGroupAttendees();
-          }
-
-          const clearMetaSql = `
+      /** Writes __calscope__ / __calvisibility__ (and friends) so group public/private persists for feed events too. */
+      const persistCalendarMetaThenSyncAttendees = () => {
+        const clearMetaSql = `
             DELETE FROM Event_Tags
             WHERE event_id = ?
               AND (
@@ -1494,26 +1511,40 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
               )
           `;
 
-          db.query(clearMetaSql, [eventId], (clearErr) => {
-            if (clearErr) {
-              console.log("PUT /api/calendar/events/:id clear tags error:", clearErr);
-              return res.status(500).json({ error: "Failed to update calendar metadata." });
-            }
+        db.query(clearMetaSql, [eventId], (clearErr) => {
+          if (clearErr) {
+            console.log("PUT /api/calendar/events/:id clear tags error:", clearErr);
+            return res.status(500).json({ error: "Failed to update calendar metadata." });
+          }
 
-            const tagValues = [
-              [eventId, "__calendar__"],
-              [eventId, `__calcolor__:${safeColor || "blue"}`],
-              [eventId, `__calscope__:${eventScope}`],
-              [eventId, `__calvisibility__:${eventVisibility}`],
-            ];
-            db.query("INSERT INTO Event_Tags (event_id, tag_name) VALUES ?", [tagValues], (tagErr) => {
-              if (tagErr) {
-                console.log("PUT /api/calendar/events/:id insert tags error:", tagErr);
-                return res.status(500).json({ error: "Failed to save calendar metadata." });
-              }
-              return syncGroupAttendees();
-            });
+          const tagValues = [
+            [eventId, "__calendar__"],
+            [eventId, `__calcolor__:${safeColor || "blue"}`],
+            [eventId, `__calscope__:${eventScope}`],
+            [eventId, `__calvisibility__:${eventVisibility}`],
+          ];
+          db.query("INSERT INTO Event_Tags (event_id, tag_name) VALUES ?", [tagValues], (tagErr) => {
+            if (tagErr) {
+              console.log("PUT /api/calendar/events/:id insert tags error:", tagErr);
+              return res.status(500).json({ error: "Failed to save calendar metadata." });
+            }
+            return syncGroupAttendees();
           });
+        });
+      };
+
+      db.query(updateSql, updateParams, (updErr) => {
+          if (updErr) {
+            console.log("PUT /api/calendar/events/:id update error:", updErr);
+            return res.status(500).json({ error: "Failed to update event." });
+          }
+
+          // Feed events had no __calendar__ row before: still persist visibility in Event_Tags when editing as group.
+          if (eventScope === "group" || hasCalendar) {
+            return persistCalendarMetaThenSyncAttendees();
+          }
+
+          return syncGroupAttendees();
         }
       );
     });
@@ -3781,6 +3812,7 @@ app.get("/api/events/search", checkAuth, (req, res) => {
           OR e.category LIKE ?
           OR t.tag_name LIKE ?
         )
+      AND e.event_type <> 'private'
       ${SQL_EXCLUDE_CALENDAR_PERSONAL_EVENT}
       GROUP BY
         e.id,
@@ -3917,7 +3949,7 @@ app.get("/api/events/suggestions", checkAuth, (req, res) => {
           )
           AND
           (
-            e.event_type = 'public'
+            e.event_type IN ('public', 'private')
             OR (
               e.event_type = 'group'
               AND EXISTS (
@@ -4380,7 +4412,7 @@ app.get("/api/events/my-events", checkAuth, (req, res) => {
         DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
         COUNT(
           DISTINCT CASE
-            WHEN e.event_type = 'public' THEN a.id
+            WHEN e.event_type IN ('public', 'private') THEN a.id
             WHEN e.event_type = 'group'
               AND (
                 LOWER(a.attendee_name) = LOWER(uc_creator.email)
@@ -4439,7 +4471,7 @@ app.get("/api/events/my-events", checkAuth, (req, res) => {
         )
         AND
         (
-          e.event_type = 'public'
+          e.event_type IN ('public', 'private')
           OR (
             e.event_type = 'group'
             AND EXISTS (
@@ -4571,9 +4603,8 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
     return res.status(400).json({ error: "Invalid event id." });
   }
 
-  const {title, description, event_date, event_time, end_date, end_time, location, capacity,
-    category, tags, event_type, group_ids,
-  } = req.body;
+  const { title, description, event_date, event_time, end_date, end_time, location, capacity, category, tags, event_type, group_ids } =
+    req.body;
 
   if (!title || !description || !event_date || !event_time || !end_date || !end_time || !location || capacity === undefined || !category) {
     return res.status(400).json({ error: "Missing required fields." });
@@ -4624,10 +4655,9 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
     });
   }
 
+  const rawPutEvtType = String(event_type || "public").trim().toLowerCase();
   const safeEventType =
-    String(event_type || "public").trim().toLowerCase() === "group"
-      ? "group"
-      : "public";
+    rawPutEvtType === "group" ? "group" : rawPutEvtType === "private" ? "private" : "public";
 
   const safeTags = Array.isArray(tags) ? tags : [];
 
