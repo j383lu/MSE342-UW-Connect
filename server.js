@@ -1049,7 +1049,9 @@ app.delete("/api/events/:id/leave", checkAuth, (req, res) => {
 });
 
 // GET /api/events/:id/attendees
-// This API returns the list of users who joined a specific event with their basic information.
+// This API returns the list of users who joined a specific event.
+// It matches attendees by email internally and returns display names to the frontend.
+
 app.get("/api/events/:id/attendees", checkAuth, (req, res) => {
   const eventId = Number(req.params.id);
 
@@ -1057,35 +1059,101 @@ app.get("/api/events/:id/attendees", checkAuth, (req, res) => {
     return res.status(400).json({ error: "Invalid event id." });
   }
 
-  const sql = `
-    SELECT 
-      a.attendee_name,
-      a.joined_at,
-      uc.user_id,
-      up.display_name
-    FROM Event_Attendees a
-    LEFT JOIN User_Credentials uc
-      ON LOWER(a.attendee_name) = LOWER(uc.email)
-    LEFT JOIN User_Profiles up
-      ON uc.user_id = up.user_id
-    WHERE a.event_id = ?
-    ORDER BY a.joined_at ASC
+  const eventTypeSql = `
+    SELECT event_type
+    FROM Events
+    WHERE id = ?
+    LIMIT 1
   `;
 
-  db.query(sql, [eventId], (err, results) => {
-    if (err) {
-      console.log("GET /api/events/:id/attendees error:", err);
-      return res.status(500).json({ error: "Failed to load attendees." });
+  db.query(eventTypeSql, [eventId], (eventErr, eventRows) => {
+    if (eventErr) {
+      console.log("GET /api/events/:id/attendees event lookup error:", eventErr);
+      return res.status(500).json({ error: "Failed to load event attendees." });
     }
 
-    const formatted = (results || []).map((row) => ({
-      attendee_name: row.display_name || row.attendee_name,
-      joined_at: row.joined_at,
-      email: row.attendee_name,
-      user_id: row.user_id || null,
-    }));
+    if (!eventRows || eventRows.length === 0) {
+      return res.status(404).json({ error: "Event not found." });
+    }
 
-    return res.json(formatted);
+    const eventType = String(eventRows[0].event_type || "").toLowerCase();
+
+    if (eventType !== "group") {
+      const publicSql = `
+        SELECT
+          ea.id,
+          ea.joined_at,
+          ea.attendee_name AS attendee_email,
+          COALESCE(up.display_name, SUBSTRING_INDEX(ea.attendee_name, '@', 1)) AS attendee_name
+        FROM Event_Attendees ea
+        LEFT JOIN User_Credentials uc
+          ON LOWER(uc.email) = LOWER(ea.attendee_name)
+        LEFT JOIN User_Profiles up
+          ON up.user_id = uc.user_id
+        WHERE ea.event_id = ?
+        ORDER BY ea.joined_at ASC, ea.id ASC
+      `;
+
+      db.query(publicSql, [eventId], (err, rows) => {
+        if (err) {
+          console.log("GET /api/events/:id/attendees public error:", err);
+          return res.status(500).json({ error: "Failed to load attendees." });
+        }
+
+        return res.json(
+          rows.map((row) => ({
+            attendee_name: row.attendee_name,
+          }))
+        );
+      });
+
+      return;
+    }
+
+    const privateSql = `
+      SELECT
+        ea.id,
+        ea.joined_at,
+        ea.attendee_name AS attendee_email,
+        COALESCE(up.display_name, SUBSTRING_INDEX(ea.attendee_name, '@', 1)) AS attendee_name
+      FROM Event_Attendees ea
+      INNER JOIN Events e
+        ON e.id = ea.event_id
+      LEFT JOIN User_Credentials uc_creator
+        ON uc_creator.user_id = e.created_by
+      LEFT JOIN User_Credentials uc
+        ON LOWER(uc.email) = LOWER(ea.attendee_name)
+      LEFT JOIN User_Profiles up
+        ON up.user_id = uc.user_id
+      WHERE ea.event_id = ?
+        AND (
+          LOWER(ea.attendee_name) = LOWER(uc_creator.email)
+          OR EXISTS (
+            SELECT 1
+            FROM User_Credentials uc_att
+            INNER JOIN Group_Members gm
+              ON gm.user_id = uc_att.user_id
+            INNER JOIN Event_Groups eg
+              ON eg.group_id = gm.group_id
+            WHERE eg.event_id = e.id
+              AND LOWER(uc_att.email) = LOWER(ea.attendee_name)
+          )
+        )
+      ORDER BY ea.joined_at ASC, ea.id ASC
+    `;
+
+    db.query(privateSql, [eventId], (err, rows) => {
+      if (err) {
+        console.log("GET /api/events/:id/attendees private error:", err);
+        return res.status(500).json({ error: "Failed to load attendees." });
+      }
+
+      return res.json(
+        rows.map((row) => ({
+          attendee_name: row.attendee_name,
+        }))
+      );
+    });
   });
 });
 
@@ -3212,6 +3280,7 @@ app.get("/api/my-groups", checkAuth, (req, res) => {
 // GET /api/events/public
 // Show public events and group events visible to this user.
 // If includePast=false, only return events that have not ended yet.
+
 app.get("/api/events/public", checkAuth, (req, res) => {
   const includePast = String(req.query.includePast).toLowerCase() === "true";
   const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
@@ -3250,7 +3319,27 @@ app.get("/api/events/public", checkAuth, (req, res) => {
           ELSE 0
         END AS is_owner,
         DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
-        COUNT(DISTINCT a.id) AS current_count,
+        COUNT(
+          DISTINCT CASE
+            WHEN e.event_type = 'public' THEN a.id
+            WHEN e.event_type = 'group'
+              AND (
+                LOWER(a.attendee_name) = LOWER(uc_creator.email)
+                OR EXISTS (
+                  SELECT 1
+                  FROM User_Credentials uc_att
+                  INNER JOIN Group_Members gm_att
+                    ON gm_att.user_id = uc_att.user_id
+                  INNER JOIN Event_Groups eg_att
+                    ON eg_att.group_id = gm_att.group_id
+                  WHERE eg_att.event_id = e.id
+                    AND LOWER(uc_att.email) = LOWER(a.attendee_name)
+                )
+              )
+            THEN a.id
+            ELSE NULL
+          END
+        ) AS current_count,
         GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
         GROUP_CONCAT(DISTINCT eg.group_id ORDER BY eg.group_id SEPARATOR ',') AS group_ids,
         GROUP_CONCAT(DISTINCT sg.name ORDER BY sg.name SEPARATOR ',') AS group_names,
@@ -3260,17 +3349,25 @@ app.get("/api/events/public", checkAuth, (req, res) => {
         END AS is_past,
         CASE
           WHEN NOW() < TIMESTAMP(e.event_date, e.event_time) THEN 'open_for_application'
-          WHEN NOW() >= TIMESTAMP(e.event_date, e.event_time) AND NOW() <= TIMESTAMP(e.end_date, e.end_time) THEN 'in_progress'
+          WHEN NOW() >= TIMESTAMP(e.event_date, e.event_time)
+            AND NOW() <= TIMESTAMP(e.end_date, e.end_time) THEN 'in_progress'
           ELSE 'ended'
         END AS event_status,
         MAX(CASE WHEN LOWER(a.attendee_name) = ? THEN 1 ELSE 0 END) AS has_joined,
         MAX(CASE WHEN el.user_id = ? THEN 1 ELSE 0 END) AS has_liked
       FROM Events e
-      LEFT JOIN Event_Attendees a ON a.event_id = e.id
-      LEFT JOIN Event_Tags t ON t.event_id = e.id
-      LEFT JOIN Event_Likes el ON el.event_id = e.id
-      LEFT JOIN Event_Groups eg ON eg.event_id = e.id
-      LEFT JOIN Social_Group sg ON sg.group_id = eg.group_id
+      LEFT JOIN Event_Attendees a
+        ON a.event_id = e.id
+      LEFT JOIN Event_Tags t
+        ON t.event_id = e.id
+      LEFT JOIN Event_Likes el
+        ON el.event_id = e.id
+      LEFT JOIN Event_Groups eg
+        ON eg.event_id = e.id
+      LEFT JOIN Social_Group sg
+        ON sg.group_id = eg.group_id
+      LEFT JOIN User_Credentials uc_creator
+        ON uc_creator.user_id = e.created_by
       WHERE (
         e.event_type = 'public'
         OR (
@@ -3299,7 +3396,8 @@ app.get("/api/events/public", checkAuth, (req, res) => {
         e.category,
         e.event_type,
         e.created_by,
-        e.published_time
+        e.published_time,
+        uc_creator.email
       ORDER BY e.event_date ASC, e.event_time ASC
     `;
 
@@ -3321,6 +3419,7 @@ app.get("/api/events/public", checkAuth, (req, res) => {
 // GET /api/events/my-groups
 // Show only group events linked to groups the current user joined.
 // If includePast=false, only return events that have not ended yet.
+
 app.get("/api/events/my-groups", checkAuth, (req, res) => {
   const includePast = String(req.query.includePast).toLowerCase() === "true";
   const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
@@ -3359,7 +3458,27 @@ app.get("/api/events/my-groups", checkAuth, (req, res) => {
           ELSE 0
         END AS is_owner,
         DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
-        COUNT(DISTINCT a.id) AS current_count,
+        COUNT(
+          DISTINCT CASE
+            WHEN e.event_type = 'public' THEN a.id
+            WHEN e.event_type = 'group'
+              AND (
+                LOWER(a.attendee_name) = LOWER(uc_creator.email)
+                OR EXISTS (
+                  SELECT 1
+                  FROM User_Credentials uc_att
+                  INNER JOIN Group_Members gm_att
+                    ON gm_att.user_id = uc_att.user_id
+                  INNER JOIN Event_Groups eg_att
+                    ON eg_att.group_id = gm_att.group_id
+                  WHERE eg_att.event_id = e.id
+                    AND LOWER(uc_att.email) = LOWER(a.attendee_name)
+                )
+              )
+            THEN a.id
+            ELSE NULL
+          END
+        ) AS current_count,
         GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
         GROUP_CONCAT(DISTINCT eg.group_id ORDER BY eg.group_id SEPARATOR ',') AS group_ids,
         GROUP_CONCAT(DISTINCT sg.name ORDER BY sg.name SEPARATOR ',') AS group_names,
@@ -3369,7 +3488,8 @@ app.get("/api/events/my-groups", checkAuth, (req, res) => {
         END AS is_past,
         CASE
           WHEN NOW() < TIMESTAMP(e.event_date, e.event_time) THEN 'open_for_application'
-          WHEN NOW() >= TIMESTAMP(e.event_date, e.event_time) AND NOW() <= TIMESTAMP(e.end_date, e.end_time) THEN 'in_progress'
+          WHEN NOW() >= TIMESTAMP(e.event_date, e.event_time)
+            AND NOW() <= TIMESTAMP(e.end_date, e.end_time) THEN 'in_progress'
           ELSE 'ended'
         END AS event_status,
         MAX(CASE WHEN LOWER(a.attendee_name) = ? THEN 1 ELSE 0 END) AS has_joined,
@@ -3389,6 +3509,8 @@ app.get("/api/events/my-groups", checkAuth, (req, res) => {
         ON eg.event_id = e.id
       LEFT JOIN Social_Group sg
         ON sg.group_id = eg.group_id
+      LEFT JOIN User_Credentials uc_creator
+        ON uc_creator.user_id = e.created_by
       WHERE gm_filter.user_id = ?
       ${pastClause}
       GROUP BY
@@ -3404,7 +3526,8 @@ app.get("/api/events/my-groups", checkAuth, (req, res) => {
         e.category,
         e.event_type,
         e.created_by,
-        e.published_time
+        e.published_time,
+        uc_creator.email
       ORDER BY e.event_date ASC, e.event_time ASC
     `;
 
@@ -3426,6 +3549,7 @@ app.get("/api/events/my-groups", checkAuth, (req, res) => {
 // GET /api/events/my-events
 // Show events the current user created or joined.
 // If includePast=false, only return events that have not ended yet.
+
 app.get("/api/events/my-events", checkAuth, (req, res) => {
   const includePast = String(req.query.includePast).toLowerCase() === "true";
   const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
@@ -3464,7 +3588,27 @@ app.get("/api/events/my-events", checkAuth, (req, res) => {
           ELSE 0
         END AS is_owner,
         DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
-        COUNT(DISTINCT a.id) AS current_count,
+        COUNT(
+          DISTINCT CASE
+            WHEN e.event_type = 'public' THEN a.id
+            WHEN e.event_type = 'group'
+              AND (
+                LOWER(a.attendee_name) = LOWER(uc_creator.email)
+                OR EXISTS (
+                  SELECT 1
+                  FROM User_Credentials uc_att
+                  INNER JOIN Group_Members gm_att
+                    ON gm_att.user_id = uc_att.user_id
+                  INNER JOIN Event_Groups eg_att
+                    ON eg_att.group_id = gm_att.group_id
+                  WHERE eg_att.event_id = e.id
+                    AND LOWER(uc_att.email) = LOWER(a.attendee_name)
+                )
+              )
+            THEN a.id
+            ELSE NULL
+          END
+        ) AS current_count,
         GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
         GROUP_CONCAT(DISTINCT eg.group_id ORDER BY eg.group_id SEPARATOR ',') AS group_ids,
         GROUP_CONCAT(DISTINCT sg.name ORDER BY sg.name SEPARATOR ',') AS group_names,
@@ -3474,7 +3618,8 @@ app.get("/api/events/my-events", checkAuth, (req, res) => {
         END AS is_past,
         CASE
           WHEN NOW() < TIMESTAMP(e.event_date, e.event_time) THEN 'open_for_application'
-          WHEN NOW() >= TIMESTAMP(e.event_date, e.event_time) AND NOW() <= TIMESTAMP(e.end_date, e.end_time) THEN 'in_progress'
+          WHEN NOW() >= TIMESTAMP(e.event_date, e.event_time)
+            AND NOW() <= TIMESTAMP(e.end_date, e.end_time) THEN 'in_progress'
           ELSE 'ended'
         END AS event_status,
         MAX(CASE WHEN LOWER(a.attendee_name) = ? THEN 1 ELSE 0 END) AS has_joined,
@@ -3490,16 +3635,34 @@ app.get("/api/events/my-events", checkAuth, (req, res) => {
         ON eg.event_id = e.id
       LEFT JOIN Social_Group sg
         ON sg.group_id = eg.group_id
-      WHERE (
-        e.created_by = ?
-        OR EXISTS (
-          SELECT 1
-          FROM Event_Attendees a2
-          WHERE a2.event_id = e.id
-            AND LOWER(a2.attendee_name) = ?
+      LEFT JOIN User_Credentials uc_creator
+        ON uc_creator.user_id = e.created_by
+      WHERE
+        (
+          e.created_by = ?
+          OR EXISTS (
+            SELECT 1
+            FROM Event_Attendees a2
+            WHERE a2.event_id = e.id
+              AND LOWER(a2.attendee_name) = ?
+          )
         )
-      )
-      ${pastClause}
+        AND
+        (
+          e.event_type = 'public'
+          OR (
+            e.event_type = 'group'
+            AND EXISTS (
+              SELECT 1
+              FROM Event_Groups eg2
+              INNER JOIN Group_Members gm2
+                ON gm2.group_id = eg2.group_id
+              WHERE eg2.event_id = e.id
+                AND gm2.user_id = ?
+            )
+          )
+        )
+        ${pastClause}
       GROUP BY
         e.id,
         e.title,
@@ -3513,13 +3676,21 @@ app.get("/api/events/my-events", checkAuth, (req, res) => {
         e.category,
         e.event_type,
         e.created_by,
-        e.published_time
+        e.published_time,
+        uc_creator.email
       ORDER BY e.event_date ASC, e.event_time ASC
     `;
 
     db.query(
       sql,
-      [currentUserId, currentUserEmail, currentUserId, currentUserId, currentUserId, currentUserEmail],
+      [
+        currentUserId,
+        currentUserEmail,
+        currentUserId,
+        currentUserId,
+        currentUserEmail,
+        currentUserId,
+      ],
       (err, rows) => {
         if (err) {
           console.log("GET /api/events/my-events error:", err);
@@ -3919,13 +4090,19 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
                               const placeholders = safeGroupIds.map(() => "?").join(", ");
 
                               const deleteNonMemberAttendeesSql = `
-                                DELETE FROM Event_Attendees
-                                WHERE event_id = ?
-                                  AND LOWER(attendee_name) NOT IN (
-                                    SELECT LOWER(up.display_name)
+                                DELETE ea
+                                FROM Event_Attendees ea
+                                INNER JOIN Events e
+                                  ON e.id = ea.event_id
+                                LEFT JOIN User_Credentials uc_creator
+                                  ON uc_creator.user_id = e.created_by
+                                WHERE ea.event_id = ?
+                                  AND LOWER(ea.attendee_name) <> LOWER(uc_creator.email)
+                                  AND LOWER(ea.attendee_name) NOT IN (
+                                    SELECT LOWER(uc.email)
                                     FROM Group_Members gm
-                                    INNER JOIN User_Profiles up
-                                      ON up.user_id = gm.user_id
+                                    INNER JOIN User_Credentials uc
+                                      ON uc.user_id = gm.user_id
                                     WHERE gm.group_id IN (${placeholders})
                                   )
                               `;
