@@ -1170,27 +1170,19 @@ app.post("/api/calendar/todos", checkAuth, (req, res) => {
             return done(null);
           }
           const ph = participantIds.map(() => "?").join(", ");
-          const emailSql = `SELECT user_id, LOWER(email) AS email FROM User_Credentials WHERE user_id IN (${ph})`;
-          db.query(emailSql, participantIds, (emErr, emRows) => {
-            if (emErr) {
-              console.log("POST /api/calendar/todos participant lookup error:", emErr);
-              return done(emErr);
+          const insertSql = `
+            INSERT INTO Event_Attendees (event_id, attendee_name)
+            SELECT ?, LOWER(uc.email)
+            FROM User_Credentials uc
+            WHERE uc.user_id IN (${ph})
+              AND LOWER(uc.email) <> LOWER(?)
+          `;
+          db.query(insertSql, [eventId, ...participantIds, currentUserEmail], (attErr) => {
+            if (attErr) {
+              console.log("POST /api/calendar/todos attendees error:", attErr);
+              return done(attErr);
             }
-            const emails = (emRows || [])
-              .map((r) => r.email)
-              .filter((e) => e && String(e).toLowerCase() !== currentUserEmail);
-            if (emails.length === 0) {
-              return done(null);
-            }
-            const rows = emails.map((email) => [eventId, email]);
-            const insertSql = `INSERT INTO Event_Attendees (event_id, attendee_name) VALUES ?`;
-            db.query(insertSql, [rows], (attErr) => {
-              if (attErr) {
-                console.log("POST /api/calendar/todos attendees error:", attErr);
-                return done(attErr);
-              }
-              return done(null);
-            });
+            return done(null);
           });
         };
 
@@ -1267,23 +1259,21 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
   const eventVisibility =
     eventScope === "group" ? (rawVisibility === "private" ? "private" : "public") : "private";
 
-  const capRawPut = max_attendees !== undefined && max_attendees !== null ? max_attendees : capacityBodyPut;
-  let updateCap = 999;
-  if (eventScope === "group" && eventVisibility === "public") {
-    const n = Number(capRawPut);
-    if (
-      capRawPut === "" ||
-      capRawPut === undefined ||
-      capRawPut === null ||
-      !Number.isInteger(n) ||
-      n < 1 ||
-      n > 99999
-    ) {
-      return res.status(400).json({
-        error: "Maximum attendees is required for public group events (whole number from 1 to 99999).",
-      });
-    }
-    updateCap = n;
+  const capRawPut =
+    max_attendees !== undefined && max_attendees !== null ? max_attendees : capacityBodyPut;
+  const capNumPut = Number(capRawPut);
+  const hasValidCapInput =
+    capRawPut !== "" &&
+    capRawPut !== undefined &&
+    capRawPut !== null &&
+    Number.isInteger(capNumPut) &&
+    capNumPut >= 1 &&
+    capNumPut <= 99999;
+  const requiresCapInput = eventScope === "group" && eventVisibility === "public";
+  if (requiresCapInput && !hasValidCapInput) {
+    return res.status(400).json({
+      error: "Maximum attendees is required for public group events (whole number from 1 to 99999).",
+    });
   }
 
   const participantIds =
@@ -1314,7 +1304,7 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
     }
 
     const ownershipSql = `
-      SELECT e.id
+      SELECT e.id, e.capacity
       FROM Events e
       WHERE e.id = ?
         AND e.created_by = ?
@@ -1333,6 +1323,12 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
       if (!ownRows || ownRows.length === 0) {
         return res.status(403).json({ error: "Only the owner can edit this calendar event." });
       }
+      const existingCapacity = Number(ownRows[0].capacity);
+      const updateCap = hasValidCapInput
+        ? capNumPut
+        : Number.isInteger(existingCapacity) && existingCapacity > 0
+          ? existingCapacity
+          : 999;
 
       const updateSql = `
         UPDATE Events
@@ -1403,31 +1399,30 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
                   return res.status(500).json({ error: "Failed to update attendees." });
                 }
 
+                const okPayload = () => ({
+                  message: "Event updated successfully.",
+                  id: eventId,
+                  capacity: updateCap,
+                });
+
                 if (participantIds.length === 0) {
-                  return res.json({ message: "Event updated successfully." });
+                  return res.json(okPayload());
                 }
 
                 const ph = participantIds.map(() => "?").join(", ");
-                const emailSql = `SELECT LOWER(email) AS email FROM User_Credentials WHERE user_id IN (${ph})`;
-                db.query(emailSql, participantIds, (emErr, emRows) => {
-                  if (emErr) {
-                    console.log("PUT /api/calendar/events/:id attendee lookup error:", emErr);
-                    return res.status(500).json({ error: "Failed to lookup attendees." });
+                const insertSql = `
+                  INSERT INTO Event_Attendees (event_id, attendee_name)
+                  SELECT ?, LOWER(uc.email)
+                  FROM User_Credentials uc
+                  WHERE uc.user_id IN (${ph})
+                    AND LOWER(uc.email) <> LOWER(?)
+                `;
+                db.query(insertSql, [eventId, ...participantIds, currentUserEmail], (attErr) => {
+                  if (attErr) {
+                    console.log("PUT /api/calendar/events/:id insert attendees error:", attErr);
+                    return res.status(500).json({ error: "Failed to save attendees." });
                   }
-                  const emails = (emRows || [])
-                    .map((r) => r.email)
-                    .filter((e) => e && String(e).toLowerCase() !== currentUserEmail);
-                  if (emails.length === 0) {
-                    return res.json({ message: "Event updated successfully." });
-                  }
-                  const rows = emails.map((email) => [eventId, email]);
-                  db.query("INSERT INTO Event_Attendees (event_id, attendee_name) VALUES ?", [rows], (attErr) => {
-                    if (attErr) {
-                      console.log("PUT /api/calendar/events/:id insert attendees error:", attErr);
-                      return res.status(500).json({ error: "Failed to save attendees." });
-                    }
-                    return res.json({ message: "Event updated successfully." });
-                  });
+                  return res.json(okPayload());
                 });
               });
             });
@@ -4993,4 +4988,4 @@ app.delete("/api/events/:id", checkAuth, (req, res) => {
   });
 });
 
-app.listen(port, () => console.log(`Listening on port ${port}`)); 
+app.listen(port, () => console.log(`Listening on port ${port}`));

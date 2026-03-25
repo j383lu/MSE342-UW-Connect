@@ -49,6 +49,24 @@ import {
 const LS_CONTACTS = "uwconnect_calendar_contact_ids";
 const LS_CATS = "uwconnect_calendar_category_filters";
 
+/** Map GET /api/events/:id/attendees rows to user ids for checkbox state. */
+function attendeeRowsToParticipantIds(data, contactsList) {
+  if (!Array.isArray(data)) return [];
+  return data
+    .map((a) => {
+      const directId = Number(a.user_id);
+      if (Number.isInteger(directId) && directId > 0) return directId;
+      const attendeeEmail = String(a.attendee_email || "").trim().toLowerCase();
+      if (!attendeeEmail) return null;
+      const contact = (contactsList || []).find(
+        (c) => String(c.email || "").trim().toLowerCase() === attendeeEmail
+      );
+      const contactId = Number(contact?.user_id);
+      return Number.isInteger(contactId) && contactId > 0 ? contactId : null;
+    })
+    .filter((id) => Number.isInteger(id) && id > 0);
+}
+
 const HOUR_HEIGHT = 48;
 const DAY_START_HOUR = 0;
 const DAY_END_HOUR = 24;
@@ -89,6 +107,7 @@ export default function CalendarPage() {
   const [detailsError, setDetailsError] = useState("");
   const [detailsSaving, setDetailsSaving] = useState(false);
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailAttendees, setDetailAttendees] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [editingEvent, setEditingEvent] = useState(false);
   const [checkedForRemove, setCheckedForRemove] = useState(() => new Set());
@@ -117,20 +136,29 @@ export default function CalendarPage() {
   }, []);
 
   const fetchEvents = useCallback(async () => {
-    if (!myId) return;
+    if (!myId) {
+      setEvents([]);
+      return [];
+    }
     setLoading(true);
     const ids = [myId, ...visibleContactIds];
     const q = ids.join(",");
+    let result = [];
     try {
       const res = await apiRequest(`/api/calendar/events?userIds=${encodeURIComponent(q)}`);
       const data = await res.json().catch(() => []);
-      if (res.ok) setEvents(Array.isArray(data) ? data : []);
-      else setEvents([]);
+      if (res.ok) {
+        result = Array.isArray(data) ? data : [];
+        setEvents(result);
+      } else {
+        setEvents([]);
+      }
     } catch {
       setEvents([]);
     } finally {
       setLoading(false);
     }
+    return result;
   }, [myId, visibleContactIds]);
 
   useEffect(() => {
@@ -281,23 +309,12 @@ export default function CalendarPage() {
       setDetailsLoading(true);
       const res = await apiRequest(`/api/events/${ev.id}/attendees`);
       const data = await res.json().catch(() => []);
-      const participantIds = res.ok && Array.isArray(data)
-        ? data
-            .map((a) => {
-              const directId = Number(a.user_id);
-              if (Number.isInteger(directId) && directId > 0) return directId;
-              const attendeeEmail = String(a.attendee_email || "").trim().toLowerCase();
-              if (!attendeeEmail) return null;
-              const contact = contacts.find(
-                (c) => String(c.email || "").trim().toLowerCase() === attendeeEmail
-              );
-              const contactId = Number(contact?.user_id);
-              return Number.isInteger(contactId) && contactId > 0 ? contactId : null;
-            })
-            .filter((id) => Number.isInteger(id) && id > 0)
-        : [];
+      const rows = res.ok && Array.isArray(data) ? data : [];
+      setDetailAttendees(rows);
+      const participantIds = attendeeRowsToParticipantIds(rows, contacts);
       syncEditFormFromEvent(ev, participantIds);
     } catch {
+      setDetailAttendees([]);
       syncEditFormFromEvent(ev, []);
     } finally {
       setDetailsLoading(false);
@@ -309,6 +326,7 @@ export default function CalendarPage() {
     setEditingEvent(false);
     setDetailsError("");
     setDetailsSaving(false);
+    setDetailAttendees([]);
     setSelectedEvent(null);
   };
 
@@ -399,10 +417,18 @@ export default function CalendarPage() {
         visibility: editEventForm.scope === "group" ? editEventForm.visibility : "private",
         calendar_color: editEventForm.calendar_color,
         participant_user_ids:
-          editEventForm.scope === "group" ? editEventForm.participant_user_ids : [],
+          editEventForm.scope === "group"
+            ? editEventForm.participant_user_ids
+                .map((id) => Number(id))
+                .filter((id) => Number.isInteger(id) && id > 0)
+            : [],
       };
+      const capCandidate = parseInt(String(editEventForm.max_attendees).trim(), 10);
+      if (Number.isFinite(capCandidate) && capCandidate >= 1 && capCandidate <= 99999) {
+        body.capacity = capCandidate;
+      }
       if (isPublicGroup) {
-        body.max_attendees = parseInt(String(editEventForm.max_attendees).trim(), 10);
+        body.max_attendees = capCandidate;
       }
       const res = await apiRequest(`/api/calendar/events/${selectedEvent.id}`, {
         method: "PUT",
@@ -413,7 +439,47 @@ export default function CalendarPage() {
         setDetailsError(data.error || "Failed to update event.");
         return;
       }
-      await fetchEvents();
+
+      const eventId = Number(selectedEvent.id);
+      const optimisticCapacity =
+        data.capacity !== undefined && data.capacity !== null
+          ? data.capacity
+          : editEventForm.max_attendees || selectedEvent.capacity;
+      const optimisticAttendees = (editEventForm.participant_user_ids || []).map((uidRaw) => {
+        const uid = Number(uidRaw);
+        const contact = contacts.find((c) => Number(c.user_id) === uid);
+        return {
+          user_id: uid,
+          attendee_email: contact?.email || "",
+          attendee_name: contact?.display_name || contact?.email || `User ${uid}`,
+        };
+      });
+      setDetailAttendees(optimisticAttendees);
+      setSelectedEvent((prev) =>
+        prev
+          ? {
+              ...prev,
+              title: editEventForm.title.trim(),
+              description: editEventForm.description.trim(),
+              category: editEventForm.category.trim(),
+              event_date: editEventForm.event_date,
+              event_time: editEventForm.event_time,
+              end_date: editEventForm.end_date,
+              end_time: editEventForm.end_time,
+              capacity: optimisticCapacity,
+            }
+          : prev
+      );
+
+      // Best-effort refresh from server; don't fail the save flow if this request fails.
+      try {
+        const list = await fetchEvents();
+        const updated = list.find((e) => Number(e.id) === eventId);
+        if (updated) setSelectedEvent(updated);
+      } catch {
+        // Keep optimistic local state
+      }
+
       setEditingEvent(false);
     } catch {
       setDetailsError("Failed to update event.");
@@ -1194,7 +1260,8 @@ export default function CalendarPage() {
                   </Typography>
                   <Box sx={{ maxHeight: 220, overflow: "auto", border: "1px solid #E2E8F0", borderRadius: 1 }}>
                     {contacts.map((c) => {
-                      const checked = editEventForm.participant_user_ids.includes(Number(c.user_id));
+                      const uid = Number(c.user_id);
+                      const checked = editEventForm.participant_user_ids.some((x) => Number(x) === uid);
                       return (
                         <FormControlLabel
                           key={c.user_id}
@@ -1238,11 +1305,12 @@ export default function CalendarPage() {
               <Typography variant="body2">
                 Type: {extractCalendarScope(selectedEvent.tags) === "group" ? "Group" : "Personal"}
               </Typography>
-              {extractCalendarScope(selectedEvent.tags) === "group" &&
-              extractCalendarVisibility(selectedEvent.tags) === "public" ? (
+              {extractCalendarScope(selectedEvent.tags) === "group" ? (
                 <Typography variant="body2">
                   Maximum attendees:{" "}
-                  {selectedEvent.capacity !== undefined && selectedEvent.capacity !== null
+                  {selectedEvent.capacity !== undefined &&
+                  selectedEvent.capacity !== null &&
+                  selectedEvent.capacity !== ""
                     ? Number(selectedEvent.capacity)
                     : "—"}
                 </Typography>
@@ -1250,10 +1318,24 @@ export default function CalendarPage() {
               <Typography variant="body2" color="text.secondary">
                 Owner: {Number(selectedEvent.created_by) === Number(myId) ? "You" : selectedEvent.creator_name || "Unknown"}
               </Typography>
-              {detailsLoading ? (
-                <Typography variant="caption" color="text.secondary">
-                  Loading attendees…
-                </Typography>
+              {extractCalendarScope(selectedEvent.tags) === "group" ? (
+                detailsLoading ? (
+                  <Typography variant="caption" color="text.secondary">
+                    Loading attendees…
+                  </Typography>
+                ) : detailAttendees.length > 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    Attendees:{" "}
+                    {detailAttendees
+                      .map((a) => a.attendee_name || a.attendee_email)
+                      .filter(Boolean)
+                      .join(", ")}
+                  </Typography>
+                ) : (
+                  <Typography variant="caption" color="text.secondary">
+                    No invited attendees yet.
+                  </Typography>
+                )
               ) : null}
             </Box>
           )}
