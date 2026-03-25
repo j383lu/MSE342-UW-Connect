@@ -110,11 +110,22 @@ function CreatePostForm({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>Create a New Post</DialogTitle>
-
+    <Dialog 
+      open={open} 
+      onClose={onClose} 
+      fullWidth maxWidth="sm"
+      PaperProps={{
+        sx: {
+          borderRadius: 3,
+          p: 1,
+          boxShadow: '0px 8px 32px rgba(0,0,0,0.12)'
+        }
+      }}
+    >
+      <DialogTitle sx={{ fontWeight: 600, fontSize: '1.25rem' }}>Create a New Post</DialogTitle>
+      
       <DialogContent>
-        <Grid container spacing={2} sx={{ mt: 1 }}>
+        <Grid container spacing={2.5} sx={{ mt: 0.5 }}>
 
           <Grid item xs={12}>
             <TextField
@@ -128,15 +139,24 @@ function CreatePostForm({
           </Grid>
 
           <Grid item xs={12}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={isAnonymous}
-                  onChange={(e) => setIsAnonymous(e.target.checked)}
-                />
-              }
-              label="Post anonymously"
-            />
+            <Box
+              sx={{
+                px: 1,
+                py: 0.5,
+                borderRadius: 2,
+                background: '#F7F9F8'
+              }}
+            >
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={isAnonymous}
+                    onChange={(e) => setIsAnonymous(e.target.checked)}
+                  />
+                }
+                label="Post anonymously"
+              />
+            </Box>
           </Grid>
 
           <Grid item xs={12}>
@@ -180,6 +200,11 @@ function CreatePostForm({
               value={selectedTags}
               onChange={handleTagChange}
               filterSelectedOptions
+              x={{
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: '12px'
+                }
+              }}
               renderInput={(params) => (
                 <TextField
                   {...params}
@@ -212,8 +237,8 @@ function CreatePostForm({
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button variant="contained" onClick={handleSubmit}>Submit</Button>
+        <Button onClick={onClose} sx={{ borderRadius: '20px', textTransform: 'none' }}>Cancel</Button>
+        <Button variant="contained" onClick={handleSubmit} sx={{ borderRadius: '20px', textTransform: 'none' }}>Submit</Button>
       </DialogActions>
     </Dialog>
   );
