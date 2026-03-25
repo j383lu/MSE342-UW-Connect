@@ -3,6 +3,7 @@ module.exports = {
       "^.+\\.(js|jsx)$": "babel-jest",
     },
     testEnvironment: 'jsdom',
-    verbose: false,
-    silent: true,
+    setupFilesAfterEnv: ['<rootDir>/src/setupTests.js'],
+    verbose: true,
+    silent: false,
   };

@@ -491,15 +491,23 @@ const getCurrentLikeCount = (eventId, callback) => {
   });
 };
 
+// Calendar "Personal" events live in Events but should not appear on the Events discovery page.
+const SQL_EXCLUDE_CALENDAR_PERSONAL_EVENT = `
+      AND NOT EXISTS (
+        SELECT 1 FROM Event_Tags cal_personal
+        WHERE cal_personal.event_id = e.id
+          AND cal_personal.tag_name = '__calscope__:personal'
+      )`;
+
 // GET /api/events
 // This API is used to get a list of events from the database.
 // If includePast=true is passed in the query, it will return all events including past ones.
 // It also checks the current user to see if they have joined or liked each event.
 app.get("/api/events", checkAuth, (req, res) => {
   const includePast = String(req.query.includePast).toLowerCase() === "true";
-  const whereClause = includePast
+  const pastFilter = includePast
     ? ""
-    : "WHERE TIMESTAMP(e.event_date, e.event_time) >= NOW()";
+    : "AND TIMESTAMP(e.event_date, e.event_time) >= NOW()";
 
   const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
 
@@ -535,7 +543,9 @@ app.get("/api/events", checkAuth, (req, res) => {
       LEFT JOIN Event_Attendees a ON a.event_id = e.id
       LEFT JOIN Event_Tags t ON t.event_id = e.id
       LEFT JOIN Event_Likes el ON el.event_id = e.id
-      ${whereClause}
+      WHERE 1=1
+      ${pastFilter}
+      ${SQL_EXCLUDE_CALENDAR_PERSONAL_EVENT}
       GROUP BY
         e.id,
         e.title,
@@ -818,6 +828,628 @@ app.post("/api/events", checkAuth, (req, res) => {
         return verifyGroupsAndCreateEvent();
       }
     );
+  });
+});
+
+// GET /api/calendar/contacts — other registered users (User_Credentials + profile name)
+app.get("/api/calendar/contacts", checkAuth, (req, res) => {
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
+
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("GET /api/calendar/contacts user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
+    }
+
+    const sql = `
+      SELECT
+        uc.user_id,
+        uc.email,
+        COALESCE(up.display_name, uc.email) AS display_name
+      FROM User_Credentials uc
+      LEFT JOIN User_Profiles up ON up.user_id = uc.user_id
+      WHERE uc.user_id <> ?
+      ORDER BY display_name ASC, uc.email ASC
+    `;
+
+    db.query(sql, [currentUserId], (err, rows) => {
+      if (err) {
+        console.log("GET /api/calendar/contacts error:", err);
+        return res.status(500).json({ error: "Failed to load contacts." });
+      }
+
+      return res.json(rows || []);
+    });
+  });
+});
+
+// GET /api/calendar/events?userIds=1,2,3 — events created by or joined by any of those users
+app.get("/api/calendar/events", checkAuth, (req, res) => {
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
+
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("GET /api/calendar/events user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
+    }
+
+    const raw = String(req.query.userIds || "").trim();
+    let userIds = raw
+      ? raw
+          .split(",")
+          .map((s) => Number(String(s).trim()))
+          .filter((id) => Number.isInteger(id) && id > 0)
+      : [];
+    const idSet = new Set([currentUserId, ...userIds]);
+    userIds = [...idSet];
+
+    if (userIds.length === 0) {
+      return res.json([]);
+    }
+
+    const ph = userIds.map(() => "?").join(", ");
+    const sql = `
+      SELECT
+        e.id,
+        e.title,
+        e.description,
+        DATE_FORMAT(e.event_date, '%Y-%m-%d') AS event_date,
+        TIME_FORMAT(e.event_time, '%H:%i') AS event_time,
+        DATE_FORMAT(e.end_date, '%Y-%m-%d') AS end_date,
+        TIME_FORMAT(e.end_time, '%H:%i') AS end_time,
+        e.category,
+        e.created_by,
+        COALESCE(creator_up.display_name, creator_uc.email) AS creator_name,
+        GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
+        (NOW() > TIMESTAMP(e.end_date, e.end_time)) AS is_past,
+        (NOW() > TIMESTAMP(e.event_date, e.event_time)) AS is_overdue
+      FROM Events e
+      LEFT JOIN User_Credentials creator_uc ON creator_uc.user_id = e.created_by
+      LEFT JOIN User_Profiles creator_up ON creator_up.user_id = e.created_by
+      LEFT JOIN Event_Tags t ON t.event_id = e.id
+      WHERE
+        (
+          e.created_by IN (${ph})
+          OR EXISTS (
+            SELECT 1
+            FROM Event_Attendees a2
+            INNER JOIN User_Credentials uc2 ON LOWER(uc2.email) = LOWER(a2.attendee_name)
+            WHERE a2.event_id = e.id AND uc2.user_id IN (${ph})
+          )
+        )
+        AND (
+          NOT EXISTS (
+            SELECT 1
+            FROM Event_Tags pv
+            WHERE pv.event_id = e.id
+              AND pv.tag_name = '__calvisibility__:private'
+          )
+          OR e.created_by = ?
+          OR EXISTS (
+            SELECT 1
+            FROM Event_Attendees a_self
+            WHERE a_self.event_id = e.id
+              AND LOWER(a_self.attendee_name) = LOWER(?)
+          )
+        )
+      GROUP BY
+        e.id,
+        e.title,
+        e.description,
+        e.event_date,
+        e.event_time,
+        e.end_date,
+        e.end_time,
+        e.category,
+        e.created_by,
+        creator_uc.email,
+        creator_up.display_name
+      ORDER BY e.event_date ASC, e.event_time ASC
+    `;
+
+    const params = [...userIds, ...userIds, currentUserId, currentUserEmail];
+
+    db.query(sql, params, (err, rows) => {
+      if (err) {
+        console.log("GET /api/calendar/events error:", err);
+        return res.status(500).json({ error: "Failed to load calendar events." });
+      }
+
+      return res.json(rows || []);
+    });
+  });
+});
+
+// POST /api/calendar/todos — quick create with explicit end date/time; maps to Events + optional tags/attendees
+app.post("/api/calendar/todos", checkAuth, (req, res) => {
+  const {
+    title,
+    description,
+    category,
+    event_date,
+    event_time,
+    end_date,
+    end_time,
+    participant_user_ids,
+    calendar_color,
+    scope,
+    visibility,
+  } = req.body;
+
+  if (!title || !String(title).trim()) {
+    return res.status(400).json({ error: "Title is required." });
+  }
+  if (!event_date || !event_time) {
+    return res.status(400).json({ error: "Start date and start time are required." });
+  }
+  if (!end_date || !end_time) {
+    return res.status(400).json({ error: "End date and end time are required." });
+  }
+  if (!category || !String(category).trim()) {
+    return res.status(400).json({ error: "Category is required." });
+  }
+
+  const norm = (t) => String(t || "").trim().slice(0, 5);
+  const et = norm(event_time);
+  const xt = norm(end_time);
+
+  const startDateOnly = new Date(`${event_date}T00:00:00`);
+  const endDateOnly = new Date(`${end_date}T00:00:00`);
+  if (Number.isNaN(startDateOnly.getTime()) || Number.isNaN(endDateOnly.getTime())) {
+    return res.status(400).json({ error: "Invalid start or end date." });
+  }
+  if (endDateOnly < startDateOnly) {
+    return res.status(400).json({ error: "End date must be on or after start date." });
+  }
+
+  const startDT = new Date(`${event_date}T${et}:00`);
+  const endDT = new Date(`${end_date}T${xt}:00`);
+  if (Number.isNaN(startDT.getTime()) || Number.isNaN(endDT.getTime())) {
+    return res.status(400).json({ error: "Invalid start or end time." });
+  }
+  if (endDT <= startDT) {
+    return res.status(400).json({ error: "End must be after start." });
+  }
+
+  const rawScope = String(scope || "personal").trim().toLowerCase();
+  const eventScope = rawScope === "group" ? "group" : "personal";
+  const rawVisibility = String(visibility || "public").trim().toLowerCase();
+  const eventVisibility =
+    eventScope === "group" ? (rawVisibility === "private" ? "private" : "public") : "private";
+
+  const participantIds =
+    eventScope === "group" && Array.isArray(participant_user_ids)
+      ? [
+          ...new Set(
+            participant_user_ids
+              .map((id) => Number(id))
+              .filter((id) => Number.isInteger(id) && id > 0)
+          ),
+        ]
+      : [];
+
+  const safeColor = String(calendar_color || "blue")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "")
+    .slice(0, 32);
+
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
+
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("POST /api/calendar/todos user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
+    }
+
+    const insertEventSql = `
+      INSERT INTO Events (
+        title,
+        description,
+        event_date,
+        event_time,
+        end_date,
+        end_time,
+        location,
+        capacity,
+        category,
+        event_type,
+        created_by
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'public', ?)
+    `;
+
+    const desc = description != null ? String(description) : "";
+    const cap = 999;
+    const startTimeDb = et;
+    const endTimeDb = xt;
+
+    db.query(
+      insertEventSql,
+      [
+        String(title).trim(),
+        desc,
+        event_date,
+        startTimeDb,
+        end_date,
+        endTimeDb,
+        "Calendar",
+        cap,
+        String(category).trim(),
+        currentUserId,
+      ],
+      (err, result) => {
+        if (err) {
+          console.log("POST /api/calendar/todos insert error:", err);
+          return res.status(500).json({ error: "Failed to create todo." });
+        }
+
+        const eventId = result.insertId;
+        const tagNames = [
+          `__calendar__`,
+          `__calcolor__:${safeColor || "blue"}`,
+          `__calscope__:${eventScope}`,
+          `__calvisibility__:${eventVisibility}`,
+        ];
+
+        const insertTags = (done) => {
+          const tagValues = tagNames.map((tag) => [eventId, tag]);
+          const insertTagsSql = `
+            INSERT INTO Event_Tags (event_id, tag_name)
+            VALUES ?
+          `;
+          db.query(insertTagsSql, [tagValues], (tagErr) => {
+            if (tagErr) {
+              console.log("POST /api/calendar/todos tags error:", tagErr);
+              return done(tagErr);
+            }
+            return done(null);
+          });
+        };
+
+        const insertAttendees = (done) => {
+          if (participantIds.length === 0) {
+            return done(null);
+          }
+          const ph = participantIds.map(() => "?").join(", ");
+          const emailSql = `SELECT user_id, LOWER(email) AS email FROM User_Credentials WHERE user_id IN (${ph})`;
+          db.query(emailSql, participantIds, (emErr, emRows) => {
+            if (emErr) {
+              console.log("POST /api/calendar/todos participant lookup error:", emErr);
+              return done(emErr);
+            }
+            const emails = (emRows || [])
+              .map((r) => r.email)
+              .filter((e) => e && String(e).toLowerCase() !== currentUserEmail);
+            if (emails.length === 0) {
+              return done(null);
+            }
+            const rows = emails.map((email) => [eventId, email]);
+            const insertSql = `INSERT INTO Event_Attendees (event_id, attendee_name) VALUES ?`;
+            db.query(insertSql, [rows], (attErr) => {
+              if (attErr) {
+                console.log("POST /api/calendar/todos attendees error:", attErr);
+                return done(attErr);
+              }
+              return done(null);
+            });
+          });
+        };
+
+        insertTags((tagErr) => {
+          if (tagErr) {
+            return res.status(500).json({ error: "Created event but failed to save calendar metadata." });
+          }
+          insertAttendees((attErr) => {
+            if (attErr) {
+              return res.status(500).json({ error: "Created event but failed to add participants." });
+            }
+            return res.status(201).json({
+              id: eventId,
+              message: "Event created successfully.",
+            });
+          });
+        });
+      }
+    );
+  });
+});
+
+// PUT /api/calendar/events/:id — owner can edit calendar event details
+app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
+  const eventId = Number(req.params.id);
+  if (!eventId) {
+    return res.status(400).json({ error: "Invalid event id." });
+  }
+
+  const {
+    title,
+    description,
+    category,
+    event_date,
+    event_time,
+    end_date,
+    end_time,
+    participant_user_ids,
+    calendar_color,
+    scope,
+    visibility,
+  } = req.body;
+
+  if (!title || !String(title).trim()) {
+    return res.status(400).json({ error: "Title is required." });
+  }
+  if (!event_date || !event_time) {
+    return res.status(400).json({ error: "Start date and start time are required." });
+  }
+  if (!end_date || !end_time) {
+    return res.status(400).json({ error: "End date and end time are required." });
+  }
+  if (!category || !String(category).trim()) {
+    return res.status(400).json({ error: "Category is required." });
+  }
+
+  const norm = (t) => String(t || "").trim().slice(0, 5);
+  const et = norm(event_time);
+  const xt = norm(end_time);
+  const startDT = new Date(`${event_date}T${et}:00`);
+  const endDT = new Date(`${end_date}T${xt}:00`);
+  if (Number.isNaN(startDT.getTime()) || Number.isNaN(endDT.getTime())) {
+    return res.status(400).json({ error: "Invalid start or end time." });
+  }
+  if (endDT <= startDT) {
+    return res.status(400).json({ error: "End must be after start." });
+  }
+
+  const rawScope = String(scope || "personal").trim().toLowerCase();
+  const eventScope = rawScope === "group" ? "group" : "personal";
+  const rawVisibility = String(visibility || "public").trim().toLowerCase();
+  const eventVisibility =
+    eventScope === "group" ? (rawVisibility === "private" ? "private" : "public") : "private";
+  const participantIds =
+    eventScope === "group" && Array.isArray(participant_user_ids)
+      ? [
+          ...new Set(
+            participant_user_ids
+              .map((id) => Number(id))
+              .filter((id) => Number.isInteger(id) && id > 0)
+          ),
+        ]
+      : [];
+  const safeColor = String(calendar_color || "blue")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "")
+    .slice(0, 32);
+
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("PUT /api/calendar/events/:id user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
+    }
+
+    const ownershipSql = `
+      SELECT e.id
+      FROM Events e
+      WHERE e.id = ?
+        AND e.created_by = ?
+        AND EXISTS (
+          SELECT 1 FROM Event_Tags ct
+          WHERE ct.event_id = e.id AND ct.tag_name = '__calendar__'
+        )
+      LIMIT 1
+    `;
+
+    db.query(ownershipSql, [eventId, currentUserId], (ownErr, ownRows) => {
+      if (ownErr) {
+        console.log("PUT /api/calendar/events/:id ownership error:", ownErr);
+        return res.status(500).json({ error: "Failed to verify event ownership." });
+      }
+      if (!ownRows || ownRows.length === 0) {
+        return res.status(403).json({ error: "Only the owner can edit this calendar event." });
+      }
+
+      const updateSql = `
+        UPDATE Events
+        SET
+          title = ?,
+          description = ?,
+          category = ?,
+          event_date = ?,
+          event_time = ?,
+          end_date = ?,
+          end_time = ?
+        WHERE id = ?
+      `;
+
+      db.query(
+        updateSql,
+        [
+          String(title).trim(),
+          description != null ? String(description) : "",
+          String(category).trim(),
+          event_date,
+          et,
+          end_date,
+          xt,
+          eventId,
+        ],
+        (updErr) => {
+          if (updErr) {
+            console.log("PUT /api/calendar/events/:id update error:", updErr);
+            return res.status(500).json({ error: "Failed to update event." });
+          }
+
+          const clearMetaSql = `
+            DELETE FROM Event_Tags
+            WHERE event_id = ?
+              AND (
+                tag_name = '__calendar__'
+                OR tag_name LIKE '__calcolor__:%'
+                OR tag_name LIKE '__calscope__:%'
+                OR tag_name LIKE '__calvisibility__:%'
+              )
+          `;
+
+          db.query(clearMetaSql, [eventId], (clearErr) => {
+            if (clearErr) {
+              console.log("PUT /api/calendar/events/:id clear tags error:", clearErr);
+              return res.status(500).json({ error: "Failed to update calendar metadata." });
+            }
+
+            const tagValues = [
+              [eventId, "__calendar__"],
+              [eventId, `__calcolor__:${safeColor || "blue"}`],
+              [eventId, `__calscope__:${eventScope}`],
+              [eventId, `__calvisibility__:${eventVisibility}`],
+            ];
+            db.query("INSERT INTO Event_Tags (event_id, tag_name) VALUES ?", [tagValues], (tagErr) => {
+              if (tagErr) {
+                console.log("PUT /api/calendar/events/:id insert tags error:", tagErr);
+                return res.status(500).json({ error: "Failed to save calendar metadata." });
+              }
+
+              const clearAttendeeSql = "DELETE FROM Event_Attendees WHERE event_id = ?";
+              db.query(clearAttendeeSql, [eventId], (clearAttErr) => {
+                if (clearAttErr) {
+                  console.log("PUT /api/calendar/events/:id clear attendees error:", clearAttErr);
+                  return res.status(500).json({ error: "Failed to update attendees." });
+                }
+
+                if (participantIds.length === 0) {
+                  return res.json({ message: "Event updated successfully." });
+                }
+
+                const ph = participantIds.map(() => "?").join(", ");
+                const emailSql = `SELECT LOWER(email) AS email FROM User_Credentials WHERE user_id IN (${ph})`;
+                db.query(emailSql, participantIds, (emErr, emRows) => {
+                  if (emErr) {
+                    console.log("PUT /api/calendar/events/:id attendee lookup error:", emErr);
+                    return res.status(500).json({ error: "Failed to lookup attendees." });
+                  }
+                  const emails = (emRows || [])
+                    .map((r) => r.email)
+                    .filter((e) => e && String(e).toLowerCase() !== currentUserEmail);
+                  if (emails.length === 0) {
+                    return res.json({ message: "Event updated successfully." });
+                  }
+                  const rows = emails.map((email) => [eventId, email]);
+                  db.query("INSERT INTO Event_Attendees (event_id, attendee_name) VALUES ?", [rows], (attErr) => {
+                    if (attErr) {
+                      console.log("PUT /api/calendar/events/:id insert attendees error:", attErr);
+                      return res.status(500).json({ error: "Failed to save attendees." });
+                    }
+                    return res.json({ message: "Event updated successfully." });
+                  });
+                });
+              });
+            });
+          });
+        }
+      );
+    });
+  });
+});
+
+// DELETE /api/calendar/events/:id — owner can delete; attendee can remove from own calendar
+app.delete("/api/calendar/events/:id", checkAuth, (req, res) => {
+  const eventId = Number(req.params.id);
+  if (!eventId) {
+    return res.status(400).json({ error: "Invalid event id." });
+  }
+
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("DELETE /api/calendar/events/:id user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
+    }
+
+    const lookupSql = `
+      SELECT e.id, e.created_by
+      FROM Events e
+      WHERE e.id = ?
+        AND EXISTS (
+          SELECT 1
+          FROM Event_Tags ct
+          WHERE ct.event_id = e.id
+            AND ct.tag_name = '__calendar__'
+        )
+      LIMIT 1
+    `;
+
+    db.query(lookupSql, [eventId], (lookupErr, rows) => {
+      if (lookupErr) {
+        console.log("DELETE /api/calendar/events/:id lookup error:", lookupErr);
+        return res.status(500).json({ error: "Failed to load event." });
+      }
+      if (!rows || rows.length === 0) {
+        return res.status(404).json({ error: "Calendar event not found." });
+      }
+
+      const isOwner = Number(rows[0].created_by) === Number(currentUserId);
+      if (isOwner) {
+        const delLikes = "DELETE FROM Event_Likes WHERE event_id = ?";
+        const delTags = "DELETE FROM Event_Tags WHERE event_id = ?";
+        const delAttendees = "DELETE FROM Event_Attendees WHERE event_id = ?";
+        const delEventGroups = "DELETE FROM Event_Groups WHERE event_id = ?";
+        const delEvent = "DELETE FROM Events WHERE id = ?";
+
+        db.query(delLikes, [eventId], () => {
+          db.query(delTags, [eventId], () => {
+            db.query(delAttendees, [eventId], () => {
+              db.query(delEventGroups, [eventId], () => {
+                db.query(delEvent, [eventId], (delErr) => {
+                  if (delErr) {
+                    console.log("DELETE /api/calendar/events/:id owner delete error:", delErr);
+                    return res.status(500).json({ error: "Failed to delete event." });
+                  }
+                  return res.json({ message: "Event removed from calendar." });
+                });
+              });
+            });
+          });
+        });
+        return;
+      }
+
+      const removeAttendeeSql = `
+        DELETE FROM Event_Attendees
+        WHERE event_id = ?
+          AND LOWER(attendee_name) = ?
+      `;
+      db.query(removeAttendeeSql, [eventId, currentUserEmail], (attErr, attResult) => {
+        if (attErr) {
+          console.log("DELETE /api/calendar/events/:id attendee remove error:", attErr);
+          return res.status(500).json({ error: "Failed to remove event from calendar." });
+        }
+        if (!attResult || attResult.affectedRows === 0) {
+          return res.status(403).json({ error: "You can only remove your own calendar items." });
+        }
+        return res.json({ message: "Event removed from calendar." });
+      });
+    });
   });
 });
 
@@ -1176,7 +1808,7 @@ app.get("/api/tags", checkAuth, (req, res) => {
 // CREATE GROUP API (with optional image upload):
 app.post("/api/groups", checkAuth, upload.single("coverImage"), (req, res) => {
   const { name, description, category, isOpen, maxMembers } = req.body;
-  const explicitCreatorId = Number(req.body.user_id);
+  const explicitCreatorId = req.body.user_id ?? req.body.creator_id ?? null;
 
   const createGroupWithCreator = (creator_id) => {
     if (!creator_id) {
@@ -1195,9 +1827,7 @@ app.post("/api/groups", checkAuth, upload.single("coverImage"), (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
 
-    db.query(
-      sql,
-      [creator_id, name, description, category, is_private, max_members, image_url],
+    db.query(sql, [creator_id, name, description, category, is_private, max_members, image_url],
       (err, result) => {
         if (err) {
           console.error("POST /api/groups error:", err);
@@ -2983,9 +3613,12 @@ app.get("/api/events/search", checkAuth, (req, res) => {
       LEFT JOIN Event_Tags t ON t.event_id = e.id
       LEFT JOIN Event_Likes el ON el.event_id = e.id
       WHERE 
-        e.title LIKE ?
-        OR e.category LIKE ?
-        OR t.tag_name LIKE ?
+        (
+          e.title LIKE ?
+          OR e.category LIKE ?
+          OR t.tag_name LIKE ?
+        )
+      ${SQL_EXCLUDE_CALENDAR_PERSONAL_EVENT}
       GROUP BY
         e.id,
         e.title,
@@ -3145,6 +3778,7 @@ app.get("/api/events/suggestions", checkAuth, (req, res) => {
         SELECT DISTINCT e.title AS value, 'Title' AS type
         FROM Events e
         WHERE ${accessCondition}
+          ${SQL_EXCLUDE_CALENDAR_PERSONAL_EVENT}
           AND e.title LIKE ?
 
         UNION
@@ -3152,6 +3786,7 @@ app.get("/api/events/suggestions", checkAuth, (req, res) => {
         SELECT DISTINCT e.category AS value, 'Category' AS type
         FROM Events e
         WHERE ${accessCondition}
+          ${SQL_EXCLUDE_CALENDAR_PERSONAL_EVENT}
           AND e.category LIKE ?
 
         UNION
@@ -3160,6 +3795,7 @@ app.get("/api/events/suggestions", checkAuth, (req, res) => {
         FROM Events e
         INNER JOIN Event_Tags t ON t.event_id = e.id
         WHERE ${accessCondition}
+          ${SQL_EXCLUDE_CALENDAR_PERSONAL_EVENT}
           AND t.tag_name LIKE ?
       ) AS combined
       LIMIT 10
@@ -3382,6 +4018,7 @@ app.get("/api/events/public", checkAuth, (req, res) => {
           )
         )
       )
+      ${SQL_EXCLUDE_CALENDAR_PERSONAL_EVENT}
       ${pastClause}
       GROUP BY
         e.id,
@@ -3495,23 +4132,13 @@ app.get("/api/events/my-groups", checkAuth, (req, res) => {
         MAX(CASE WHEN LOWER(a.attendee_name) = ? THEN 1 ELSE 0 END) AS has_joined,
         MAX(CASE WHEN el.user_id = ? THEN 1 ELSE 0 END) AS has_liked
       FROM Events e
-      INNER JOIN Event_Groups eg_filter
-        ON eg_filter.event_id = e.id
-      INNER JOIN Group_Members gm_filter
-        ON gm_filter.group_id = eg_filter.group_id
-      LEFT JOIN Event_Attendees a
-        ON a.event_id = e.id
-      LEFT JOIN Event_Tags t
-        ON t.event_id = e.id
-      LEFT JOIN Event_Likes el
-        ON el.event_id = e.id
-      LEFT JOIN Event_Groups eg
-        ON eg.event_id = e.id
-      LEFT JOIN Social_Group sg
-        ON sg.group_id = eg.group_id
-      LEFT JOIN User_Credentials uc_creator
-        ON uc_creator.user_id = e.created_by
-      WHERE gm_filter.user_id = ?
+      INNER JOIN Event_Groups eg ON eg.event_id = e.id
+      INNER JOIN Group_Members gm ON gm.group_id = eg.group_id AND gm.user_id = ?
+      LEFT JOIN Event_Attendees a ON a.event_id = e.id
+      LEFT JOIN Event_Tags t ON t.event_id = e.id
+      LEFT JOIN Event_Likes el ON el.event_id = e.id
+      WHERE e.event_type = 'group'
+      ${SQL_EXCLUDE_CALENDAR_PERSONAL_EVENT}
       ${pastClause}
       GROUP BY
         e.id,
@@ -3662,7 +4289,8 @@ app.get("/api/events/my-events", checkAuth, (req, res) => {
             )
           )
         )
-        ${pastClause}
+      ${SQL_EXCLUDE_CALENDAR_PERSONAL_EVENT}
+      ${pastClause}
       GROUP BY
         e.id,
         e.title,

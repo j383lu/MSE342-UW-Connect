@@ -21,6 +21,8 @@ import EditGroupForm from "./Groups/EditGroupForm";
 import EventsPage from "./Events/EventsPage";
 import CreateEventForm from "./Events/CreateEventForm";
 
+import CalendarPage from "./Calendar/CalendarPage";
+
 // Import profile components
 import ProfilePage from "./Profile/Profile";
 import EditProfile from "./Profile/EditProfile";
@@ -73,6 +75,7 @@ function AppContent() {
         <Route path="/groups/:groupId/edit" element={authenticated ? <EditGroupForm /> : <Navigate to="/" />} />
         <Route path="/events" element={authenticated ? <EventsPage /> : <Navigate to="/" />} />
         <Route path="/events/new" element={authenticated ? <CreateEventForm /> : <Navigate to="/" />} />
+        <Route path="/calendar" element={authenticated ? <CalendarPage /> : <Navigate to="/" />} />
         <Route path="/notifications" element={authenticated ? <Notifications /> :<Navigate to="/"/>}/>
       </Routes>
     </ThemeProvider>
