@@ -1906,8 +1906,8 @@ app.get('/api/posts/tag/:tagName', checkAuth, async (req, res) => {
 
 // GET API for posts
 app.get('/api/posts', checkAuth, async (req, res) => {
-  const { filter } = req.query
-  let currentUserId; //Placeholde, need to replace with actually user id later
+  const { filter, sort } = req.query
+  let currentUserId; 
   try {
     currentUserId = await getNumericUserId(req.user.email);
   } catch (err) {
@@ -1929,6 +1929,12 @@ app.get('/api/posts', checkAuth, async (req, res) => {
             OR sg.is_private = 0
           )`;
 
+  // sort clause
+  const orderClause = sort === 'likes'
+    ? 'ORDER BY like_count DESC, p.post_id DESC'
+    : sort ==='comments'
+    ? 'ORDER BY comment_count DESC, p.post_id DESC'
+    :'ORDER BY p.post_id DESC'; // default is most recent
   let sql = `
          SELECT p.post_id, p.title, p.content, p.author_id, p.group_id, sg.name AS group_name,
                p.is_anonymous, p.image_url, p.created_at AS createdAt,
@@ -1945,7 +1951,7 @@ app.get('/api/posts', checkAuth, async (req, res) => {
         LEFT JOIN Likes l ON p.post_id = l.post_id
         ${whereClause}
         GROUP BY p.post_id
-        ORDER BY p.post_id DESC
+        ${orderClause}
     `;
 
   db.query(sql, filter === 'mygroups' ? [currentUserId, currentUserId] : [currentUserId], (err, results) => {
