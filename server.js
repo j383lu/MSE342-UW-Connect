@@ -4043,7 +4043,6 @@ app.get("/api/events/public", checkAuth, (req, res) => {
           )
         )
       )
-      ${SQL_EXCLUDE_CALENDAR_PERSONAL_EVENT}
       ${pastClause}
       GROUP BY
         e.id,
@@ -4157,13 +4156,23 @@ app.get("/api/events/my-groups", checkAuth, (req, res) => {
         MAX(CASE WHEN LOWER(a.attendee_name) = ? THEN 1 ELSE 0 END) AS has_joined,
         MAX(CASE WHEN el.user_id = ? THEN 1 ELSE 0 END) AS has_liked
       FROM Events e
-      INNER JOIN Event_Groups eg ON eg.event_id = e.id
-      INNER JOIN Group_Members gm ON gm.group_id = eg.group_id AND gm.user_id = ?
-      LEFT JOIN Event_Attendees a ON a.event_id = e.id
-      LEFT JOIN Event_Tags t ON t.event_id = e.id
-      LEFT JOIN Event_Likes el ON el.event_id = e.id
-      WHERE e.event_type = 'group'
-      ${SQL_EXCLUDE_CALENDAR_PERSONAL_EVENT}
+      INNER JOIN Event_Groups eg_filter
+        ON eg_filter.event_id = e.id
+      INNER JOIN Group_Members gm_filter
+        ON gm_filter.group_id = eg_filter.group_id
+      LEFT JOIN Event_Attendees a
+        ON a.event_id = e.id
+      LEFT JOIN Event_Tags t
+        ON t.event_id = e.id
+      LEFT JOIN Event_Likes el
+        ON el.event_id = e.id
+      LEFT JOIN Event_Groups eg
+        ON eg.event_id = e.id
+      LEFT JOIN Social_Group sg
+        ON sg.group_id = eg.group_id
+      LEFT JOIN User_Credentials uc_creator
+        ON uc_creator.user_id = e.created_by
+      WHERE gm_filter.user_id = ?
       ${pastClause}
       GROUP BY
         e.id,
@@ -4314,8 +4323,7 @@ app.get("/api/events/my-events", checkAuth, (req, res) => {
             )
           )
         )
-      ${SQL_EXCLUDE_CALENDAR_PERSONAL_EVENT}
-      ${pastClause}
+        ${pastClause}
       GROUP BY
         e.id,
         e.title,
