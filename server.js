@@ -936,6 +936,7 @@ app.get("/api/calendar/events", checkAuth, (req, res) => {
         e.created_by,
         COALESCE(creator_up.display_name, creator_uc.email) AS creator_name,
         GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
+        (SELECT COUNT(*) FROM Event_Attendees ac WHERE ac.event_id = e.id) AS attendee_count,
         (NOW() > TIMESTAMP(e.end_date, e.end_time)) AS is_past,
         (NOW() > TIMESTAMP(e.event_date, e.event_time)) AS is_overdue
       FROM Events e
@@ -1031,7 +1032,8 @@ app.get("/api/calendar/events/:id", checkAuth, (req, res) => {
         e.event_type,
         e.created_by,
         COALESCE(creator_up.display_name, creator_uc.email) AS creator_name,
-        GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags
+        GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
+        (SELECT COUNT(*) FROM Event_Attendees ac2 WHERE ac2.event_id = e.id) AS attendee_count
       FROM Events e
       LEFT JOIN User_Credentials creator_uc ON creator_uc.user_id = e.created_by
       LEFT JOIN User_Profiles creator_up ON creator_up.user_id = e.created_by
@@ -2695,92 +2697,102 @@ app.post("/api/join-requests/:requestId/respond", checkAuth, async (req, res) =>
 });
 
 // UPDATE GROUP:
-app.put("/api/groups/:groupId", upload.single('coverImage'), (req, res) => {
+app.put("/api/groups/:groupId", checkAuth, upload.single("coverImage"), (req, res) => {
   const groupId = req.params.groupId;
   const { name, description, category, isOpen, maxMembers } = req.body;
-  const userId = 1; // Hardcoded for now
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
 
-  // Check if user is the creator
-  const checkSql = "SELECT * FROM Social_Group WHERE group_id = ? AND creator_id = ?";
-
-  db.query(checkSql, [groupId, userId], (err, rows) => {
-    if (err) {
-      console.error("Error checking group ownership:", err);
-      return res.status(500).json({ error: "Failed to verify ownership" });
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, userId) => {
+    if (userErr || userId == null) {
+      console.error("PUT /api/groups/:groupId user lookup error:", userErr);
+      return res.status(401).json({ error: "User not found" });
     }
 
-    if (rows.length === 0) {
-      return res.status(403).json({ error: "You don't have permission to edit this group" });
-    }
+    // Check if user is the creator
+    const checkSql = "SELECT * FROM Social_Group WHERE group_id = ? AND creator_id = ?";
 
-    const is_private = isOpen === 'true' ? 0 : 1;
-    const max_members = maxMembers ? parseInt(maxMembers) : null;
+    db.query(checkSql, [groupId, userId], (err, rows) => {
+      if (err) {
+        console.error("Error checking group ownership:", err);
+        return res.status(500).json({ error: "Failed to verify ownership" });
+      }
 
-    let sql = `
+      if (rows.length === 0) {
+        return res.status(403).json({ error: "You don't have permission to edit this group" });
+      }
+
+      const is_private = isOpen === "true" ? 0 : 1;
+      const max_members = maxMembers ? parseInt(maxMembers, 10) : null;
+
+      let sql = `
       UPDATE Social_Group 
       SET name = ?, description = ?, category = ?, is_private = ?, max_members = ?
     `;
 
-    const params = [name, description, category, is_private, max_members];
+      const params = [name, description, category, is_private, max_members];
 
-    // Add image_url to update if new image uploaded
-    if (req.file) {
-      sql += ", image_url = ?";
-      params.push(req.file.filename);
-    }
-
-    sql += " WHERE group_id = ?";
-    params.push(groupId);
-
-    db.query(sql, params, (err, result) => {
-      if (err) {
-        console.error("Error updating group:", err);
-        return res.status(500).json({ error: "Failed to update group" });
+      if (req.file) {
+        sql += ", image_url = ?";
+        params.push(req.file.filename);
       }
 
-      return res.json({
-        message: "Group updated successfully",
-        groupId: groupId
+      sql += " WHERE group_id = ?";
+      params.push(groupId);
+
+      db.query(sql, params, (err, result) => {
+        if (err) {
+          console.error("Error updating group:", err);
+          return res.status(500).json({ error: "Failed to update group" });
+        }
+
+        return res.json({
+          message: "Group updated successfully",
+          groupId: groupId
+        });
       });
     });
   });
 });
 
 // DELETE GROUP:
-app.delete("/api/groups/:groupId", (req, res) => {
+app.delete("/api/groups/:groupId", checkAuth, (req, res) => {
   const groupId = req.params.groupId;
-  const userId = 1; // Hardcoded for now
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
 
-  // Check if user is the creator
-  const checkSql = "SELECT * FROM Social_Group WHERE group_id = ? AND creator_id = ?";
-
-  db.query(checkSql, [groupId, userId], (err, rows) => {
-    if (err) {
-      console.error("Error checking group ownership:", err);
-      return res.status(500).json({ error: "Failed to verify ownership" });
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, userId) => {
+    if (userErr || userId == null) {
+      console.error("DELETE /api/groups/:groupId user lookup error:", userErr);
+      return res.status(401).json({ error: "User not found" });
     }
 
-    if (rows.length === 0) {
-      return res.status(403).json({ error: "You don't have permission to delete this group" });
-    }
+    const checkSql = "SELECT * FROM Social_Group WHERE group_id = ? AND creator_id = ?";
 
-    // First delete all members
-    const deleteMembersSql = "DELETE FROM Group_Members WHERE group_id = ?";
-    db.query(deleteMembersSql, [groupId], (err) => {
+    db.query(checkSql, [groupId, userId], (err, rows) => {
       if (err) {
-        console.error("Error deleting group members:", err);
-        return res.status(500).json({ error: "Failed to delete group members" });
+        console.error("Error checking group ownership:", err);
+        return res.status(500).json({ error: "Failed to verify ownership" });
       }
 
-      // Then delete the group
-      const deleteGroupSql = "DELETE FROM Social_Group WHERE group_id = ?";
-      db.query(deleteGroupSql, [groupId], (err, result) => {
+      if (rows.length === 0) {
+        return res.status(403).json({ error: "You don't have permission to delete this group" });
+      }
+
+      const deleteMembersSql = "DELETE FROM Group_Members WHERE group_id = ?";
+      db.query(deleteMembersSql, [groupId], (err) => {
         if (err) {
-          console.error("Error deleting group:", err);
-          return res.status(500).json({ error: "Failed to delete group" });
+          console.error("Error deleting group members:", err);
+          return res.status(500).json({ error: "Failed to delete group members" });
         }
 
-        return res.json({ message: "Group deleted successfully" });
+        const deleteGroupSql = "DELETE FROM Social_Group WHERE group_id = ?";
+        db.query(deleteGroupSql, [groupId], (err, result) => {
+          if (err) {
+            console.error("Error deleting group:", err);
+            return res.status(500).json({ error: "Failed to delete group" });
+          }
+
+          return res.json({ message: "Group deleted successfully" });
+        });
       });
     });
   });

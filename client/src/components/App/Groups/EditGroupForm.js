@@ -2,6 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { getAuth } from "firebase/auth";
+import apiRequest from "../../../utils/api";
 
 export default function EditGroupForm() {
   const navigate = useNavigate();
@@ -36,7 +38,7 @@ export default function EditGroupForm() {
         setLoadingTags(true);
         setTagsError("");
 
-        const res = await fetch("/api/tags");
+        const res = await apiRequest("/api/tags");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const data = await res.json();
@@ -60,8 +62,8 @@ export default function EditGroupForm() {
         setLoading(true);
         setError("");
 
-        const res = await fetch(`/api/groups/${groupId}`);
-        
+        const res = await apiRequest(`/api/groups/${groupId}`);
+
         if (!res.ok) {
           if (res.status === 404) {
             throw new Error("Group not found");
@@ -154,9 +156,13 @@ export default function EditGroupForm() {
         formData.append('coverImage', coverImage);
       }
 
+      const auth = getAuth();
+      const user = auth.currentUser;
+      const token = user ? await user.getIdToken() : null;
       const res = await fetch(`/api/groups/${groupId}`, {
-        method: 'PUT',
+        method: "PUT",
         body: formData,
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
       if (!res.ok) {
