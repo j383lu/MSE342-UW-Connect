@@ -8,11 +8,11 @@ import FavoriteIcon from "@mui/icons-material/Favorite";
 import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import PostCommentThread from "./PostCommentThread";
-import { getAuth } from 'firebase/auth';
+import { withFirebase } from '../Firebase';
 import { getRelativeTime } from "../../utils/timeUtils";
 import { renderTextWithLinks } from "../../utils/linkUtils";
 
-function PostDetailPage() {
+function PostDetailPage({ firebase }) {
     const { postId } = useParams();
     const navigate = useNavigate();
     const [post, setPost] = useState(null);
@@ -25,8 +25,7 @@ function PostDetailPage() {
     }, [postId]);
 
     const getToken = async () => {
-        const auth = getAuth();
-        return await auth.currentUser?.getIdToken();
+        return await firebase.auth.currentUser?.getIdToken();
     };
 
     const fetchPost = async () => {
@@ -55,7 +54,27 @@ function PostDetailPage() {
         }
     };
 
-    //handler for adding new comments
+    // Like toggle - handler for adding new comments
+    const handleLikePost = async () => {
+        try {
+            const token = await getToken();
+            const response = await fetch(`/api/posts/${postId}/like`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await response.json();
+            if (!response.ok) { console.error(data.error); return; }
+            // Update only the like fields so the rest of the post stays intact
+            setPost(prev => ({
+                ...prev,
+                like_count: data.like_count,
+                liked_by_me: data.liked_by_me
+            }));
+        } catch (err) {
+            console.error("Error liking post:", err);
+        }
+    };
+
     const handleAddComment = async (content, parentCommentId = null) => {
         try {
             const token = await getToken();
@@ -102,42 +121,67 @@ function PostDetailPage() {
                             </Avatar>
                         }
                         title={post.title}
-                        subheader={`${post.author_name ?? 'Unknown'} · ${getRelativeTime(post.createdAt)}`} F
-                        //edit
+                        subheader={`${post.is_anonymous ? 'Anonymous' : (post.author_name ?? 'Unknown')} · ${getRelativeTime(post.createdAt)}`}
+                        titleTypographyProps={{
+                            variant: 'h6',
+                            fontWeight: 600,
+                            fontSize: '1.1rem',
+                            color: '#17292B'
+                        }}
+                        subheaderTypographyProps={{
+                            fontSize: '0.8rem',
+                            color: '#686967'
+                        }}
                     />
                     <CardContent>
                         <Typography variant="body1" sx={{ mb: 2, whiteSpace: 'pre-wrap' }}>
                             {renderTextWithLinks(post.description)}
                         </Typography>
 
+                        {/* Post image if present */}
+                        {post.image_url && (
+                            <Box sx={{ mb: 2 }}>
+                                <img
+                                    src={`/uploads/${post.image_url}`}
+                                    alt="post attachment"
+                                    style={{
+                                        maxWidth: '100%',
+                                        borderRadius: 8,
+                                        maxHeight: 400,
+                                        objectFit: 'cover'
+                                    }}
+                                />
+                            </Box>
+                        )}
+
                         <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 1 }}>
                             {/* Group chip */}
                             {post.group_id && post.group_name && (
                                 <Chip
-                                    label={`${post.group_name}`}
+                                    label={post.group_name}
                                     size="small"
                                     color="primary"
-                                    // chnage this when I get the actual path
+                                    //  change
                                     onClick={() => navigate(`/groups/${post.group_id}`)}
                                     sx={{ mb: 1, cursor: 'pointer' }}
                                 />
                             )}
-
-                            {/* Regular tags */}
+                            {/* Regular Tags */}
                             {post.tags && post.tags.length > 0 && (
                                 post.tags.map((tag, index) => (
-                                    <Chip key={index} label={`${tag}`} size="small" sx={{ mb: 1 }} />
+                                    <Chip key={index} label={tag} size="small" sx={{ mb: 1 }} />
                                 ))
                             )}
                         </Stack>
 
+                        {/* Like button */}
                         <Stack direction="row" alignItems="center" sx={{ mt: 1 }}>
-                            <IconButton size="small">
+                            <IconButton size="small" onClick={handleLikePost}>
                                 {post.liked_by_me
                                     ? <FavoriteIcon fontSize="small" color="error" />
                                     : <FavoriteBorderIcon fontSize="small" />}
                             </IconButton>
-                            <Typography variant="body2">{post.like_count}</Typography>
+                            <Typography variant="body2">{post.like_count ?? 0}</Typography>
                         </Stack>
                     </CardContent>
                 </Card>
@@ -189,4 +233,4 @@ function PostDetailPage() {
     );
 }
 
-export default PostDetailPage;
+export default withFirebase(PostDetailPage);
