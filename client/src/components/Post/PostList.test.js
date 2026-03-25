@@ -1,8 +1,29 @@
 import React from "react";
+import 'whatwg-fetch';
 import { render, screen } from "@testing-library/react";
 import '@testing-library/jest-dom';
-import PostList from "../Post/PostList";
 import { MemoryRouter } from "react-router-dom";
+import PostList from "../Post/PostList";
+
+jest.mock('../../contexts/UserContext', () => ({
+  useUser: jest.fn(() => ({
+    dbUser: { userId: 1, displayName: 'Test User' },
+    loading: false
+  }))
+}));
+
+jest.mock('../Firebase', () => ({
+  withFirebase: (Component) => {
+    const Wrapped = (props) => (
+      <Component
+        {...props}
+        firebase={{ auth: { currentUser: { getIdToken: jest.fn(() => Promise.resolve('mock-token')) } } }}
+      />
+    );
+    Wrapped.displayName = `withFirebase(${Component.name})`;
+    return Wrapped;
+  }
+}));
 
 const renderList = (props = {}) => {
   render(
@@ -56,7 +77,7 @@ describe("PostList", () => {
   });
 
   it("renders empty list without crashing", () => {
-    renderList( {posts: []});
+    renderList({ posts: [] });
     expect(screen.queryByText("Co-op Opportunity")).not.toBeInTheDocument();
   });
 
