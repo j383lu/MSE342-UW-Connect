@@ -17,6 +17,7 @@ import {
   DialogActions,
   MenuItem,
 } from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
@@ -220,6 +221,7 @@ function saveIdSet(key, set) {
 }
 
 export default function CalendarPage() {
+  const theme = useTheme();
   const { dbUser } = useUser();
   const myId = dbUser?.userId;
 
@@ -711,9 +713,9 @@ export default function CalendarPage() {
         sx={{
           p: 1.25,
           mb: 1,
-          border: "1px solid #E2E8F0",
+          border: `1px solid ${theme.palette.divider}`,
           borderRadius: 2,
-          bgcolor: isPeerOwned ? "#E5E7EB" : "#fff",
+          bgcolor: isPeerOwned ? alpha(theme.palette.secondary.main, 0.06) : theme.palette.background.paper,
           cursor: "pointer",
         }}
       >
@@ -730,18 +732,18 @@ export default function CalendarPage() {
               width: 10,
               height: 10,
               borderRadius: "50%",
-              bgcolor: isPeerOwned ? "#9CA3AF" : hex,
+              bgcolor: isPeerOwned ? alpha(theme.palette.secondary.main, 0.45) : hex,
               mt: 0.6,
               flexShrink: 0,
             }}
           />
           <Box sx={{ flex: 1, minWidth: 0 }}>
             {personalOverdue ? (
-              <Typography variant="caption" sx={{ color: "#718096", fontWeight: 700, display: "block" }}>
+              <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 700, display: "block" }}>
                 Overdue
               </Typography>
             ) : personalInProgress ? (
-              <Typography variant="caption" sx={{ color: "#4A5568", fontWeight: 700, display: "block" }}>
+              <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 700, display: "block" }}>
                 In progress
               </Typography>
             ) : null}
@@ -771,8 +773,8 @@ export default function CalendarPage() {
                   px: 1,
                   py: 0.25,
                   borderRadius: 999,
-                  bgcolor: "#F7FAFC",
-                  color: "#4A5568",
+                  bgcolor: alpha(theme.palette.secondary.main, 0.06),
+                  color: "text.secondary",
                 }}
               >
                 {ev.category}
@@ -786,20 +788,13 @@ export default function CalendarPage() {
                   borderRadius: 999,
                   bgcolor:
                     displayKind === "personal"
-                      ? "#EBF8FF"
+                      ? alpha(theme.palette.primary.main, 0.14)
                       : displayKind === "group"
-                        ? "#F0FFF4"
+                        ? alpha(theme.palette.primary.main, 0.22)
                         : displayKind === "private"
-                          ? "#FAF5FF"
-                          : "#E6FFFA",
-                  color:
-                    displayKind === "personal"
-                      ? "#2B6CB0"
-                      : displayKind === "group"
-                        ? "#276749"
-                        : displayKind === "private"
-                          ? "#553C9A"
-                          : "#2C7A7B",
+                          ? alpha(theme.palette.secondary.main, 0.1)
+                          : alpha(theme.palette.primary.main, 0.1),
+                  color: theme.palette.secondary.main,
                   fontWeight: 700,
                 }}
               >
@@ -813,8 +808,11 @@ export default function CalendarPage() {
                     px: 1,
                     py: 0.25,
                     borderRadius: 999,
-                    bgcolor: visibility === "private" ? "#FAF5FF" : "#FFFAF0",
-                    color: visibility === "private" ? "#553C9A" : "#C05621",
+                    bgcolor:
+                      visibility === "private"
+                        ? alpha(theme.palette.secondary.main, 0.12)
+                        : alpha(theme.palette.primary.main, 0.12),
+                    color: theme.palette.secondary.main,
                     fontWeight: 700,
                   }}
                 >
@@ -829,8 +827,8 @@ export default function CalendarPage() {
                     px: 1,
                     py: 0.25,
                     borderRadius: 999,
-                    bgcolor: "#EDF2F7",
-                    color: "#2D3748",
+                    bgcolor: alpha(theme.palette.secondary.main, 0.08),
+                    color: "text.primary",
                     fontWeight: 600,
                   }}
                 >
@@ -916,11 +914,11 @@ export default function CalendarPage() {
             height: `${Math.max(height, 36)}px`,
             borderRadius: 1,
             overflow: "hidden",
-            boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
+            boxShadow: theme.shadows[1],
             zIndex: 2,
             cursor: "pointer",
             boxSizing: "border-box",
-            border: personalInProgressBlock ? "2px solid #1A202C" : "none",
+            border: personalInProgressBlock ? `2px solid ${theme.palette.secondary.main}` : "none",
           }}
         >
           {personalOverdueBlock ? (
@@ -929,8 +927,8 @@ export default function CalendarPage() {
                 display: "flex",
                 alignItems: "center",
                 gap: 0.5,
-                bgcolor: "#CBD5E0",
-                color: "#1A202C",
+                bgcolor: alpha(theme.palette.secondary.main, 0.2),
+                color: theme.palette.secondary.main,
                 px: 0.75,
                 py: 0.25,
                 fontSize: "0.65rem",
@@ -946,8 +944,8 @@ export default function CalendarPage() {
                 display: "flex",
                 alignItems: "center",
                 gap: 0.5,
-                bgcolor: "#E2E8F0",
-                color: "#1A202C",
+                bgcolor: alpha(theme.palette.primary.main, 0.15),
+                color: theme.palette.secondary.main,
                 px: 0.75,
                 py: 0.25,
                 fontSize: "0.65rem",
@@ -962,8 +960,8 @@ export default function CalendarPage() {
             sx={{
               px: 1,
               py: 0.75,
-              bgcolor: isPeerOwned ? "#D1D5DB" : hex,
-              color: isPeerOwned ? "#111827" : "#fff",
+              bgcolor: isPeerOwned ? alpha(theme.palette.secondary.main, 0.15) : hex,
+              color: isPeerOwned ? theme.palette.secondary.main : theme.palette.primary.contrastText,
               height: statusBanner ? "calc(100% - 24px)" : "100%",
               boxSizing: "border-box",
             }}
@@ -971,13 +969,22 @@ export default function CalendarPage() {
             <Typography
               variant="caption"
               fontWeight={800}
-              sx={{ color: isPeerOwned ? "#111827" : "#fff", display: "block", lineHeight: 1.2 }}
+              sx={{
+                color: isPeerOwned ? theme.palette.secondary.main : theme.palette.primary.contrastText,
+                display: "block",
+                lineHeight: 1.2,
+              }}
             >
               {ev.title}
             </Typography>
             <Typography
               variant="caption"
-              sx={{ color: isPeerOwned ? "#374151" : "rgba(255,255,255,0.9)", fontSize: "0.65rem" }}
+              sx={{
+                color: isPeerOwned
+                  ? alpha(theme.palette.secondary.main, 0.85)
+                  : alpha(theme.palette.primary.contrastText, 0.9),
+                fontSize: "0.65rem",
+              }}
             >
               {singleCalendarDayEvent ? (
                 <>
@@ -997,7 +1004,13 @@ export default function CalendarPage() {
             {!singleCalendarDayEvent && continuesNextDay ? (
               <Typography
                 variant="caption"
-                sx={{ color: isPeerOwned ? "#4B5563" : "rgba(255,255,255,0.95)", fontSize: "0.58rem", fontWeight: 700 }}
+                sx={{
+                  color: isPeerOwned
+                    ? alpha(theme.palette.secondary.main, 0.9)
+                    : alpha(theme.palette.primary.contrastText, 0.95),
+                  fontSize: "0.58rem",
+                  fontWeight: 700,
+                }}
               >
                 Continues next day
               </Typography>
@@ -1005,7 +1018,13 @@ export default function CalendarPage() {
             {!singleCalendarDayEvent && continuedFromPrior ? (
               <Typography
                 variant="caption"
-                sx={{ color: isPeerOwned ? "#4B5563" : "rgba(255,255,255,0.95)", fontSize: "0.58rem", fontWeight: 700 }}
+                sx={{
+                  color: isPeerOwned
+                    ? alpha(theme.palette.secondary.main, 0.9)
+                    : alpha(theme.palette.primary.contrastText, 0.95),
+                  fontSize: "0.58rem",
+                  fontWeight: 700,
+                }}
               >
                 Continued from prior day
               </Typography>
@@ -1020,7 +1039,9 @@ export default function CalendarPage() {
                   px: 0.6,
                   py: 0.1,
                   borderRadius: 1,
-                  bgcolor: isPeerOwned ? "rgba(17,24,39,0.08)" : "rgba(255,255,255,0.25)",
+                  bgcolor: isPeerOwned
+                    ? alpha(theme.palette.secondary.main, 0.12)
+                    : alpha(theme.palette.primary.contrastText, 0.25),
                   fontSize: "0.6rem",
                   fontWeight: 800,
                 }}
@@ -1038,7 +1059,9 @@ export default function CalendarPage() {
                   px: 0.6,
                   py: 0.1,
                   borderRadius: 1,
-                  bgcolor: isPeerOwned ? "rgba(17,24,39,0.06)" : "rgba(255,255,255,0.2)",
+                  bgcolor: isPeerOwned
+                    ? alpha(theme.palette.secondary.main, 0.1)
+                    : alpha(theme.palette.primary.contrastText, 0.2),
                   fontSize: "0.58rem",
                   fontWeight: 800,
                 }}
@@ -1055,7 +1078,9 @@ export default function CalendarPage() {
                   px: 0.6,
                   py: 0.1,
                   borderRadius: 1,
-                  bgcolor: isPeerOwned ? "rgba(17,24,39,0.08)" : "rgba(255,255,255,0.22)",
+                  bgcolor: isPeerOwned
+                    ? alpha(theme.palette.secondary.main, 0.12)
+                    : alpha(theme.palette.primary.contrastText, 0.22),
                   fontSize: "0.58rem",
                   fontWeight: 700,
                 }}
@@ -1066,7 +1091,14 @@ export default function CalendarPage() {
             {ev.description ? (
               <Typography
                 variant="caption"
-                sx={{ color: isPeerOwned ? "#4B5563" : "rgba(255,255,255,0.85)", fontSize: "0.65rem", display: "block", mt: 0.25 }}
+                sx={{
+                  color: isPeerOwned
+                    ? alpha(theme.palette.secondary.main, 0.85)
+                    : alpha(theme.palette.primary.contrastText, 0.85),
+                  fontSize: "0.65rem",
+                  display: "block",
+                  mt: 0.25,
+                }}
               >
                 {ev.description.length > 60 ? `${ev.description.slice(0, 57)}…` : ev.description}
               </Typography>
@@ -1082,7 +1114,17 @@ export default function CalendarPage() {
     }
 
     return (
-      <Box sx={{ display: "flex", flex: 1, minHeight: 520, overflow: "auto", border: "1px solid #E2E8F0", borderRadius: 1 }}>
+      <Box
+        sx={{
+          display: "flex",
+          flex: 1,
+          minHeight: 520,
+          overflow: "auto",
+          border: `1px solid ${theme.palette.divider}`,
+          borderRadius: 1,
+          bgcolor: theme.palette.background.paper,
+        }}
+      >
         <Box sx={{ width: 56, flexShrink: 0, pt: 1 }}>
           {hours.map((h) => (
             <Box
@@ -1092,7 +1134,7 @@ export default function CalendarPage() {
                 textAlign: "right",
                 pr: 1,
                 fontSize: "0.75rem",
-                color: "#718096",
+                color: "text.secondary",
                 boxSizing: "border-box",
                 pt: 0.5,
               }}
@@ -1101,13 +1143,13 @@ export default function CalendarPage() {
             </Box>
           ))}
         </Box>
-        <Box sx={{ flex: 1, position: "relative", borderLeft: "1px solid #E2E8F0" }}>
+        <Box sx={{ flex: 1, position: "relative", borderLeft: `1px solid ${theme.palette.divider}` }}>
           {hours.map((h) => (
             <Box
               key={h}
               sx={{
                 height: HOUR_HEIGHT,
-                borderBottom: "1px solid #EDF2F7",
+                borderBottom: `1px solid ${theme.palette.divider}`,
                 boxSizing: "border-box",
               }}
             />
@@ -1126,7 +1168,10 @@ export default function CalendarPage() {
         {days.map((d) => {
           const dayEvts = eventsForDay(d);
           return (
-            <Paper key={d.toISOString()} sx={{ flex: "1 1 140px", p: 1.5, minHeight: 160, border: "1px solid #E2E8F0" }}>
+            <Paper
+              key={d.toISOString()}
+              sx={{ flex: "1 1 140px", p: 1.5, minHeight: 160, border: `1px solid ${theme.palette.divider}` }}
+            >
               <Typography variant="subtitle2" fontWeight={700}>
                 {d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
               </Typography>
@@ -1147,8 +1192,8 @@ export default function CalendarPage() {
                         mt: 1,
                         p: 0.75,
                         borderRadius: 1,
-                        bgcolor: isPeerOwned ? "#E5E7EB" : `${hex}22`,
-                        borderLeft: `4px solid ${isPeerOwned ? "#9CA3AF" : hex}`,
+                        bgcolor: isPeerOwned ? alpha(theme.palette.secondary.main, 0.08) : `${hex}22`,
+                        borderLeft: `4px solid ${isPeerOwned ? alpha(theme.palette.secondary.main, 0.4) : hex}`,
                         cursor: "pointer",
                       }}
                     >
@@ -1198,8 +1243,8 @@ export default function CalendarPage() {
                   minHeight: 72,
                   p: 0.5,
                   borderRadius: 1,
-                  border: isToday ? "2px solid #3182CE" : "1px solid #EDF2F7",
-                  bgcolor: inMonth ? "#fff" : "#F7FAFC",
+                  border: isToday ? `2px solid ${theme.palette.primary.main}` : `1px solid ${theme.palette.divider}`,
+                  bgcolor: inMonth ? theme.palette.background.paper : alpha(theme.palette.primary.main, 0.04),
                   cursor: "pointer",
                 }}
               >
@@ -1207,7 +1252,7 @@ export default function CalendarPage() {
                   {d.getDate()}
                 </Typography>
                 {count > 0 ? (
-                  <Typography variant="caption" display="block" sx={{ color: "#3182CE", fontWeight: 700, mt: 0.5 }}>
+                  <Typography variant="caption" display="block" sx={{ color: "primary.main", fontWeight: 700, mt: 0.5 }}>
                     {count} item{count === 1 ? "" : "s"}
                   </Typography>
                 ) : null}
@@ -1220,7 +1265,7 @@ export default function CalendarPage() {
   };
 
   return (
-    <Box sx={{ bgcolor: "#F7FAFC", minHeight: "calc(100vh - 64px)", pb: 4 }}>
+    <Box sx={{ bgcolor: "background.default", minHeight: "calc(100vh - 64px)", pb: 4 }}>
       <Box sx={{ maxWidth: 1400, mx: "auto", px: { xs: 1.5, sm: 2, md: 3 }, pt: 2 }}>
         <Box
           sx={{
@@ -1231,10 +1276,19 @@ export default function CalendarPage() {
             mb: 2,
           }}
         >
-          <Typography variant="h5" fontWeight={800} sx={{ letterSpacing: "-0.03em" }}>
+          <Typography
+            variant="h5"
+            fontWeight={800}
+            sx={{ letterSpacing: "-0.03em", color: theme.palette.secondary.main }}
+          >
             Calendar
           </Typography>
-          <Button variant="outlined" size="small" onClick={goToday} sx={{ textTransform: "none", borderColor: "#CBD5E0", color: "#2D3748" }}>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={goToday}
+            sx={{ textTransform: "none", borderColor: "divider", color: "text.primary" }}
+          >
             Today
           </Button>
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
@@ -1263,13 +1317,21 @@ export default function CalendarPage() {
             value={view}
             exclusive
             onChange={(_, v) => v && setView(v)}
-            sx={{ bgcolor: "#fff", "& .MuiToggleButton-root": { textTransform: "none", px: 2 } }}
+            sx={{
+              bgcolor: "background.paper",
+              borderColor: "divider",
+              "& .MuiToggleButton-root": { textTransform: "none", px: 2 },
+            }}
           >
             <ToggleButton value="day">Day</ToggleButton>
             <ToggleButton value="week">Week</ToggleButton>
             <ToggleButton value="month">Month</ToggleButton>
           </ToggleButtonGroup>
-          <Button variant="contained" onClick={() => setAddOpen(true)} sx={{ textTransform: "none", bgcolor: "#3182CE", fontWeight: 700 }}>
+          <Button
+            variant="contained"
+            onClick={() => setAddOpen(true)}
+            sx={{ textTransform: "none", fontWeight: 700, bgcolor: "primary.main", color: "primary.contrastText" }}
+          >
             + Add Event
           </Button>
         </Box>
@@ -1281,12 +1343,13 @@ export default function CalendarPage() {
               width: { xs: "100%", md: 300 },
               flexShrink: 0,
               p: 2,
-              border: "1px solid #E2E8F0",
+              border: `1px solid ${theme.palette.divider}`,
               borderRadius: 2,
+              bgcolor: theme.palette.background.paper,
             }}
           >
             <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
-              <Typography variant="subtitle2" fontWeight={800}>
+              <Typography variant="subtitle2" fontWeight={800} color="text.primary">
                 Filters
               </Typography>
               <IconButton size="small" onClick={() => setFiltersOpen(!filtersOpen)}>
@@ -1310,9 +1373,9 @@ export default function CalendarPage() {
               )}
             </Collapse>
 
-            <Box sx={{ borderTop: "1px solid #EDF2F7", mt: 2, pt: 2 }}>
+            <Box sx={{ borderTop: `1px solid ${theme.palette.divider}`, mt: 2, pt: 2 }}>
               <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
-                <Typography variant="subtitle2" fontWeight={800}>
+                <Typography variant="subtitle2" fontWeight={800} color="text.primary">
                   Contacts
                 </Typography>
                 <IconButton size="small" onClick={() => setContactsOpen(!contactsOpen)}>
@@ -1329,7 +1392,12 @@ export default function CalendarPage() {
                     onChange={(e) => setEmailInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && addContactByEmail()}
                   />
-                  <Button variant="contained" size="small" onClick={addContactByEmail} sx={{ textTransform: "none", bgcolor: "#3182CE", flexShrink: 0 }}>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={addContactByEmail}
+                    sx={{ textTransform: "none", flexShrink: 0, bgcolor: "primary.main", color: "primary.contrastText" }}
+                  >
                     Add
                   </Button>
                 </Box>
@@ -1370,9 +1438,9 @@ export default function CalendarPage() {
               </Collapse>
             </Box>
 
-            <Box sx={{ borderTop: "1px solid #EDF2F7", mt: 2, pt: 2 }}>
+            <Box sx={{ borderTop: `1px solid ${theme.palette.divider}`, mt: 2, pt: 2 }}>
               <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }} onClick={() => setOverdueOpen(!overdueOpen)}>
-                <Typography variant="subtitle2" fontWeight={800} sx={{ color: "#718096" }}>
+                <Typography variant="subtitle2" fontWeight={800} color="text.secondary">
                   Overdue ({overdueList.length})
                 </Typography>
                 {overdueOpen ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
@@ -1380,9 +1448,9 @@ export default function CalendarPage() {
               <Collapse in={overdueOpen}>{overdueList.map((ev) => renderTodoCard(ev))}</Collapse>
             </Box>
 
-            <Box sx={{ borderTop: "1px solid #EDF2F7", mt: 2, pt: 2 }}>
+            <Box sx={{ borderTop: `1px solid ${theme.palette.divider}`, mt: 2, pt: 2 }}>
               <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }} onClick={() => setUpcomingOpen(!upcomingOpen)}>
-                <Typography variant="subtitle2" fontWeight={800}>
+                <Typography variant="subtitle2" fontWeight={800} color="text.primary">
                   Upcoming ({upcomingList.length})
                 </Typography>
                 {upcomingOpen ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
@@ -1397,9 +1465,10 @@ export default function CalendarPage() {
               flex: 1,
               minWidth: 0,
               p: 2,
-              border: "1px solid #E2E8F0",
+              border: `1px solid ${theme.palette.divider}`,
               borderRadius: 2,
               minHeight: 560,
+              bgcolor: theme.palette.background.paper,
             }}
           >
             {loading ? (
@@ -1576,7 +1645,14 @@ export default function CalendarPage() {
                   <Typography variant="subtitle2" sx={{ mt: 0.5 }}>
                     Attendees
                   </Typography>
-                  <Box sx={{ maxHeight: 220, overflow: "auto", border: "1px solid #E2E8F0", borderRadius: 1 }}>
+                  <Box
+                    sx={{
+                      maxHeight: 220,
+                      overflow: "auto",
+                      border: `1px solid ${theme.palette.divider}`,
+                      borderRadius: 1,
+                    }}
+                  >
                     {contacts.map((c) => {
                       const uid = Number(c.user_id);
                       const checked = editEventForm.participant_user_ids.some((x) => Number(x) === uid);
