@@ -18,10 +18,12 @@ import {
 import SearchIcon from "@mui/icons-material/Search";
 import { useNavigate } from "react-router-dom";
 import { FirebaseContext } from "../../Firebase";
+import { useUser } from "../../../contexts/UserContext";
 
 function ProfileSearch() {
   const navigate = useNavigate();
   const firebase = useContext(FirebaseContext);
+  const { dbUser } = useUser();
 
   const [searchText, setSearchText] = useState("");
   const [selectedProgram, setSelectedProgram] = useState("");
@@ -29,6 +31,8 @@ function ProfileSearch() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [followStateByUserId, setFollowStateByUserId] = useState({});
+  const [followLoadingByUserId, setFollowLoadingByUserId] = useState({});
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -71,6 +75,89 @@ function ProfileSearch() {
       fetchUsers();
     }
   }, [firebase, searchText]);
+
+  useEffect(() => {
+    const fetchFollowStates = async () => {
+      try {
+        const user = firebase?.auth?.currentUser;
+        if (!user || !Array.isArray(users) || users.length === 0) {
+          setFollowStateByUserId({});
+          return;
+        }
+
+        const token = await user.getIdToken();
+        const otherUsers = users.filter(
+          (candidate) => Number(candidate.user_id) !== Number(dbUser?.userId)
+        );
+
+        const results = await Promise.all(
+          otherUsers.map(async (candidate) => {
+            const res = await fetch(`/api/profile/${candidate.user_id}/follow-status`, {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            });
+
+            if (!res.ok) {
+              return [candidate.user_id, { isFollowing: false, isSelf: false }];
+            }
+
+            const data = await res.json();
+            return [candidate.user_id, {
+              isFollowing: !!data?.isFollowing,
+              isSelf: !!data?.isSelf,
+            }];
+          })
+        );
+
+        setFollowStateByUserId(Object.fromEntries(results));
+      } catch (err) {
+        console.error("Failed to load follow states", err);
+      }
+    };
+
+    if (firebase?.auth) {
+      fetchFollowStates();
+    }
+  }, [dbUser?.userId, firebase, users]);
+
+  const handleFollowToggle = async (targetUserId, isCurrentlyFollowing) => {
+    try {
+      setFollowLoadingByUserId((prev) => ({ ...prev, [targetUserId]: true }));
+
+      const user = firebase?.auth?.currentUser;
+      if (!user) {
+        throw new Error("No authenticated user found.");
+      }
+
+      const token = await user.getIdToken();
+      const res = await fetch(`/api/profile/${targetUserId}/follow`, {
+        method: isCurrentlyFollowing ? "DELETE" : "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) {
+        throw new Error(
+          isCurrentlyFollowing ? "Failed to unfollow user." : "Failed to follow user."
+        );
+      }
+
+      setFollowStateByUserId((prev) => ({
+        ...prev,
+        [targetUserId]: {
+          ...(prev[targetUserId] || {}),
+          isFollowing: !isCurrentlyFollowing,
+          isSelf: false,
+        },
+      }));
+    } catch (err) {
+      console.error("Failed to toggle follow state", err);
+    } finally {
+      setFollowLoadingByUserId((prev) => ({ ...prev, [targetUserId]: false }));
+    }
+  };
 
   const programOptions = useMemo(() => {
     return [...new Set(
@@ -210,9 +297,39 @@ function ProfileSearch() {
                 <Card key={user.user_id}>
                   <CardContent>
                     <Stack spacing={1}>
-                      <Typography variant="h2" sx={{ color: "text.primary" }}>
-                        {user.display_name || "Unnamed User"}
-                      </Typography>
+                      <Stack
+                        direction="row"
+                        justifyContent="space-between"
+                        alignItems="flex-start"
+                        spacing={2}
+                      >
+                        <Typography variant="h2" sx={{ color: "text.primary", flex: 1 }}>
+                          {user.display_name || "Unnamed User"}
+                        </Typography>
+
+                        {Number(user.user_id) !== Number(dbUser?.userId) && (
+                          followStateByUserId[user.user_id]?.isFollowing ? (
+                            <Chip
+                              label="Following"
+                              color="success"
+                              clickable
+                              onClick={() => handleFollowToggle(user.user_id, true)}
+                              disabled={!!followLoadingByUserId[user.user_id]}
+                              data-testid={`following-chip-${user.user_id}`}
+                              sx={{ fontWeight: 600, cursor: "pointer", flexShrink: 0 }}
+                            />
+                          ) : (
+                            <Button
+                              variant="contained"
+                              onClick={() => handleFollowToggle(user.user_id, false)}
+                              disabled={!!followLoadingByUserId[user.user_id]}
+                              sx={{ flexShrink: 0 }}
+                            >
+                              {followLoadingByUserId[user.user_id] ? "Working..." : "Follow"}
+                            </Button>
+                          )
+                        )}
+                      </Stack>
 
                       {user.role && (
                         <Typography variant="body1" color="text.secondary">
