@@ -136,7 +136,7 @@ app.get("/api/profile", checkAuth, (req, res) => {
     const profileSql = `
       SELECT up.profile_id, up.user_id, up.display_name, up.bio, up.avatar_url, up.updated_at,
         up.program_id, up.department, up.gender, up.birthday, up.phone_number,
-        p.program_name, uc.role
+        p.program_name, uc.role, uc.email
       FROM User_Profiles up
       LEFT JOIN Programs p ON p.program_id = up.program_id
       LEFT JOIN User_Credentials uc ON uc.user_id = up.user_id
@@ -170,6 +170,7 @@ app.get("/api/profile", checkAuth, (req, res) => {
           gender: row.gender || "",
           birthday: row.birthday || null,
           phone_number: row.phone_number || "",
+          email: row.email || "",
           program_id: row.program_id ?? null,
           program_name: row.program_name || "",
           program: row.program_name || "",
@@ -372,25 +373,47 @@ app.get("/api/profile/search-users", checkAuth, (req, res) => {
   const userQuery = (req.query.query || "").trim();
   let sql;
   let params = [];
+
   if (userQuery) {
+    const like = `%${userQuery}%`;
     sql = `
-      SELECT up.user_id, up.display_name, up.bio, up.department, p.program_name, uc.role
+      SELECT
+        up.user_id,
+        up.display_name,
+        uc.email,
+        up.bio,
+        up.department,
+        up.gender,
+        up.program_id,
+        p.program_name,
+        uc.role
       FROM User_Profiles up
       LEFT JOIN Programs p ON p.program_id = up.program_id
       LEFT JOIN User_Credentials uc ON uc.user_id = up.user_id
-      WHERE up.display_name LIKE ?
+      WHERE LOWER(up.display_name) LIKE LOWER(?)
+         OR LOWER(COALESCE(uc.email, '')) LIKE LOWER(?)
       ORDER BY up.display_name ASC;
     `;
-    params = [`%${userQuery}%`];
+    params = [like, like];
   } else {
     sql = `
-      SELECT up.user_id, up.display_name, up.bio, up.department, p.program_name, uc.role
+      SELECT
+        up.user_id,
+        up.display_name,
+        uc.email,
+        up.bio,
+        up.department,
+        up.gender,
+        up.program_id,
+        p.program_name,
+        uc.role
       FROM User_Profiles up
       LEFT JOIN Programs p ON p.program_id = up.program_id
       LEFT JOIN User_Credentials uc ON uc.user_id = up.user_id
       ORDER BY up.display_name ASC;
     `;
   }
+
   db.query(sql, params, (err, results) => {
     if (err) {
       console.error("Database error:", err.message);
@@ -408,7 +431,7 @@ app.get("/api/profile/:userId", checkAuth, (req, res) => {
   }
   const profileSql = `
     SELECT up.profile_id, up.user_id, up.display_name, up.bio, up.avatar_url, up.program_id,
-      up.department, up.gender, up.birthday, up.phone_number, p.program_name, uc.role
+      up.department, up.gender, up.birthday, up.phone_number, p.program_name, uc.role, uc.email
     FROM User_Profiles up
     LEFT JOIN Programs p ON p.program_id = up.program_id
     LEFT JOIN User_Credentials uc ON uc.user_id = up.user_id
@@ -443,6 +466,7 @@ app.get("/api/profile/:userId", checkAuth, (req, res) => {
         gender: row.gender || "",
         birthday: row.birthday || null,
         phone_number: row.phone_number || "",
+        email: row.email || "",
         program_id: row.program_id ?? null,
         program_name: row.program_name || "",
         program: row.program_name || "",
@@ -3090,8 +3114,8 @@ app.get('/api/posts/:id/comments', checkAuth, async (req, res) => {
 
   const sql = `
         SELECT c.comment_id, c.post_id, c.user_id, c.parent_comment_id,
-               c.content, c.created_at AS createdAt, 
-               up.display_name as author_name, up.avatar_url AS author_avatar
+               c.content, c.created_at AS createdAt,
+               up.display_name AS author_name, up.avatar_url
         FROM Comments c
         LEFT JOIN User_Profiles up ON c.user_id = up.user_id
         WHERE c.post_id = ?
@@ -3133,18 +3157,17 @@ app.post('/api/posts/:id/comments', checkAuth, async (req, res) => {
       return res.status(500).json({ error: 'Error creating comment' });
     }
     db.query(
-      'SELECT display_name FROM User_Profiles WHERE user_id = ?',
+      'SELECT display_name, avatar_url FROM User_Profiles WHERE user_id = ?',
       [currentUserId],
       (err2, profileRows) => {
         const author_name = profileRows?.[0]?.display_name ?? `User ${currentUserId}`;
-        const author_avatar = profileRows?.[0]?.avatar_url ?? null;
-
+        const avatar_url = profileRows?.[0]?.avatar_url ?? null;
         res.json({
           comment_id: result.insertId,
           post_id: parseInt(postId),
           user_id: currentUserId,
           author_name,
-          author_avatar,
+          avatar_url,
           parent_comment_id,
           content,
           createdAt: new Date().toISOString()

@@ -26,7 +26,6 @@ import CalendarPage from "./Calendar/CalendarPage";
 // Import profile components
 import ProfilePage from "./Profile/Profile";
 import EditProfile from "./Profile/EditProfile";
-import ViewProfile from "./Profile/ViewProfile";
 import ProgramStudents from "./Profile/ProgramStudents";
 import ProfileSearch from "./Profile/ProfileSearch";
 import UserProfileView from "./Profile/UserProfileView";
@@ -56,7 +55,6 @@ function AppContent() {
         <Route path="/feed/:postId" element={authenticated ? <PostDetailPage /> : <Navigate to="/"/>} />
         <Route path="/profile" element={authenticated ? <ProfilePage /> : <Navigate to="/" />} />
         <Route path="/edit-profile" element={authenticated ? <EditProfile /> : <Navigate to="/" />} />
-        <Route path="/users/:userId" element={authenticated ? <ViewProfile /> : <Navigate to="/" />} />
         <Route
           path="/programs/:programId/students"
           element={authenticated ? <ProgramStudents /> : <Navigate to="/" />}
