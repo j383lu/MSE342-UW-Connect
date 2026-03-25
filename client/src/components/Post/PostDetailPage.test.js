@@ -1,8 +1,29 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import 'whatwg-fetch';
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import PostDetailPage from "../Post/PostDetailPage";
+import PostDetailPage from "./PostDetailPage";
+
+
+jest.mock('../Firebase', () => ({
+  withFirebase: (Component) => {
+    const Wrapped = (props) => (
+      <Component
+        {...props}
+        firebase={{
+          auth: {
+            currentUser: { getIdToken: jest.fn().mockResolvedValue('mock-token') }
+          }
+        }}
+      />
+    );
+    Wrapped.displayName = Component.displayName || Component.name;
+    return Wrapped;
+  }
+}));
+
+//mock data
 
 const mockPost = {
   post_id: 1,
@@ -34,8 +55,20 @@ const mockComments = [
   }
 ];
 
-//helper to render PostDetailPage with router context
-const renderPage = () => {
+
+
+const makeFetch = ({ comments = mockComments, post = mockPost, newComment = null } = {}) =>
+  jest.fn((url, options = {}) => {
+    if (options?.method === 'POST' && newComment) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(newComment) });
+    }
+    if (url.includes('/comments')) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(comments) });
+    }
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(post) });
+  });
+
+const renderPage = () =>
   render(
     <MemoryRouter initialEntries={["/feed/1"]}>
       <Routes>
@@ -43,20 +76,18 @@ const renderPage = () => {
       </Routes>
     </MemoryRouter>
   );
-};
+
+// setup
 
 beforeEach(() => {
-  global.fetch = jest.fn((url) => {
-    if (url.includes("/comments")) {
-      return Promise.resolve({ ok: true, json: () => Promise.resolve(mockComments) });
-    }
-    return Promise.resolve({ ok: true, json: () => Promise.resolve(mockPost) });
-  });
+  global.fetch = makeFetch();
 });
 
 afterEach(() => {
   jest.resetAllMocks();
 });
+
+// Tests
 
 describe("PostDetailPage - Comments", () => {
 
@@ -73,12 +104,7 @@ describe("PostDetailPage - Comments", () => {
   });
 
   test("3. Shows empty state when no comments exist", async () => {
-    global.fetch = jest.fn((url) => {
-      if (url.includes("/comments")) {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
-      }
-      return Promise.resolve({ ok: true, json: () => Promise.resolve(mockPost) });
-    });
+    global.fetch = makeFetch({ comments: [] });
     renderPage();
     await waitFor(() =>
       expect(screen.getByText(/no comments yet/i)).toBeInTheDocument()
@@ -94,16 +120,7 @@ describe("PostDetailPage - Comments", () => {
       content: "Brand new comment",
       createdAt: new Date().toISOString()
     };
-
-    global.fetch = jest.fn((url, options) => {
-      if (options?.method === "POST") {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve(newComment) });
-      }
-      if (url.includes("/comments")) {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve(mockComments) });
-      }
-      return Promise.resolve({ ok: true, json: () => Promise.resolve(mockPost) });
-    });
+    global.fetch = makeFetch({ newComment });
 
     renderPage();
     await waitFor(() => expect(screen.getByText("First comment")).toBeInTheDocument());
@@ -111,7 +128,10 @@ describe("PostDetailPage - Comments", () => {
     fireEvent.change(screen.getByPlaceholderText(/write a comment/i), {
       target: { value: "Brand new comment" }
     });
-    fireEvent.click(screen.getByText(/post comment/i));
+
+    await act(async () => {
+      fireEvent.click(screen.getByText(/post comment/i));
+    });
 
     await waitFor(() =>
       expect(screen.getByText("Brand new comment")).toBeInTheDocument()
@@ -127,7 +147,6 @@ describe("PostDetailPage - Comments", () => {
   test("6. Empty comment with only spaces cannot be submitted", async () => {
     renderPage();
     await waitFor(() => expect(screen.getByText("Test Post")).toBeInTheDocument());
-
     fireEvent.change(screen.getByPlaceholderText(/write a comment/i), {
       target: { value: "   " }
     });
@@ -137,6 +156,6 @@ describe("PostDetailPage - Comments", () => {
   test("7. Back to Feed button navigates back", async () => {
     renderPage();
     await waitFor(() => expect(screen.getByText(/back to feed/i)).toBeInTheDocument());
-    expect(screen.getByText(/back to feed/i)).toBeInTheDocument();
   });
+
 });

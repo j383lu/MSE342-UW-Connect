@@ -1808,7 +1808,8 @@ app.get("/api/tags", checkAuth, (req, res) => {
 // CREATE GROUP API (with optional image upload):
 app.post("/api/groups", checkAuth, upload.single("coverImage"), (req, res) => {
   const { name, description, category, isOpen, maxMembers } = req.body;
-  const explicitCreatorId = req.body.user_id ?? req.body.creator_id ?? null;
+
+  const explicitCreatorId = Number(req.body.user_id);
 
   const createGroupWithCreator = (creator_id) => {
     if (!creator_id) {
@@ -1829,13 +1830,13 @@ app.post("/api/groups", checkAuth, upload.single("coverImage"), (req, res) => {
 
     db.query(sql, [creator_id, name, description, category, is_private, max_members, image_url],
       (err, result) => {
-        if (err) {
-          console.error("POST /api/groups error:", err);
-          return res.status(500).json({
-            error: "Failed to create group",
-            details: err.message,
-          });
-        }
+      if (err) {
+        console.error("POST /api/groups error:", err);
+        return res.status(500).json({
+          error: "Failed to create group",
+          details: err.message
+        });
+      }
 
         const groupId = result.insertId;
 
@@ -2722,6 +2723,8 @@ app.get('/api/groups/:groupId/posts', checkAuth, async (req, res) => {
   });
 });
 
+// ------------------------------POST/FEED APIs---------------------------------
+
 // Post /api/posts - create a new post
 app.post('/api/posts', checkAuth, upload.single('image'), async (req, res) => {
   //let connection = mysql.createConnection(config);
@@ -3289,9 +3292,8 @@ app.put('/api/posts/:id', checkAuth, upload.single('image'), async (req, res) =>
 
 // POST /api/posts/:id/like - toggle like/unlike
 app.post('/api/posts/:id/like', checkAuth, async (req, res) => {
-  //let connection = mysql.createConnection(config);
   const postId = req.params.id;
-  let currentUserId; // Placeholder - replace with real auth user ID later
+  let currentUserId; 
   try {
     currentUserId = await getNumericUserId(req.user.email);
   } catch (err) {
@@ -3301,7 +3303,7 @@ app.post('/api/posts/:id/like', checkAuth, async (req, res) => {
   const checkSql = 'SELECT like_id FROM Likes WHERE post_id = ? AND user_id = ?';
   db.query(checkSql, [postId, currentUserId], (err, results) => {
     if (err) {
-      //db.end();
+
       return res.status(500).json({ error: 'Error checking like status' });
     }
 
@@ -3341,7 +3343,7 @@ app.get('/api/posts/:id/likes', checkAuth, async (req, res) => {
   const postId = req.params.id;
 
   const sql = `
-        SELECT l.user_id, up.display_name
+        SELECT l.user_id, up.display_name, up.avatar_url
         FROM Likes l
         LEFT JOIN User_Profiles up ON l.user_id = up.user_id
         WHERE l.post_id = ?
@@ -3848,7 +3850,7 @@ app.post('/api/register', checkAuth, (req, res) => {
             });
         });
     });
-});
+  });
 
 // Lookup app user_id by email (used after Firebase login)
 app.get('/api/users/by-email', checkAuth, (req, res) => {
