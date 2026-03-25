@@ -9,6 +9,7 @@ import {
   Button,
   Alert,
   Avatar,
+  Divider,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import { FirebaseContext } from "../../Firebase";
@@ -149,48 +150,64 @@ function Profile() {
             direction="row"
             justifyContent="space-between"
             alignItems="flex-start"
+            spacing={2}
           >
-            <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
+            <Stack
+              direction="row"
+              spacing={2}
+              alignItems="flex-start"
+              sx={{ flex: 1, minWidth: 0 }}
+            >
               <Avatar
                 src={profile.avatar_url ? `/uploads/${profile.avatar_url}` : undefined}
                 alt={profile.name}
                 sx={{
                   width: 80,
                   height: 80,
+                  flexShrink: 0,
                   bgcolor: "primary.main",
                   fontSize: "2rem",
                 }}
               >
                 {!profile.avatar_url && (profile.name?.[0]?.toUpperCase() ?? "?")}
               </Avatar>
-              <Box>
-                <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
-                  <Typography variant="h1" sx={{ mb: 1 }}>
+              <Stack spacing={0.75} sx={{ minWidth: 0, pt: 0.25 }}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    gap: 1,
+                  }}
+                >
+                  <Typography
+                    variant="h1"
+                    sx={{
+                      mb: 0,
+                      lineHeight: 1.2,
+                      wordBreak: "break-word",
+                    }}
+                  >
                     {profile.name}
                   </Typography>
-                </Stack>
+                  {profile.role === "Staff" && (
+                    <Chip
+                      label="Staff"
+                      size="small"
+                      color="secondary"
+                      sx={{ fontWeight: 600, height: 26 }}
+                    />
+                  )}
+                </Box>
+                {profile.gender && profile.gender !== "Prefer not to say" && (
+                  <Typography variant="body2" color="text.secondary" fontWeight={600}>
+                    {profile.gender}
+                  </Typography>
+                )}
+              </Stack>
+            </Stack>
 
-              {profile.gender && profile.gender !== "Prefer not to say" && (
-                <Typography
-                  variant="body1"
-                  sx={{ color: "text.secondary", fontWeight: 600 }}
-                >
-                  {profile.gender}
-                </Typography>
-              )}
-
-              {profile.role === "Staff" && (
-                <Typography
-                  variant="body1"
-                  sx={{ color: "text.secondary", fontWeight: 600, mt: 1 }}
-                >
-                  Staff
-                </Typography>
-              )}
-              </Box>
-            </Box>
-
-            <Stack direction="row" spacing={1}>
+            <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
               <Button
                 variant="outlined"
                 onClick={() => navigate("/profile-search")}
@@ -208,7 +225,9 @@ function Profile() {
             </Stack>
           </Stack>
 
-          <Box sx={{ mt: 2 }}>
+          <Divider sx={{ my: 2.5 }} />
+
+          <Box>
             <Typography variant="h2" sx={{ mb: 1 }}>
               Bio
             </Typography>
@@ -217,14 +236,12 @@ function Profile() {
               {profile.bio || "No bio added yet."}
             </Typography>
 
-            {profile.birthday && (
-              <Typography
-                variant="body1"
-                sx={{ mt: 1, color: "text.secondary", fontWeight: 600 }}
-              >
-                Birthday: {formatBirthday(profile.birthday)}
-              </Typography>
-            )}
+            <Typography
+              variant="body1"
+              sx={{ mt: 1, color: "text.secondary", fontWeight: 600 }}
+            >
+              Email: {profile.email || "—"}
+            </Typography>
 
             {profile.phone_number && (
               <Typography
@@ -234,11 +251,29 @@ function Profile() {
                 Phone Number: {profile.phone_number}
               </Typography>
             )}
+
+            {profile.birthday && (
+              <Typography
+                variant="body1"
+                sx={{ mt: 1, color: "text.secondary", fontWeight: 600 }}
+              >
+                Birthday: {formatBirthday(profile.birthday)}
+              </Typography>
+            )}
           </Box>
 
           {profile.role === "Staff" && (
-            <Box sx={{ mt: 4 }}>
-              <Typography variant="h2" sx={{ mb: 1 }}>
+            <Box
+              sx={{
+                mt: 3,
+                p: 2,
+                borderRadius: 1,
+                bgcolor: "action.hover",
+                border: 1,
+                borderColor: "divider",
+              }}
+            >
+              <Typography variant="h2" sx={{ mb: 1, mt: 0 }}>
                 Staff Department
               </Typography>
               {profile.department ? (
@@ -248,14 +283,14 @@ function Profile() {
                   sx={{ fontWeight: 600 }}
                 />
               ) : (
-                <Typography variant="body1" color="text.secondary">
+                <Typography variant="body2" color="text.secondary">
                   No department added yet.
                 </Typography>
               )}
             </Box>
           )}
 
-          <Box sx={{ mt: 4 }}>
+          <Box sx={{ mt: 3 }}>
             <Typography variant="h2" sx={{ mb: 1 }}>
               Program
             </Typography>
@@ -274,7 +309,7 @@ function Profile() {
             )}
           </Box>
 
-          <Box sx={{ mt: 4 }}>
+          <Box sx={{ mt: 3 }}>
             <Typography variant="h2" sx={{ mb: 1 }}>
               Current Courses
             </Typography>
