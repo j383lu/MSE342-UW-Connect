@@ -12,6 +12,7 @@ jest.mock("../../../../contexts/UserContext", () => ({
 describe("CalendarPage", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    localStorage.clear();
     apiRequest.mockImplementation(async (url) => {
       if (String(url).startsWith("/api/calendar/contacts")) {
         return {
@@ -57,8 +58,10 @@ describe("CalendarPage", () => {
       expect(screen.getByText(/Upcoming/i)).toBeInTheDocument();
     });
 
-    expect(screen.getByText("Derrick Personal Event")).toBeInTheDocument();
-    expect(screen.getByText("d3rr1ck lu")).toBeInTheDocument();
+    // "Upcoming" is in the DOM before /api/calendar/events finishes; wait for loaded data.
+    expect(await screen.findByText("Derrick Personal Event")).toBeInTheDocument();
+    const ownerLabels = await screen.findAllByText("d3rr1ck lu");
+    expect(ownerLabels.length).toBeGreaterThan(0);
   });
 
   test("opens details dialog when event card is clicked", async () => {

@@ -42,6 +42,11 @@ describe("AddTodoModal", () => {
 
     render(<AddTodoModal open onClose={jest.fn()} onCreated={jest.fn()} contacts={contacts} />);
 
+    // Wait for categories to load and default selection to be applied.
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledWith("/api/categories");
+    });
+
     fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Test Group Calendar Event" } });
     fireEvent.click(screen.getByRole("button", { name: "Group" }));
     fireEvent.click(screen.getByRole("button", { name: "Private" }));

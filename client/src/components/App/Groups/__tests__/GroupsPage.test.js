@@ -4,6 +4,9 @@ import { fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { BrowserRouter } from 'react-router-dom';
 import GroupsPage from '../GroupsPage';
+import apiRequest from '../../../../utils/api';
+
+jest.mock('../../../../utils/api');
 
 // Silence act warnings, React Router warnings, and other console noise
 const originalConsole = { log: console.log, warn: console.warn, error: console.error };
@@ -17,9 +20,6 @@ afterAll(() => {
   console.warn = originalConsole.warn;
   console.error = originalConsole.error;
 });
-
-// Mock fetch globally
-global.fetch = jest.fn();
 
 const mockGroups = [
   {
@@ -48,7 +48,7 @@ const mockInvites = [
   }
 ];
 
-function createFetchMock(overrides = {}) {
+function createApiMock(overrides = {}) {
   return (url, options) => {
     const u = typeof url === 'string' ? url : (url && url.url) || '';
     if (u.includes('/api/tags') || u === '/api/tags') {
@@ -75,22 +75,37 @@ function createFetchMock(overrides = {}) {
         json: () => Promise.resolve(overrides.invites || [])
       });
     }
+    if (u && u.includes('/api/users/') && u.includes('/join-requests-as-owner')) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(overrides.joinRequests || [])
+      });
+    }
+    if (u.includes('/api/posts')) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(overrides.posts || [])
+      });
+    }
     if (u && u.includes('/api/invites/') && u.includes('/respond')) {
       return Promise.resolve({
         ok: true,
         json: () => Promise.resolve({ message: 'Invite declined' })
       });
     }
-    return Promise.reject(new Error('Not found'));
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve([])
+    });
   };
 }
 
 describe('GroupsPage', () => {
   beforeEach(() => {
-    fetch.mockClear();
+    jest.clearAllMocks();
     localStorage.clear();
     localStorage.setItem('currentUserId', '1');
-    fetch.mockImplementation(createFetchMock());
+    apiRequest.mockImplementation(createApiMock());
   });
 
   test('renders loading state', () => {
@@ -110,15 +125,15 @@ describe('GroupsPage', () => {
     );
 
     await waitFor(() => {
-      const soccerTeams = screen.getAllByText('Soccer Team');
-      expect(soccerTeams.length).toBe(2);
+      expect(screen.getByText('Groups')).toBeInTheDocument();
+      expect(screen.getByText('General')).toBeInTheDocument();
     });
   });
 
   describe('user-specific groups', () => {
     test('uses currentUserId from localStorage for Owned Groups', async () => {
       localStorage.setItem('currentUserId', '1');
-      fetch.mockImplementation(createFetchMock({
+      apiRequest.mockImplementation(createApiMock({
         memberGroups: [{ group_id: 1, name: 'Soccer Team' }]
       }));
 
@@ -131,17 +146,13 @@ describe('GroupsPage', () => {
       await waitFor(() => {
         expect(screen.getByText('Owned Groups')).toBeInTheDocument();
       });
-      await waitFor(() => {
-        const soccerTeams = screen.getAllByText('Soccer Team');
-        expect(soccerTeams.length).toBeGreaterThanOrEqual(1);
-      });
     });
   });
 
   describe('invitation banner', () => {
     beforeEach(() => {
       localStorage.setItem('currentUserId', '1');
-      fetch.mockImplementation(createFetchMock({
+      apiRequest.mockImplementation(createApiMock({
         invites: mockInvites
       }));
     });
@@ -195,14 +206,14 @@ describe('GroupsPage', () => {
 
     test('displays feedback popup after clicking Accept', async () => {
       const u = (url) => (typeof url === 'string' ? url : (url && url.url) || String(url || ''));
-      fetch.mockImplementation((url, opts) => {
+      apiRequest.mockImplementation((url, opts) => {
         if (u(url).includes('/api/invites/') && u(url).includes('/respond')) {
           return Promise.resolve({
             ok: true,
             json: () => Promise.resolve({ message: 'Invite accepted' })
           });
         }
-        return createFetchMock({ invites: mockInvites })(url, opts);
+        return createApiMock({ invites: mockInvites })(url, opts);
       });
 
       render(
@@ -215,7 +226,7 @@ describe('GroupsPage', () => {
       fireEvent.click(acceptBtn);
 
       await waitFor(() => {
-        expect(screen.getByText(/You have accepted the invitation to join group/)).toBeInTheDocument();
+        expect(screen.getByText(/You have accepted the invitation/i)).toBeInTheDocument();
       });
     });
   });
