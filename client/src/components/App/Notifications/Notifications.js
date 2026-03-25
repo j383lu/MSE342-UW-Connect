@@ -10,7 +10,7 @@ import IconButton from '@mui/material/IconButton';
 import DeleteIcon from '@mui/icons-material/Delete';
 import apiRequest from '../../../utils/api';
 import s from './notificationStyles';
-import DoneAllIcon from 'mui/icons-material/DoneAll';
+import DoneAllIcon from '@mui/icons-material/DoneAll';
 
 const Notifications = () => {
   const { dbUser } = useUser();
