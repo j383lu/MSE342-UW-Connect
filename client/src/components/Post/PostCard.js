@@ -107,6 +107,16 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter, fir
               </>
             )
           }
+          titleTypographyProps={{
+            variant: 'h6',
+            fontWeight: 600,
+            fontSize: '1.1rem',
+            color: '#17292B'
+          }}
+          subheaderTypographyProps={{
+            fontSize: '0.8rem',
+            color: '#686967'
+          }}
         />
 
         <CardContent>

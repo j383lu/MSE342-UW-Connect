@@ -3046,7 +3046,6 @@ app.post('/api/register', checkAuth, (req, res) => {
         });
     });
   });
-});
 
 // Lookup app user_id by email (used after Firebase login)
 app.get('/api/users/by-email', checkAuth, (req, res) => {

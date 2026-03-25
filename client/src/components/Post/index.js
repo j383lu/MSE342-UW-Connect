@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { Grid, Button, Typography, TextField, Stack, Chip, Box, Collapse } from "@mui/material";
+import { Grid, Button, Typography, TextField, Stack, Chip, Box, Card as MuiCard, FormControl, InputLabel, Select, MenuItem } from "@mui/material";
 import PostList from "./PostList";
 import CreatePostForm from "./CreatePostForm";
 import EditPostForm from "./EditPostForm";
 import { withFirebase } from "../Firebase";
 import { useUser } from "../../contexts/UserContext";
-import TuneIcon from "@mui/icons-material/Tune";
+
 
 function Post({ firebase }) {
   const { dbUser, loading } = useUser();
@@ -231,7 +231,7 @@ function Post({ firebase }) {
   };
 
   return (
-    <Grid container spacing={3} sx={{ maxWidth: 800, margin: '0 auto', px: 2 }}>
+    <Grid container spacing={3} sx={{ maxWidth: 1000, margin: '0 auto', px: 2 }}>
 
       {/* Header Section */}
       <Grid item xs={12}>
@@ -240,45 +240,72 @@ function Post({ firebase }) {
         </Typography>
       </Grid>
 
-      {/* Search Bar */}
+      {/* Search + Sort Card */}
       <Grid item xs={12}>
-        <Stack direction="row" spacing={2} justifyContent="center">
-          <TextField
-            label="Search posts..."
-            value={searchKeyword}
-            onChange={(e) => setSearchKeyword(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-            error={Boolean(searchError)}
-            helperText={searchError}
-            sx={{
-              width: '50%',
-              '& .MuiOutlinedInput-root': {
-                borderRadius: '50px',
-              },
-            }}
-          />
-          <Button variant="contained" onClick={handleSearch}>
-            Search
-          </Button>
-          <Button variant="outlined" onClick={handleReset}>
-            Clear
-          </Button>
-        </Stack>
-        {/* Active tag indicator */}
-        {activeTag && (
-          <Stack direction="row" justifyContent="center" sx={{ mt: 1 }}>
-            <Typography variant="body2" color="text.secondary">
-              Filtering by:
-            </Typography>
-            <Chip
-              label={`#${activeTag}`}
-              onDelete={handleReset}
-              color="primary"
-              size="small"
+        <MuiCard sx={{
+          border: '1px solid #D6DFE2',
+          borderRadius: 3,
+          boxShadow: '0px 2px 8px rgba(0,0,0,0.05)',
+          p: 5
+        }}>
+          <Stack direction="row" spacing={2} alignItems="flex-start" flexWrap="wrap">
+            <TextField
+              label="Search posts..."
+              value={searchKeyword}
+              onChange={(e) => { setSearchKeyword(e.target.value); setSearchError(""); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
+              error={Boolean(searchError)}
+              helperText={searchError}
+              sx={{
+                flex: 1,
+                minWidth: 200,
+                '& .MuiOutlinedInput-root': { borderRadius: '50px' }
+              }}
             />
-          </Stack>
-        )}
 
+            {/* Sort dropdown */}
+            <FormControl sx={{ minWidth: 160 }}>
+              <InputLabel>Sort by</InputLabel>
+              <Select
+                value={sortBy}
+                label="Sort by"
+                onChange={(e) => setSortBy(e.target.value)}
+                sx={{ borderRadius: '50px' }}
+              >
+                <MenuItem value="recent">Most recent</MenuItem>
+                <MenuItem value="likes">Most liked</MenuItem>
+                <MenuItem value="comments">Most commented</MenuItem>
+              </Select>
+            </FormControl>
+
+            <Button
+              variant="contained"
+              onClick={handleSearch}
+              sx={{ height: 56, borderRadius: '50px', px: 3 }}
+            >
+              Search
+            </Button>
+            <Button
+              variant="outlined"
+              onClick={handleReset}
+              sx={{ height: 56, borderRadius: '50px', px: 3 }}
+            >
+              Clear
+            </Button>
+          </Stack>
+
+          {activeTag && (
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1.5 }}>
+              <Typography variant="body2" color="text.secondary">Filtering by:</Typography>
+              <Chip
+                label={`#${activeTag}`}
+                onDelete={handleReset}
+                color="primary"
+                size="small"
+              />
+            </Stack>
+          )}
+        </MuiCard>
       </Grid>
 
       {/* Create Button */}
@@ -336,78 +363,42 @@ function Post({ firebase }) {
         </Box>
       </Grid>
 
-      {/* Filter/sort toggle button */}
-      <Grid item xs={12}>
-        <Button
-          startIcon={<TuneIcon />}
-          onClick={() => setFiltersOpen(prev => !prev)}
-          variant="outlined"
-          size="small"
-          sx={{
-            borderRadius: '20px',
-            textTransform: 'none',
-            borderColor: filtersOpen ? '#5D6C5C' : '#D6DFE2',
-            color: filtersOpen ? '#5D6C5C' : '#686967',
-            fontWeight: filtersOpen ? 600 : 400,
-          }}
-        >
-          {filtersOpen ? 'Hide filters' : 'Filters & sort'}
-        </Button>
-      </Grid>
-
-      {/* Collapsible panel */}
-      <Grid item xs={12}>
-        <Collapse in={filtersOpen}>
-          <Box sx={{
-            border: '1px solid #D6DFE2',
-            borderRadius: 2,
-            p: 2,
-            background: '#F8F9F8'
-          }}>
-            <Typography variant="body2" sx={{
-              fontWeight: 600,
-              color: '#17292B',
-              mb: 1
-            }}>
-              Sort by
-            </Typography>
-            <Stack direction="row" spacing={1} flexWrap="wrap">
-              {[
-                { label: 'Most recent', value: 'recent' },
-                { label: 'Most liked', value: 'likes' },
-                { label: 'Most commented', value: 'comments' }
-              ].map(option => (
-                <Chip
-                  key={option.value}
-                  label={option.label}
-                  onClick={() => setSortBy(option.value)}
-                  sx={{
-                    borderRadius: '20px',
-                    fontWeight: sortBy === option.value ? 600 : 400,
-                    background: sortBy === option.value ? '#5D6C5C' : 'transparent',
-                    color: sortBy === option.value ? '#FDFDF6' : '#686967',
-                    border: '1px solid',
-                    borderColor: sortBy === option.value ? '#5D6C5C' : '#D6DFE2',
-                    '&:hover': {
-                      background: sortBy === option.value ? '#5D6C5C' : 'rgba(93,108,92,0.08)'
-                    }
-                  }}
-                />
-              ))}
-            </Stack>
-          </Box>
-        </Collapse>
-      </Grid>
-
       {/* Post List */}
       <Grid item xs={12}>
-        <PostList
-          posts={posts}
-          onDeletePost={handleDeletePost}
-          onEditPost={(post) => { setEditingPost(post); setEditOpen(true); }}
-          onLikePost={handleLikePost}
-          onTagFilter={handleTagFilter}
-        />
+        <MuiCard sx={{
+          border: '1px solid #D6DFE2',
+          borderRadius: 3,
+          boxShadow: '0px 2px 8px rgba(0,0,0,0.05)',
+          p: 5,
+          background: '#ffffff'
+        }}>
+          {posts.length === 0 ? (
+            <Box sx={{
+              textAlign: 'center',
+              py: 6,
+              color: '#686967'
+            }}>
+              <Typography variant="body1" fontWeight={500}>
+                {activeView === 'groups'
+                  ? "No posts from your groups yet."
+                  : "No posts found."}
+              </Typography>
+              <Typography variant="body2" sx={{ mt: 0.5 }}>
+                {activeView === 'groups'
+                  ? "Join a group to see their posts here."
+                  : "Be the first to post something!"}
+              </Typography>
+            </Box>
+          ) : (
+            <PostList
+              posts={posts}
+              onDeletePost={handleDeletePost}
+              onEditPost={(post) => { setEditingPost(post); setEditOpen(true); }}
+              onLikePost={handleLikePost}
+              onTagFilter={handleTagFilter}
+            />
+          )}
+        </MuiCard>
       </Grid>
 
       <CreatePostForm
