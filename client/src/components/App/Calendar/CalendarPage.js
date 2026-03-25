@@ -23,7 +23,6 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import EventIcon from "@mui/icons-material/Event";
 import ScheduleIcon from "@mui/icons-material/Schedule";
-import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import apiRequest from "../../../utils/api";
 import { useUser } from "../../../contexts/UserContext";
 import AddTodoModal from "./AddTodoModal";
@@ -160,6 +159,26 @@ function isPrivateListing(ev) {
   const et = String(ev?.event_type || "").trim().toLowerCase();
   if (et === "private") return true;
   return getCalendarVisibility(ev) === "private";
+}
+
+/** Matches the "Personal" chip only — not Public/Group feed rows misclassified by scope heuristics. */
+function showsPersonalTypeBadge(ev) {
+  return getCalendarTypeBadge(ev).kind === "personal";
+}
+
+/** Personal (badge) items only: overdue after end date/time (deadline). */
+function isPersonalCalendarOverdue(ev, now = new Date()) {
+  if (!showsPersonalTypeBadge(ev)) return false;
+  const { end } = eventDateRange(ev);
+  return now.getTime() > end.getTime();
+}
+
+/** Personal (badge): now is on or after start and before end. */
+function isPersonalCalendarInProgress(ev, now = new Date()) {
+  if (!showsPersonalTypeBadge(ev)) return false;
+  const { start, end } = eventDateRange(ev);
+  const t = now.getTime();
+  return t >= start.getTime() && t < end.getTime();
 }
 
 function getFoldedListingChips(ev) {
@@ -319,26 +338,19 @@ export default function CalendarPage() {
     [events, categoryOn]
   );
 
-  const isOverdue = (ev) => Number(ev.is_overdue) === 1;
-  const isEnded = (ev) => Number(ev.is_past) === 1;
-
   const overdueList = useMemo(() => {
     const n = new Date();
     return filteredEvents
-      .filter((ev) => {
-        if (getCalendarScope(ev) !== "personal") return false;
-        const { start } = eventDateRange(ev);
-        return start < n;
-      })
-      .sort((a, b) => eventDateRange(a).start - eventDateRange(b).start);
+      .filter((ev) => isPersonalCalendarOverdue(ev, n))
+      .sort((a, b) => eventDateRange(a).end - eventDateRange(b).end);
   }, [filteredEvents]);
 
   const upcomingList = useMemo(() => {
     const n = new Date();
     return filteredEvents
       .filter((ev) => {
-        const { start } = eventDateRange(ev);
-        return start >= n;
+        const { end } = eventDateRange(ev);
+        return end.getTime() >= n.getTime();
       })
       .sort((a, b) => eventDateRange(a).start - eventDateRange(b).start);
   }, [filteredEvents]);
@@ -676,7 +688,8 @@ export default function CalendarPage() {
     const { start, end } = eventDateRange(ev);
     const colorKey = extractCalendarColor(ev.tags);
     const hex = colorHexForKey(colorKey);
-    const overdue = isOverdue(ev);
+    const personalOverdue = isPersonalCalendarOverdue(ev);
+    const personalInProgress = isPersonalCalendarInProgress(ev);
     const mine = Number(ev.created_by) === Number(myId);
     const creatorLabel = mine ? "You" : ev.creator_name || "Peer";
     const { displayLabel, displayKind, showAudienceChip, audienceLabel, visibility } =
@@ -723,9 +736,13 @@ export default function CalendarPage() {
             }}
           />
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            {overdue ? (
-              <Typography variant="caption" sx={{ color: "#E53E3E", fontWeight: 700, display: "block" }}>
+            {personalOverdue ? (
+              <Typography variant="caption" sx={{ color: "#718096", fontWeight: 700, display: "block" }}>
                 Overdue
+              </Typography>
+            ) : personalInProgress ? (
+              <Typography variant="caption" sx={{ color: "#4A5568", fontWeight: 700, display: "block" }}>
+                In progress
               </Typography>
             ) : null}
             <Typography variant="subtitle2" fontWeight={700} sx={{ lineHeight: 1.3 }}>
@@ -864,10 +881,12 @@ export default function CalendarPage() {
       const L = layoutMap.get(ev.id) || { leftPct: 0, widthPct: 100 };
       const colorKey = extractCalendarColor(ev.tags);
       const hex = colorHexForKey(colorKey);
-      const scope = getCalendarScope(ev);
-      const { displayLabel: blockPrimary, showAudienceChip: showBlockAudience, audienceLabel: blockAudience, visibility: blockVis } =
+      const { displayLabel: blockPrimary, showAudienceChip: showBlockAudience, audienceLabel: blockAudience } =
         getFoldedListingChips(ev);
-      const overdueBanner = isOverdue(ev) && scope === "personal";
+      const personalOverdueBlock = isPersonalCalendarOverdue(ev);
+      const personalInProgressBlock =
+        isPersonalCalendarInProgress(ev) && !personalOverdueBlock;
+      const statusBanner = personalOverdueBlock || personalInProgressBlock;
       const scopeShort = blockPrimary;
       const visibilityShort = showBlockAudience ? blockAudience : null;
       const capBlock =
@@ -900,16 +919,18 @@ export default function CalendarPage() {
             boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
             zIndex: 2,
             cursor: "pointer",
+            boxSizing: "border-box",
+            border: personalInProgressBlock ? "2px solid #1A202C" : "none",
           }}
         >
-          {overdueBanner ? (
+          {personalOverdueBlock ? (
             <Box
               sx={{
                 display: "flex",
                 alignItems: "center",
                 gap: 0.5,
-                bgcolor: "#E53E3E",
-                color: "#fff",
+                bgcolor: "#CBD5E0",
+                color: "#1A202C",
                 px: 0.75,
                 py: 0.25,
                 fontSize: "0.65rem",
@@ -917,8 +938,24 @@ export default function CalendarPage() {
                 letterSpacing: "0.06em",
               }}
             >
-              <WarningAmberIcon sx={{ fontSize: 14 }} />
               OVERDUE
+            </Box>
+          ) : personalInProgressBlock ? (
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 0.5,
+                bgcolor: "#E2E8F0",
+                color: "#1A202C",
+                px: 0.75,
+                py: 0.25,
+                fontSize: "0.65rem",
+                fontWeight: 800,
+                letterSpacing: "0.05em",
+              }}
+            >
+              IN PROGRESS
             </Box>
           ) : null}
           <Box
@@ -926,9 +963,8 @@ export default function CalendarPage() {
               px: 1,
               py: 0.75,
               bgcolor: isPeerOwned ? "#D1D5DB" : hex,
-              opacity: overdueBanner && !isEnded(ev) ? 0.92 : 1,
               color: isPeerOwned ? "#111827" : "#fff",
-              height: overdueBanner ? "calc(100% - 24px)" : "100%",
+              height: statusBanner ? "calc(100% - 24px)" : "100%",
               boxSizing: "border-box",
             }}
           >
@@ -1336,7 +1372,7 @@ export default function CalendarPage() {
 
             <Box sx={{ borderTop: "1px solid #EDF2F7", mt: 2, pt: 2 }}>
               <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }} onClick={() => setOverdueOpen(!overdueOpen)}>
-                <Typography variant="subtitle2" fontWeight={800} sx={{ color: "#E53E3E" }}>
+                <Typography variant="subtitle2" fontWeight={800} sx={{ color: "#718096" }}>
                   Overdue ({overdueList.length})
                 </Typography>
                 {overdueOpen ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
