@@ -930,6 +930,8 @@ app.get("/api/calendar/events", checkAuth, (req, res) => {
         DATE_FORMAT(e.end_date, '%Y-%m-%d') AS end_date,
         TIME_FORMAT(e.end_time, '%H:%i') AS end_time,
         e.category,
+        e.capacity,
+        e.event_type,
         e.created_by,
         COALESCE(creator_up.display_name, creator_uc.email) AS creator_name,
         GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
@@ -973,6 +975,8 @@ app.get("/api/calendar/events", checkAuth, (req, res) => {
         e.end_date,
         e.end_time,
         e.category,
+        e.capacity,
+        e.event_type,
         e.created_by,
         creator_uc.email,
         creator_up.display_name
@@ -988,6 +992,93 @@ app.get("/api/calendar/events", checkAuth, (req, res) => {
       }
 
       return res.json(rows || []);
+    });
+  });
+});
+
+// GET /api/calendar/events/:id — fetch full event row for details popup
+// (Must include capacity/event_type because the calendar list query can be filtered.)
+app.get("/api/calendar/events/:id", checkAuth, (req, res) => {
+  const eventId = Number(req.params.id);
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
+
+  if (!eventId) {
+    return res.status(400).json({ error: "Invalid event id." });
+  }
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("GET /api/calendar/events/:id user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
+    }
+
+    const sql = `
+      SELECT
+        e.id,
+        e.title,
+        e.description,
+        DATE_FORMAT(e.event_date, '%Y-%m-%d') AS event_date,
+        TIME_FORMAT(e.event_time, '%H:%i') AS event_time,
+        DATE_FORMAT(e.end_date, '%Y-%m-%d') AS end_date,
+        TIME_FORMAT(e.end_time, '%H:%i') AS end_time,
+        e.location,
+        e.capacity,
+        e.category,
+        e.event_type,
+        e.created_by,
+        COALESCE(creator_up.display_name, creator_uc.email) AS creator_name,
+        GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags
+      FROM Events e
+      LEFT JOIN User_Credentials creator_uc ON creator_uc.user_id = e.created_by
+      LEFT JOIN User_Profiles creator_up ON creator_up.user_id = e.created_by
+      LEFT JOIN Event_Tags t ON t.event_id = e.id
+      WHERE
+        e.id = ?
+        AND (
+          NOT EXISTS (
+            SELECT 1
+            FROM Event_Tags pv
+            WHERE pv.event_id = e.id
+              AND pv.tag_name = '__calvisibility__:private'
+          )
+          OR e.created_by = ?
+          OR EXISTS (
+            SELECT 1
+            FROM Event_Attendees a_self
+            WHERE a_self.event_id = e.id
+              AND LOWER(a_self.attendee_name) = LOWER(?)
+          )
+        )
+      GROUP BY
+        e.id,
+        e.title,
+        e.description,
+        e.event_date,
+        e.event_time,
+        e.end_date,
+        e.end_time,
+        e.location,
+        e.capacity,
+        e.category,
+        e.event_type,
+        e.created_by,
+        creator_uc.email,
+        creator_up.display_name
+      LIMIT 1
+    `;
+
+    db.query(sql, [eventId, currentUserId, currentUserEmail], (err, rows) => {
+      if (err) {
+        console.log("GET /api/calendar/events/:id error:", err);
+        return res.status(500).json({ error: "Failed to load event details." });
+      }
+      if (!rows || rows.length === 0) {
+        return res.status(404).json({ error: "Event not found." });
+      }
+      return res.json(rows[0]);
     });
   });
 });

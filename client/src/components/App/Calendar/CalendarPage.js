@@ -338,18 +338,31 @@ export default function CalendarPage() {
       const rows = res.ok && Array.isArray(data) ? data : [];
       setDetailAttendees(rows);
       const participantIds = attendeeRowsToParticipantIds(rows, contacts);
+
+      // Sync checkboxes right away so the edit form is not laggy.
       syncEditFormFromEvent(ev, participantIds);
-      // Ensure we display SQL-backed fields (capacity/event_type) from the latest server response.
+
+      // Fetch the full event row for details popup fields (capacity/event_type).
+      // This avoids relying on /api/calendar/events list shape / filters.
       try {
-        const list = await fetchEvents();
-        const refreshed = Array.isArray(list) ? list.find((e) => Number(e.id) === Number(ev.id)) : null;
-        if (refreshed) {
-          setSelectedEvent(refreshed);
+        const evRes = await apiRequest(`/api/calendar/events/${ev.id}`);
+        const evData = await evRes.json().catch(() => null);
+        if (evRes.ok && evData && typeof evData === "object") {
+          setSelectedEvent(evData);
           // Keep checkbox state synced to the latest event row.
-          syncEditFormFromEvent(refreshed, participantIds);
+          syncEditFormFromEvent(evData, participantIds);
+        } else {
+          // If details fetch fails, fall back to the clicked event object.
+          // (Optional: attempt a list refresh for other fields.)
+          const list = await fetchEvents();
+          const refreshed = Array.isArray(list) ? list.find((e) => Number(e.id) === Number(ev.id)) : null;
+          if (refreshed) {
+            setSelectedEvent(refreshed);
+            syncEditFormFromEvent(refreshed, participantIds);
+          }
         }
       } catch {
-        // If refresh fails, fall back to the clicked event object.
+        // If details fetch fails, fall back to the clicked event object.
       }
     } catch {
       setDetailAttendees([]);
@@ -1348,7 +1361,11 @@ export default function CalendarPage() {
               </Typography>
               <Typography variant="body2">Category: {selectedEvent.category}</Typography>
               <Typography variant="body2">
-                Type: {getCalendarEventTypeText(selectedEvent)}
+                Type:{" "}
+                {(() => {
+                  const t = getCalendarEventTypeText(selectedEvent);
+                  return t === "—" && detailsLoading ? "Loading..." : t;
+                })()}
               </Typography>
               <Typography variant="body2">
                 Capacity:{" "}
@@ -1356,7 +1373,9 @@ export default function CalendarPage() {
                 selectedEvent.capacity !== null &&
                 selectedEvent.capacity !== ""
                   ? Number(selectedEvent.capacity)
-                  : "—"}
+                  : detailsLoading
+                    ? "Loading..."
+                    : "—"}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Owner: {Number(selectedEvent.created_by) === Number(myId) ? "You" : selectedEvent.creator_name || "Unknown"}
