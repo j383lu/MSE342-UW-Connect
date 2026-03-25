@@ -853,49 +853,39 @@ export default function EventsPage() {
           </form>
         </div>
 
-        <div style={styles.panel}>
-          <div style={styles.sectionHeaderBlock}>
-            <h2 style={styles.panelTitle}>Browse Event Sections</h2>
-            <p style={styles.panelSubtitle}>
-              Switch between public events, your group events, and your own event
-              activity.
-            </p>
-          </div>
+        <div style={styles.toggleContainer}>
+          <button
+            type="button"
+            onClick={() => handleTabChange("public")}
+            style={{
+              ...styles.toggleButton,
+              ...(activeTab === "public" ? styles.toggleButtonActive : {}),
+            }}
+          >
+            Upcoming Events
+          </button>
 
-          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={() => handleTabChange("public")}
-              style={{
-                ...styles.filterChip,
-                ...(activeTab === "public" ? styles.filterChipActive : {}),
-              }}
-            >
-              Upcoming Events
-            </button>
+          <button
+            type="button"
+            onClick={() => handleTabChange("my-groups")}
+            style={{
+              ...styles.toggleButton,
+              ...(activeTab === "my-groups" ? styles.toggleButtonActive : {}),
+            }}
+          >
+            My Group Events
+          </button>
 
-            <button
-              type="button"
-              onClick={() => handleTabChange("my-groups")}
-              style={{
-                ...styles.filterChip,
-                ...(activeTab === "my-groups" ? styles.filterChipActive : {}),
-              }}
-            >
-              My Group Events
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleTabChange("my-events")}
-              style={{
-                ...styles.filterChip,
-                ...(activeTab === "my-events" ? styles.filterChipActive : {}),
-              }}
-            >
-              My Events
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => handleTabChange("my-events")}
+            style={{
+              ...styles.toggleButton,
+              ...(activeTab === "my-events" ? styles.toggleButtonActive : {}),
+            }}
+          >
+            My Events
+          </button>
         </div>
 
         {isSearching ? (

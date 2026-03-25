@@ -988,6 +988,39 @@ const eventStyles = {
     lineHeight: 1.4,
   },
 
+  toggleContainer: {
+  display: 'flex',
+  width: '100%',
+  background: '#F0F3F0', 
+  border: '1px solid #D6DFE2',
+  borderRadius: '800px',
+  padding: '4px',
+  gap: '4px',
+  marginTop: '24px', 
+  marginBottom: '24px',
+  boxSizing: 'border-box',
+},
+
+toggleButton: {
+  flex: 1,
+  borderRadius: '800px',
+  padding: '10px 20px',
+  fontSize: '14px',
+  fontWeight: 500,
+  border: 'none',
+  cursor: 'pointer',
+  background: 'transparent',
+  color: '#686967',
+  transition: 'all 0.2s ease',
+},
+
+toggleButtonActive: {
+  fontWeight: 700,
+  background: '#5D6C5C', // Signature Sage Green
+  color: '#FDFDF6',
+  boxShadow: '0 2px 8px rgba(93,108,92,0.2)',
+},
+
 };
 
 export default eventStyles;
