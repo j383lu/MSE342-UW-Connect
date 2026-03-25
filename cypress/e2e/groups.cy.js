@@ -14,6 +14,7 @@ describe('Groups Feature', () => {
     }).as('getInvites');
     
     cy.visit('/')
+    cy.contains('Sign In').click(); 
 
     cy.get('input[name="email"]').type('jc@uwaterloo.ca')
     cy.get('input[name="password"]').type('Password')

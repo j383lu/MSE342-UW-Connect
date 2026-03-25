@@ -18,7 +18,7 @@ export const UserProvider = ({ children }) => {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           const data = await response.json();
-          setDbUser(data); // Stores { userId: X }
+          setDbUser(data);
         } catch (err) {
           console.error("Failed to sync MySQL user", err);
         }

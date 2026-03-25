@@ -2,6 +2,7 @@ import mysql from 'mysql';
 import config from './config.js';
 import express from 'express';
 import path from 'path';
+import 'dotenv/config';
 import { fileURLToPath } from 'url';
 import bodyParser from 'body-parser';
 import multer from 'multer'; // For file uploads
@@ -14,6 +15,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+console.log(process.env.PORT);
 const port = process.env.PORT || 5000;
 
 admin.initializeApp({
@@ -40,6 +42,30 @@ const checkAuth = (req, res, next) => {
     .catch((error) => {
       res.status(403).json({ error: 'Unauthorized', message: 'Token invalid' });
     });
+};
+
+// to create notifications
+const createNotification = (recipientId, actorId, entityId, entityType, actionType, message) => {
+  const sql = `
+    INSERT INTO Notifications (recipient_id, actor_id, entity_id, entity_type, action_type, message) 
+    VALUES (?, ?, ?, ?, ?, ?)`;
+  
+  db.query(sql, [recipientId, actorId, entityId, entityType, actionType, message], (err) => {
+    if (err) {
+      console.error("Critical: Notification failed to save:", err);
+    } else {
+      console.log(`Notification sent to User ${recipientId} for ${actionType}`);
+    }
+  });
+};
+
+const triggerNotification = (recipientId, actorId, entityId, entityType, actionType, message) => {
+  const sql = `
+    INSERT INTO Notifications (recipient_id, actor_id, entity_id, entity_type, action_type, message) 
+    VALUES (?, ?, ?, ?, ?, ?)`;
+  db.query(sql, [recipientId, actorId, entityId, entityType, actionType, message], (err) => {
+    if (err) console.error("Notification Error:", err);
+  });
 };
 
 // Create database connection using your config (ONLY ONE DECLARATION)
@@ -986,29 +1012,30 @@ app.get("/api/tags", checkAuth, (req, res) => {
 app.post("/api/groups", checkAuth, upload.single('coverImage'), (req, res) => {
   const { name, description, category, isOpen, maxMembers } = req.body;
 
-  // Creator comes from the logged-in app user (sent by client)
-  const creator_id = Number(req.body.user_id);
-  if (!creator_id) {
-    return res.status(400).json({ error: "Missing or invalid user_id for group creator" });
-  }
+  const explicitCreatorId = Number(req.body.user_id);
 
-  // Convert isOpen (public = true, private = false) to is_private (1 for private, 0 for public)
-  const is_private = isOpen === 'true' ? 0 : 1;
+  const createGroupWithCreator = (creator_id) => {
+    if (!creator_id) {
+      return res.status(400).json({ error: "Missing or invalid user_id for group creator" });
+    }
 
-  // Handle max_members (if empty/null, set to NULL for unlimited)
-  const max_members = maxMembers ? parseInt(maxMembers) : null;
+    // Convert isOpen (public = true, private = false) to is_private (1 for private, 0 for public)
+    const is_private = isOpen === 'true' ? 0 : 1;
 
-  // Get the uploaded file path if exists
-  const image_url = req.file ? req.file.filename : null;
+    // Handle max_members (if empty/null, set to NULL for unlimited)
+    const max_members = maxMembers ? parseInt(maxMembers) : null;
 
-  const sql = `
-    INSERT INTO Social_Group 
-    (creator_id, name, description, category, is_private, max_members, image_url) 
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `;
+    // Get the uploaded file path if exists
+    const image_url = req.file ? req.file.filename : null;
 
-  db.query(sql, [creator_id, name, description, category, is_private, max_members, image_url],
-    (err, result) => {
+    const sql = `
+      INSERT INTO Social_Group 
+      (creator_id, name, description, category, is_private, max_members, image_url) 
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    db.query(sql, [creator_id, name, description, category, is_private, max_members, image_url],
+      (err, result) => {
       if (err) {
         console.error("POST /api/groups error:", err);
         return res.status(500).json({
@@ -1040,8 +1067,22 @@ app.post("/api/groups", checkAuth, upload.single('coverImage'), (req, res) => {
           });
         }
       );
+      }
+    );
+  };
+
+  // Prefer explicit user_id if provided, otherwise resolve from auth token email.
+  if (explicitCreatorId) {
+    return createGroupWithCreator(explicitCreatorId);
+  }
+
+  getCurrentUserIdByEmail(req.user.email, (lookupErr, resolvedUserId) => {
+    if (lookupErr || !resolvedUserId) {
+      console.error("POST /api/groups user lookup error:", lookupErr);
+      return res.status(400).json({ error: "Missing or invalid user_id for group creator" });
     }
-  );
+    return createGroupWithCreator(resolvedUserId);
+  });
 });
 
 // GET ALL GROUPS (for discovery page):
@@ -1202,8 +1243,24 @@ app.post("/api/groups/:groupId/join", checkAuth, (req, res) => {
           console.error("Error joining group:", err);
           return res.status(500).json({ error: "Failed to join group" });
         }
+        
+        const creatorId = group.creator_id;
+        const groupName = group.name;
 
-        return res.status(201).json({
+        // get the display name of the person joining
+        db.query("SELECT display_name FROM User_Profiles WHERE user_id = ?", [userId], (err, profile) => {
+            if (!err && profile.length > 0) {
+                const actorName = profile[0].display_name || "A student";
+                const message = `${actorName} joined your group: ${groupName}`;
+
+                // trigger the notification for the creator
+                if (creatorId !== userId) {
+                    triggerNotification(creatorId, userId, groupId, 'GROUP', 'JOIN', message);
+                }
+            }
+        });
+        
+        return res.status(201).json({ 
           message: "Successfully joined group",
           groupId: groupId,
           userId: userId
@@ -1217,21 +1274,41 @@ app.post("/api/groups/:groupId/join", checkAuth, (req, res) => {
 app.delete("/api/groups/:groupId/leave", (req, res) => {
   const groupId = req.params.groupId;
   // Prefer explicit userId from client, fallback to 1 for now
-  const userId = Number(req.body.userId) || 1;
+  const userId = Number(req.body.userId);
 
-  const sql = "DELETE FROM Group_Members WHERE group_id = ? AND user_id = ?";
-
-  db.query(sql, [groupId, userId], (err, result) => {
-    if (err) {
-      console.error("Error leaving group:", err);
-      return res.status(500).json({ error: "Failed to leave group" });
+  const infoSql = `
+    SELECT sg.name, sg.creator_id, up.display_name
+    FROM Social_Group sg
+    JOIN User_Profiles up ON up.user_id = ?
+    WHERE sg.group_id = ?`;
+  
+  console.log("leave group fetch")
+  db.query(infoSql, [userId, groupId], (err, result) => {
+    
+    if (result.length === 0) {
+      return res.status(404).json({ error: "Group not found" });
     }
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: "Not a member of this group" });
+    if (err) return res.status(500).json({ error: "Failed to leave group" });
+
+    const { name, display_name, creator_id } = result[0];
+
+    function performDelete() {
+      const sql = "DELETE FROM Group_Members WHERE group_id = ? AND user_id = ?";
+      db.query(sql, [groupId, userId], (err, result) => {
+        if (err) return res.status(500).json({ error: "Failed to leave group" });
+        
+        // Trigger Notification if delete worked
+        if (result.affectedRows > 0 && creator_id !== userId) {
+          const msg = `${display_name || "A student"} left your group: ${name}`;
+          triggerNotification(creator_id, userId, groupId, 'GROUP', 'LEAVE', msg);
+        }
+        
+        return res.json({ message: "Successfully left group" });
+      });
     }
 
-    return res.json({ message: "Successfully left group" });
+    performDelete();
   });
 });
 
@@ -1455,6 +1532,176 @@ app.post("/api/invites/:inviteId/respond", checkAuth, (req, res) => {
         });
       });
     });
+  });
+});
+
+// --- Group Join Requests (Request Access for private groups) ---
+
+// POST /api/groups/:groupId/request-access - User requests to join a private group
+app.post("/api/groups/:groupId/request-access", checkAuth, async (req, res) => {
+  const groupId = Number(req.params.groupId);
+  let userId;
+  try {
+    userId = await getNumericUserId(req.user.email);
+  } catch (err) {
+    return res.status(404).json({ error: "User not found" });
+  }
+
+  if (!groupId || !userId) {
+    return res.status(400).json({ error: "groupId and userId are required" });
+  }
+
+  const groupSql = "SELECT group_id, creator_id, is_private FROM Social_Group WHERE group_id = ? LIMIT 1";
+  db.query(groupSql, [groupId], (groupErr, groupRows) => {
+    if (groupErr) {
+      console.error("Error fetching group:", groupErr);
+      return res.status(500).json({ error: "Failed to load group" });
+    }
+    if (!groupRows || groupRows.length === 0) {
+      return res.status(404).json({ error: "Group not found" });
+    }
+    const group = groupRows[0];
+    if (!group.is_private) {
+      return res.status(400).json({ error: "Group is public; use Join instead" });
+    }
+    if (group.creator_id === userId) {
+      return res.status(400).json({ error: "You own this group; use Join instead" });
+    }
+
+    const memberCheck = "SELECT 1 FROM Group_Members WHERE group_id = ? AND user_id = ? LIMIT 1";
+    db.query(memberCheck, [groupId, userId], (memberErr, memberRows) => {
+      if (memberErr) {
+        return res.status(500).json({ error: "Failed to check membership" });
+      }
+      if (memberRows && memberRows.length > 0) {
+        return res.status(400).json({ error: "Already a member of this group" });
+      }
+
+      const insertSql = `
+        INSERT INTO Group_Join_Requests (group_id, user_id, status)
+        VALUES (?, ?, 'pending')
+        ON DUPLICATE KEY UPDATE status = 'pending', created_at = CURRENT_TIMESTAMP
+      `;
+      db.query(insertSql, [groupId, userId], (insertErr) => {
+        if (insertErr) {
+          console.error("Error creating join request:", insertErr);
+          return res.status(500).json({ error: "Failed to send request" });
+        }
+        return res.status(201).json({ message: "Request sent", groupId, userId });
+      });
+    });
+  });
+});
+
+// GET /api/users/:userId/join-requests-as-owner - Pending join requests for groups the user owns
+app.get("/api/users/:userId/join-requests-as-owner", checkAuth, (req, res) => {
+  const ownerId = Number(req.params.userId);
+  if (!ownerId) {
+    return res.status(400).json({ error: "Invalid userId" });
+  }
+
+  const sql = `
+    SELECT 
+      gjr.id AS request_id,
+      gjr.group_id,
+      gjr.user_id,
+      gjr.status,
+      gjr.created_at,
+      sg.name AS group_name,
+      up.display_name AS requester_name
+    FROM Group_Join_Requests gjr
+    JOIN Social_Group sg ON sg.group_id = gjr.group_id
+    LEFT JOIN User_Profiles up ON up.user_id = gjr.user_id
+    WHERE sg.creator_id = ? AND gjr.status = 'pending'
+    ORDER BY gjr.created_at DESC
+  `;
+  db.query(sql, [ownerId], (err, rows) => {
+    if (err) {
+      console.error("GET /api/users/:userId/join-requests-as-owner error:", err);
+      return res.status(500).json({ error: "Failed to fetch join requests" });
+    }
+    return res.json(rows || []);
+  });
+});
+
+// POST /api/join-requests/:requestId/respond - Owner accepts or declines a join request
+app.post("/api/join-requests/:requestId/respond", checkAuth, async (req, res) => {
+  const requestId = Number(req.params.requestId);
+  const { action, ownerId } = req.body;
+
+  if (!requestId || !ownerId) {
+    return res.status(400).json({ error: "requestId and ownerId are required" });
+  }
+  if (action !== "accept" && action !== "decline") {
+    return res.status(400).json({ error: "action must be 'accept' or 'decline'" });
+  }
+
+  const getSql = `
+    SELECT gjr.id, gjr.group_id, gjr.user_id, gjr.status, sg.creator_id, sg.name AS group_name, sg.max_members
+    FROM Group_Join_Requests gjr
+    JOIN Social_Group sg ON sg.group_id = gjr.group_id
+    WHERE gjr.id = ? LIMIT 1
+  `;
+  db.query(getSql, [requestId], (getErr, rows) => {
+    if (getErr) {
+      console.error("Error fetching join request:", getErr);
+      return res.status(500).json({ error: "Failed to load request" });
+    }
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: "Request not found" });
+    }
+    const reqRow = rows[0];
+    if (Number(reqRow.creator_id) !== Number(ownerId)) {
+      return res.status(403).json({ error: "Only the group owner can respond" });
+    }
+    if (reqRow.status !== "pending") {
+      return res.status(400).json({ error: "Request is no longer pending" });
+    }
+
+    const updateSql = "UPDATE Group_Join_Requests SET status = ? WHERE id = ?";
+
+    if (action === "decline") {
+      db.query(updateSql, ["declined", requestId], (upErr) => {
+        if (upErr) {
+          console.error("Error declining request:", upErr);
+          return res.status(500).json({ error: "Failed to decline" });
+        }
+        return res.json({ message: "Request declined" });
+      });
+      return;
+    }
+
+    if (action === "accept") {
+      const checkFullSql = `
+        SELECT COUNT(*) AS cnt FROM Group_Members WHERE group_id = ?
+      `;
+      db.query(checkFullSql, [reqRow.group_id], (cntErr, cntRows) => {
+        if (cntErr) {
+          return res.status(500).json({ error: "Failed to check group size" });
+        }
+        const currentCount = cntRows[0]?.cnt || 0;
+        if (reqRow.max_members && currentCount >= reqRow.max_members) {
+          return res.status(400).json({ error: "Group is full" });
+        }
+
+        const addMemberSql = "INSERT INTO Group_Members (group_id, user_id) VALUES (?, ?)";
+        db.query(addMemberSql, [reqRow.group_id, reqRow.user_id], (addErr) => {
+          if (addErr) {
+            console.error("Error adding member:", addErr);
+            return res.status(500).json({ error: "Failed to add member" });
+          }
+          db.query(updateSql, ["accepted", requestId], (upErr) => {
+            if (upErr) {
+              console.error("Error updating request:", upErr);
+            }
+            return res.json({
+              message: "Request accepted",
+              group_name: reqRow.group_name,
+            });
+          });
+        });
+      });
+    }
   });
 });
 
@@ -2770,32 +3017,33 @@ app.get("/api/events/suggestions", checkAuth, (req, res) => {
 
 // for registration
 app.post('/api/register', checkAuth, (req, res) => {
-  const { email, password, username, firebase_uid } = req.body;
-
-  const sqlCredentials = "INSERT INTO User_Credentials (email, password_hash, firebase_uid) VALUES (?, ?, ?)";
-
-  // insert into Credentials
-  db.query(sqlCredentials, [email, password, firebase_uid], (err, result) => {
-    if (err) {
-      console.error("Credentials Error:", err);
-      return res.status(500).json({ error: "Database error during registration." });
-    }
-
-    const newUserId = result.insertId;
-    const sqlProfile = "INSERT INTO User_Profiles (user_id, display_name) VALUES (?, ?)";
-
-    // insert into Profile
-    db.query(sqlProfile, [newUserId, username], (profileErr) => {
-      if (profileErr) {
-        console.error("Profile Error:", profileErr);
-        return res.status(500).json({ error: "Profile creation failed." });
-      }
-
-      console.log(`User ${newUserId} fully registered!`);
-      return res.status(201).json({
-        message: "User created successfully!",
-        userId: newUserId
-      });
+   const { email, password, username, firebase_uid, role } = req.body;
+    
+    const sqlCredentials = "INSERT INTO User_Credentials (email, password_hash, firebase_uid, role) VALUES (?, ?, ?, ?)";
+    
+    // insert into Credentials
+    db.query(sqlCredentials, [email, password, firebase_uid, role], (err, result) => {
+        if (err) {
+            console.error("Credentials Error:", err);
+            return res.status(500).json({ error: "Database error during registration." });
+        }
+        
+        const newUserId = result.insertId;
+        const sqlProfile = "INSERT INTO User_Profiles (user_id, display_name) VALUES (?, ?)";
+        
+        // insert into Profile
+        db.query(sqlProfile, [newUserId, username], (profileErr) => {
+            if (profileErr) {
+                console.error("Profile Error:", profileErr);
+                return res.status(500).json({ error: "Profile creation failed." });
+            }
+            
+            console.log(`User ${newUserId} fully registered!`);
+            return res.status(201).json({ 
+                message: "User created successfully!",
+                userId: newUserId 
+            });
+        });
     });
   });
 });
@@ -3122,6 +3370,71 @@ app.get("/api/events/my-events", checkAuth, (req, res) => {
   });
 });
 
+// notifications
+app.get('/api/notifications', checkAuth, async (req, res) => {
+    try {
+        const currentUserId = await getNumericUserId(req.user.email);
+        
+        const sql = `
+            SELECT * FROM Notifications 
+            WHERE recipient_id = ? 
+            ORDER BY created_at DESC 
+            LIMIT 50`;
 
-app.listen(port, () => console.log(`Listening on port ${port}`));
+        db.query(sql, [currentUserId], (err, rows) => {
+            if (err) return res.status(500).json({ error: "Failed to fetch notifications" });
+            res.json(rows);
+        });
+    } catch (err) {
+        res.status(404).json({ error: "User not found" });
+    }
+});
 
+app.put('/api/notifications/read-all', checkAuth, async (req, res) => {
+    try {
+        const currentUserId = await getNumericUserId(req.user.email);
+        const sql = "UPDATE Notifications SET is_read = 1 WHERE recipient_id = ?";
+        
+        db.query(sql, [currentUserId], (err) => {
+            if (err) return res.status(500).json({ error: "Update failed" });
+            res.json({ message: "All notifications marked as read" });
+        });
+    } catch (err) {
+        res.status(404).json({ error: "User not found" });
+    }
+});
+
+app.get('/api/notifications/unread-count', checkAuth, async (req, res) => {
+  try {
+    const currentUserId = await getNumericUserId(req.user.email);
+    const sql = "SELECT COUNT(*) as unreadCount FROM Notifications WHERE recipient_id = ? AND is_read = 0";
+    
+    db.query(sql, [currentUserId], (err, results) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ unreadCount: results[0].unreadCount });
+    });
+  } catch (err) {
+    res.status(404).json({ error: "User not found" });
+  }
+});
+
+app.delete('/api/notifications/:id', (req, res) => {
+  const notificationId = req.params.id;
+
+  const query = 'DELETE FROM Notifications WHERE id = ?';
+
+  db.query(query, [notificationId], (err, result) => {
+    if (err) {
+      console.error('Error deleting notification:', err);
+      return res.status(500).json({ error: 'Database deletion failed' });
+    }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Notification not found' });
+    }
+
+    res.status(200).json({ message: 'Deleted successfully' });
+  });
+});
+
+app.listen(port, () => console.log(`Listening on port ${port}`)); 

@@ -13,8 +13,10 @@ import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { withFirebase } from '../../Firebase';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import s from '../Events/eventStyles';
 
-const LogInPage = ({ onSwitchPage, firebase }) => { 
+const LogInPage = ({ onSwitchPage, onBack, firebase }) => { 
 
     const navigate = useNavigate();
 
@@ -89,116 +91,136 @@ const LogInPage = ({ onSwitchPage, firebase }) => {
     return (
         <Box
             sx={{
-                minHeight: '100vh', 
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center', 
+                background: 'linear-gradient(135deg, rgba(93,108,92,1) 0%, rgba(23,41,43,1) 100%)',
+                display: 'flex', 
                 alignItems: 'center', 
-                backgroundColor: 'background.default'
+                justifyContent: 'center', 
+                height: '100vh', 
+                width: '100vw',
+                overflow: 'hidden',
+                position: 'relative'
             }}
         >
-            <Container maxWidth="xs">
-                <Box 
+            <div style={{ ...s.heroGlowOne, opacity: 0.4 }} />
+            <div style={{ ...s.heroGlowTwo, opacity: 0.4 }} />
+
+            <Container maxWidth="xs" sx={{ zIndex: 10 }}>
+                <Button 
+                    startIcon={<ArrowBackIcon />} 
+                    onClick={onBack}
                     sx={{ 
-                        marginTop: 2, 
-                        display: 'flex', 
-                        flexDirection: 'column', 
-                        alignItems: 'center' 
+                        color: 'rgba(255,255,255,0.7)', 
+                        mb: 2, 
+                        textTransform: 'none', 
+                        '&:hover': { color: '#FDFDF6', background: 'rgba(255,255,255,0.05)' } 
                     }}
                 >
-                    <Card sx={{ width: '100%', p: 2}}>
-                        <CardContent sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                            <Typography variant="h2" sx={{ fontSize: '1.75rem', mb: 1 }}>
-                                Welcome - UW Connect
-                            </Typography>
+                    Back to Welcome
+                </Button>
+                
+                <Card sx={{ 
+                    background: 'rgba(255, 255, 255, 0.07)', 
+                    backdropFilter: 'blur(20px)', 
+                    borderRadius: '24px', 
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    boxShadow: '0 24px 80px rgba(0,0,0,0.4)'
+                }}>
+                    <CardContent sx={{ p: 4 }}>
+                        <Typography variant="h4" sx={{ color: '#FDFDF6', fontWeight: 750, mb: 1, textAlign: 'center', letterSpacing: '-0.02em' }}>
+                            Welcome - UW Connect
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: 'rgba(253,253,246,0.7)', mb: 4, textAlign: 'center' }}>
+                            Access your UW Connect account
+                        </Typography>
+
+                        <Box component="form" onSubmit={handleSubmit} noValidate>
+                            {serverError && (
+                                <Box sx={{ ...s.errorBanner, mb: 3, textAlign: 'center' }}>{serverError}</Box>
+                            )}
+
+                            <TextField
+                                margin="normal"
+                                required
+                                fullWidth
+                                id="email"
+                                label="Email"
+                                name="email"
+                                autoFocus
+                                value={email}
+                                onChange={handleChange}
+                                error={!!error.email}
+                                helperText={error.email}
+                                variant="outlined"
+                                sx={inputStyles}
+                            />
+                            <TextField
+                                margin="normal"
+                                required
+                                fullWidth
+                                name="password"
+                                label="Password"
+                                type={showPassword ? 'text' : 'password'}
+                                id="password"
+                                value={password}
+                                onChange={handleChange}
+                                error={!!error.password}
+                                helperText={error.password}
+                                sx={inputStyles}
+                                InputProps={{
+                                    endAdornment: (
+                                        <InputAdornment position="end">
+                                            <IconButton
+                                                aria-label="toggle password visibility"
+                                                onClick={handleClickShowPassword}
+                                                edge="end"
+                                                sx={{ color: 'rgba(255,255,255,0.5)' }}
+                                            >
+                                                {/* switch icon based on state */}
+                                                {showPassword ? <VisibilityOff /> : <Visibility />}
+                                            </IconButton>
+                                        </InputAdornment>
+                                    )
+                                }}
+                            />
+                            <Button
+                                type="submit"
+                                fullWidth
+                                variant="contained"
+                                sx={{ ...s.heroPrimaryBtn, mt: 4, mb: 2, height: 48 }}
+                            >
+                                Log In
+                            </Button>
                             
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                                Please enter your credentials to log in.
-                            </Typography>
-
-                            <Typography component="h1" variant="h5" color="text.secondary" sx={{ mb: 2 }}>
-                                Sign In
-                            </Typography>
-
-                            <Box component="form" onSubmit={handleSubmit} noValidate sx={{ mt: 1 }}>
-                                {serverError && (
-                                    <Typography 
-                                        color="error" 
-                                        variant="body2" 
-                                        sx={{ 
-                                            mb: 2, 
-                                            textAlign: 'center', 
-                                            backgroundColor: '#ffebee', // Light red background
-                                            padding: '8px', 
-                                            borderRadius: '4px' 
-                                        }}
-                                    >
-                                        {serverError}
-                                    </Typography>
-                                )}
-                                <TextField
-                                    margin="normal"
-                                    required
-                                    fullWidth
-                                    id="email"
-                                    label="Email"
-                                    name="email"
-                                    autoFocus
-                                    value={email}
-                                    onChange={handleChange}
-                                    error={!!error.email}
-                                    helperText={error.email}
-                                />
-                                <TextField
-                                    margin="normal"
-                                    required
-                                    fullWidth
-                                    name="password"
-                                    label="Password"
-                                    type={showPassword ? 'text' : 'password'}
-                                    id="password"
-                                    value={password}
-                                    onChange={handleChange}
-                                    error={!!error.password}
-                                    helperText={error.password}
-                                    InputProps={{
-                                        endAdornment: (
-                                            <InputAdornment position="end">
-                                                <IconButton
-                                                    aria-label="toggle password visibility"
-                                                    onClick={handleClickShowPassword}
-                                                    edge="end"
-                                                >
-                                                    {/* switch icon based on state */}
-                                                    {showPassword ? <VisibilityOff /> : <Visibility />}
-                                                </IconButton>
-                                            </InputAdornment>
-                                        )
-                                    }}
-                                />
-                                <Button
-                                    type="submit"
-                                    fullWidth
-                                    variant="contained"
-                                    sx={{ mt: 3, mb: 2 }}
-                                >
-                                    Log In
-                                </Button>
-
+                            <Box sx={{ textAlign: 'center', mt: 2 }}>
                                 <Link 
                                     component="button" 
                                     variant="body2" 
                                     onClick={onSwitchPage}
+                                    sx={{ color: 'rgba(253,253,246,0.8)', textDecoration: 'none', '&:hover': { color: '#FDFDF6' } }}
                                 >
                                     {"Don't have an account? Create an account"}
                                 </Link>
                             </Box>
-                        </CardContent>
-                    </Card>
-                </Box>
+                        </Box>
+                    </CardContent>
+                </Card>
             </Container>
         </Box>
     );
 }
+
+const inputStyles = {
+    '& .MuiOutlinedInput-root': {
+        color: '#FDFDF6',
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        borderRadius: '12px',
+        '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.2)' },
+        '&:hover fieldset': { borderColor: 'rgba(255, 255, 255, 0.4)' },
+        '&.Mui-focused fieldset': { borderColor: '#FDFDF6' },
+    },
+    '& .MuiInputLabel-root': { color: 'rgba(255, 255, 255, 0.6)' },
+    '& .MuiInputLabel-root.Mui-focused': { color: '#FDFDF6' },
+    '& .MuiFormHelperText-root': { color: '#ff8a80' } // Brighter red for errors on dark bg
+};
 
 export default withFirebase(LogInPage);
