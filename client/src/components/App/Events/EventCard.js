@@ -110,6 +110,21 @@ export default function EventCard({
   const eventTypeText =
     eventTypeRaw === "group" ? "Group" : eventTypeRaw === "private" ? "Private" : "Public";
 
+  const privateInviteAttendeeCount =
+    eventTypeRaw === "private"
+      ? isOpen && !detailsLoading && Array.isArray(attendees)
+        ? Math.max(attendees.length, current)
+        : Number.isFinite(Number(ev.attendee_count)) && Number(ev.attendee_count) >= 0
+          ? Number(ev.attendee_count)
+          : current
+      : 0;
+  const privateInviteAttendeeLabel =
+    eventTypeRaw === "private"
+      ? privateInviteAttendeeCount === 1
+        ? "1 attendee"
+        : `${privateInviteAttendeeCount} attendees`
+      : "";
+
   const backendStatus =
     ev.event_status || (isPast ? "ended" : "open_for_application");
 
@@ -666,9 +681,13 @@ export default function EventCard({
               </div>
 
               <div style={styles.capacity}>
-                {current}/{max}
+                {eventTypeRaw === "private"
+                  ? privateInviteAttendeeCount
+                  : `${current}/${max}`}
               </div>
-              <div style={styles.capacityHint}>RSVP spots</div>
+              <div style={styles.capacityHint}>
+                {eventTypeRaw === "private" ? "Attendees" : "RSVP spots"}
+              </div>
             </div>
           </div>
 
@@ -702,6 +721,11 @@ export default function EventCard({
               >
                 {eventTypeText}
               </span>
+              {eventTypeRaw === "private" ? (
+                <span style={{ ...styles.categoryChip, marginLeft: "8px" }}>
+                  {privateInviteAttendeeLabel}
+                </span>
+              ) : null}
             </div>
           ) : null}
 
