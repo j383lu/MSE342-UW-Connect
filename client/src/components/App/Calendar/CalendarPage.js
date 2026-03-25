@@ -31,6 +31,7 @@ import {
   eventDateRange,
   extractCalendarColor,
   extractCalendarScope,
+  extractCalendarVisibility,
   colorHexForKey,
   contactHue,
   sameDay,
@@ -90,6 +91,10 @@ export default function CalendarPage() {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [editingEvent, setEditingEvent] = useState(false);
+  const [checkedForRemove, setCheckedForRemove] = useState(() => new Set());
+  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
+  const [removeError, setRemoveError] = useState("");
+  const [removing, setRemoving] = useState(false);
   const [editEventForm, setEditEventForm] = useState({
     title: "",
     description: "",
@@ -99,6 +104,7 @@ export default function CalendarPage() {
     end_date: "",
     end_time: "10:00",
     scope: "personal",
+    visibility: "public",
     calendar_color: "blue",
     participant_user_ids: [],
   });
@@ -253,6 +259,7 @@ export default function CalendarPage() {
       end_date: ev.end_date || ev.event_date || "",
       end_time: String(ev.end_time || "10:00").slice(0, 5),
       scope: extractCalendarScope(ev.tags) || "personal",
+      visibility: extractCalendarVisibility(ev.tags) || "public",
       calendar_color: extractCalendarColor(ev.tags) || "blue",
       participant_user_ids: participantIds,
     });
@@ -288,6 +295,51 @@ export default function CalendarPage() {
     setSelectedEvent(null);
   };
 
+  const toggleRemoveCheck = (eventId, checked) => {
+    setCheckedForRemove((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(Number(eventId));
+      else next.delete(Number(eventId));
+      return next;
+    });
+    if (checked) {
+      setRemoveError("");
+      setRemoveConfirmOpen(true);
+    }
+  };
+
+  const handleCancelRemove = () => {
+    setRemoveConfirmOpen(false);
+    setRemoveError("");
+    setCheckedForRemove(new Set());
+  };
+
+  const handleConfirmRemove = async () => {
+    const ids = [...checkedForRemove];
+    if (!ids.length) {
+      setRemoveConfirmOpen(false);
+      return;
+    }
+    setRemoving(true);
+    setRemoveError("");
+    try {
+      for (const id of ids) {
+        const res = await apiRequest(`/api/calendar/events/${id}`, { method: "DELETE" });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || "Failed to remove event.");
+        }
+      }
+      setRemoveConfirmOpen(false);
+      setCheckedForRemove(new Set());
+      await fetchEvents();
+    } catch (e) {
+      setRemoveError(e.message || "Failed to remove selected event(s).");
+    } finally {
+      setRemoving(false);
+    }
+  };
+
   const handleSaveEditedEvent = async () => {
     if (!selectedEvent) return;
     setDetailsError("");
@@ -320,6 +372,7 @@ export default function CalendarPage() {
           end_date: editEventForm.end_date,
           end_time: editEventForm.end_time,
           scope: editEventForm.scope,
+          visibility: editEventForm.scope === "group" ? editEventForm.visibility : "private",
           calendar_color: editEventForm.calendar_color,
           participant_user_ids:
             editEventForm.scope === "group" ? editEventForm.participant_user_ids : [],
@@ -363,7 +416,7 @@ export default function CalendarPage() {
     const creatorLabel = mine ? "You" : ev.creator_name || "Peer";
     const calScope = extractCalendarScope(ev.tags);
     const scopeLabel = calScope === "personal" ? "Personal" : calScope === "group" ? "Group" : null;
-    const hideCreatorRow = calScope === "personal";
+    const hideCreatorRow = false;
     const isPeerOwned = visibleContactIds.has(Number(ev.created_by));
 
     return (
@@ -381,7 +434,13 @@ export default function CalendarPage() {
         }}
       >
         <Box sx={{ display: "flex", gap: 1, alignItems: "flex-start" }}>
-          <Checkbox size="small" disabled sx={{ p: 0, mt: -0.5 }} />
+          <Checkbox
+            size="small"
+            checked={checkedForRemove.has(Number(ev.id))}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => toggleRemoveCheck(ev.id, e.target.checked)}
+            sx={{ p: 0, mt: -0.5 }}
+          />
           <Box
             sx={{
               width: 10,
@@ -959,6 +1018,27 @@ export default function CalendarPage() {
       </Box>
 
       <AddTodoModal open={addOpen} onClose={() => setAddOpen(false)} onCreated={fetchEvents} contacts={contacts} />
+      <Dialog open={removeConfirmOpen} onClose={handleCancelRemove} maxWidth="xs" fullWidth>
+        <DialogTitle>Remove from calendar?</DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2">
+            You are able to remove this out of the calendar.
+          </Typography>
+          {removeError ? (
+            <Typography color="error" variant="body2" sx={{ mt: 1 }}>
+              {removeError}
+            </Typography>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancelRemove} color="inherit">
+            Cancel
+          </Button>
+          <Button onClick={handleConfirmRemove} variant="contained" color="error" disabled={removing}>
+            {removing ? "Removing…" : "Remove"}
+          </Button>
+        </DialogActions>
+      </Dialog>
       <Dialog open={detailsOpen} onClose={closeDetails} maxWidth="sm" fullWidth>
         <DialogTitle>{editingEvent ? "Edit Event" : "Event Details"}</DialogTitle>
         <DialogContent dividers>
@@ -1036,31 +1116,63 @@ export default function CalendarPage() {
                 size="small"
                 exclusive
                 value={editEventForm.scope}
-                onChange={(_, v) => v && setEditEventForm((p) => ({ ...p, scope: v }))}
+                onChange={(_, v) => {
+                  if (!v) return;
+                  setEditEventForm((p) => ({
+                    ...p,
+                    scope: v,
+                    visibility: v === "group" ? p.visibility || "public" : "private",
+                    participant_user_ids: v === "group" ? p.participant_user_ids : [],
+                  }));
+                }}
               >
                 <ToggleButton value="personal">Personal</ToggleButton>
                 <ToggleButton value="group">Group</ToggleButton>
               </ToggleButtonGroup>
               {editEventForm.scope === "group" ? (
-                <TextField
-                  select
-                  SelectProps={{ multiple: true }}
-                  label="Attendees"
-                  value={editEventForm.participant_user_ids}
-                  onChange={(e) =>
-                    setEditEventForm((p) => ({
-                      ...p,
-                      participant_user_ids: (e.target.value || []).map((id) => Number(id)),
-                    }))
-                  }
-                  fullWidth
-                >
-                  {contacts.map((c) => (
-                    <MenuItem key={c.user_id} value={c.user_id}>
-                      {c.display_name || c.email}
-                    </MenuItem>
-                  ))}
-                </TextField>
+                <>
+                  <Typography variant="subtitle2" sx={{ mt: 0.5 }}>
+                    Group visibility
+                  </Typography>
+                  <ToggleButtonGroup
+                    size="small"
+                    exclusive
+                    value={editEventForm.visibility || "public"}
+                    onChange={(_, v) => v && setEditEventForm((p) => ({ ...p, visibility: v }))}
+                  >
+                    <ToggleButton value="public">Public</ToggleButton>
+                    <ToggleButton value="private">Private</ToggleButton>
+                  </ToggleButtonGroup>
+                  <Typography variant="subtitle2" sx={{ mt: 0.5 }}>
+                    Attendees
+                  </Typography>
+                  <Box sx={{ maxHeight: 220, overflow: "auto", border: "1px solid #E2E8F0", borderRadius: 1 }}>
+                    {contacts.map((c) => {
+                      const checked = editEventForm.participant_user_ids.includes(Number(c.user_id));
+                      return (
+                        <FormControlLabel
+                          key={c.user_id}
+                          control={
+                            <Checkbox
+                              size="small"
+                              checked={checked}
+                              onChange={() =>
+                                setEditEventForm((p) => {
+                                  const set = new Set(p.participant_user_ids.map((x) => Number(x)));
+                                  if (set.has(Number(c.user_id))) set.delete(Number(c.user_id));
+                                  else set.add(Number(c.user_id));
+                                  return { ...p, participant_user_ids: [...set] };
+                                })
+                              }
+                            />
+                          }
+                          label={c.display_name || c.email}
+                          sx={{ display: "flex", ml: 0, px: 1 }}
+                        />
+                      );
+                    })}
+                  </Box>
+                </>
               ) : null}
             </Box>
           ) : (

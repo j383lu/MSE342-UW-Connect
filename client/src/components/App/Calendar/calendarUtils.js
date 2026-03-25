@@ -25,6 +25,18 @@ export function extractCalendarScope(tags) {
   return null;
 }
 
+/** @returns {'public' | 'private' | null} */
+export function extractCalendarVisibility(tags) {
+  if (!tags || typeof tags !== "string") return null;
+  const parts = tags.split(",").map((t) => t.trim());
+  const tag = parts.find((t) => t.startsWith("__calvisibility__:"));
+  if (!tag) return null;
+  const v = tag.replace("__calvisibility__:", "").toLowerCase();
+  if (v === "public") return "public";
+  if (v === "private") return "private";
+  return null;
+}
+
 export const CALENDAR_COLOR_SWATCHES = [
   { key: "blue", hex: "#3182CE" },
   { key: "green", hex: "#38A169" },

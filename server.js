@@ -923,6 +923,21 @@ app.get("/api/calendar/events", checkAuth, (req, res) => {
             WHERE a2.event_id = e.id AND uc2.user_id IN (${ph})
           )
         )
+        AND (
+          NOT EXISTS (
+            SELECT 1
+            FROM Event_Tags pv
+            WHERE pv.event_id = e.id
+              AND pv.tag_name = '__calvisibility__:private'
+          )
+          OR e.created_by = ?
+          OR EXISTS (
+            SELECT 1
+            FROM Event_Attendees a_self
+            WHERE a_self.event_id = e.id
+              AND LOWER(a_self.attendee_name) = LOWER(?)
+          )
+        )
       GROUP BY
         e.id,
         e.title,
@@ -938,7 +953,7 @@ app.get("/api/calendar/events", checkAuth, (req, res) => {
       ORDER BY e.event_date ASC, e.event_time ASC
     `;
 
-    const params = [...userIds, ...userIds];
+    const params = [...userIds, ...userIds, currentUserId, currentUserEmail];
 
     db.query(sql, params, (err, rows) => {
       if (err) {
@@ -964,6 +979,7 @@ app.post("/api/calendar/todos", checkAuth, (req, res) => {
     participant_user_ids,
     calendar_color,
     scope,
+    visibility,
   } = req.body;
 
   if (!title || !String(title).trim()) {
@@ -1003,6 +1019,9 @@ app.post("/api/calendar/todos", checkAuth, (req, res) => {
 
   const rawScope = String(scope || "personal").trim().toLowerCase();
   const eventScope = rawScope === "group" ? "group" : "personal";
+  const rawVisibility = String(visibility || "public").trim().toLowerCase();
+  const eventVisibility =
+    eventScope === "group" ? (rawVisibility === "private" ? "private" : "public") : "private";
 
   const participantIds =
     eventScope === "group" && Array.isArray(participant_user_ids)
@@ -1080,6 +1099,7 @@ app.post("/api/calendar/todos", checkAuth, (req, res) => {
           `__calendar__`,
           `__calcolor__:${safeColor || "blue"}`,
           `__calscope__:${eventScope}`,
+          `__calvisibility__:${eventVisibility}`,
         ];
 
         const insertTags = (done) => {
@@ -1163,6 +1183,7 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
     participant_user_ids,
     calendar_color,
     scope,
+    visibility,
   } = req.body;
 
   if (!title || !String(title).trim()) {
@@ -1192,6 +1213,9 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
 
   const rawScope = String(scope || "personal").trim().toLowerCase();
   const eventScope = rawScope === "group" ? "group" : "personal";
+  const rawVisibility = String(visibility || "public").trim().toLowerCase();
+  const eventVisibility =
+    eventScope === "group" ? (rawVisibility === "private" ? "private" : "public") : "private";
   const participantIds =
     eventScope === "group" && Array.isArray(participant_user_ids)
       ? [
@@ -1278,6 +1302,7 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
                 tag_name = '__calendar__'
                 OR tag_name LIKE '__calcolor__:%'
                 OR tag_name LIKE '__calscope__:%'
+                OR tag_name LIKE '__calvisibility__:%'
               )
           `;
 
@@ -1291,6 +1316,7 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
               [eventId, "__calendar__"],
               [eventId, `__calcolor__:${safeColor || "blue"}`],
               [eventId, `__calscope__:${eventScope}`],
+              [eventId, `__calvisibility__:${eventVisibility}`],
             ];
             db.query("INSERT INTO Event_Tags (event_id, tag_name) VALUES ?", [tagValues], (tagErr) => {
               if (tagErr) {
@@ -1336,6 +1362,91 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
           });
         }
       );
+    });
+  });
+});
+
+// DELETE /api/calendar/events/:id — owner can delete; attendee can remove from own calendar
+app.delete("/api/calendar/events/:id", checkAuth, (req, res) => {
+  const eventId = Number(req.params.id);
+  if (!eventId) {
+    return res.status(400).json({ error: "Invalid event id." });
+  }
+
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("DELETE /api/calendar/events/:id user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
+    }
+
+    const lookupSql = `
+      SELECT e.id, e.created_by
+      FROM Events e
+      WHERE e.id = ?
+        AND EXISTS (
+          SELECT 1
+          FROM Event_Tags ct
+          WHERE ct.event_id = e.id
+            AND ct.tag_name = '__calendar__'
+        )
+      LIMIT 1
+    `;
+
+    db.query(lookupSql, [eventId], (lookupErr, rows) => {
+      if (lookupErr) {
+        console.log("DELETE /api/calendar/events/:id lookup error:", lookupErr);
+        return res.status(500).json({ error: "Failed to load event." });
+      }
+      if (!rows || rows.length === 0) {
+        return res.status(404).json({ error: "Calendar event not found." });
+      }
+
+      const isOwner = Number(rows[0].created_by) === Number(currentUserId);
+      if (isOwner) {
+        const delLikes = "DELETE FROM Event_Likes WHERE event_id = ?";
+        const delTags = "DELETE FROM Event_Tags WHERE event_id = ?";
+        const delAttendees = "DELETE FROM Event_Attendees WHERE event_id = ?";
+        const delEventGroups = "DELETE FROM Event_Groups WHERE event_id = ?";
+        const delEvent = "DELETE FROM Events WHERE id = ?";
+
+        db.query(delLikes, [eventId], () => {
+          db.query(delTags, [eventId], () => {
+            db.query(delAttendees, [eventId], () => {
+              db.query(delEventGroups, [eventId], () => {
+                db.query(delEvent, [eventId], (delErr) => {
+                  if (delErr) {
+                    console.log("DELETE /api/calendar/events/:id owner delete error:", delErr);
+                    return res.status(500).json({ error: "Failed to delete event." });
+                  }
+                  return res.json({ message: "Event removed from calendar." });
+                });
+              });
+            });
+          });
+        });
+        return;
+      }
+
+      const removeAttendeeSql = `
+        DELETE FROM Event_Attendees
+        WHERE event_id = ?
+          AND LOWER(attendee_name) = ?
+      `;
+      db.query(removeAttendeeSql, [eventId, currentUserEmail], (attErr, attResult) => {
+        if (attErr) {
+          console.log("DELETE /api/calendar/events/:id attendee remove error:", attErr);
+          return res.status(500).json({ error: "Failed to remove event from calendar." });
+        }
+        if (!attResult || attResult.affectedRows === 0) {
+          return res.status(403).json({ error: "You can only remove your own calendar items." });
+        }
+        return res.json({ message: "Event removed from calendar." });
+      });
     });
   });
 });

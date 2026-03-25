@@ -36,6 +36,7 @@ export default function AddTodoModal({ open, onClose, onCreated, contacts }) {
   const [colorKey, setColorKey] = useState("blue");
   const [participantIds, setParticipantIds] = useState(() => new Set());
   const [eventScope, setEventScope] = useState("personal");
+  const [groupVisibility, setGroupVisibility] = useState("public");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -49,6 +50,7 @@ export default function AddTodoModal({ open, onClose, onCreated, contacts }) {
     setEventTime("09:00");
     setEndTime("10:00");
     setEventScope("personal");
+    setGroupVisibility("public");
     setParticipantIds(new Set());
     setError("");
   }, [open]);
@@ -80,6 +82,7 @@ export default function AddTodoModal({ open, onClose, onCreated, contacts }) {
     setDescription("");
     setColorKey("blue");
     setEventScope("personal");
+    setGroupVisibility("public");
     setParticipantIds(new Set());
   };
 
@@ -135,6 +138,7 @@ export default function AddTodoModal({ open, onClose, onCreated, contacts }) {
           participant_user_ids: eventScope === "group" ? [...participantIds] : [],
           calendar_color: colorKey,
           scope: eventScope,
+          visibility: eventScope === "group" ? groupVisibility : "private",
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -268,6 +272,31 @@ export default function AddTodoModal({ open, onClose, onCreated, contacts }) {
             ? "Only you—attendees are not shown or stored."
             : "Invite people from the directory below."}
         </Typography>
+        {eventScope === "group" ? (
+          <>
+            <Typography variant="subtitle2" sx={{ mt: 1, mb: 0.5 }}>
+              Group visibility
+            </Typography>
+            <ToggleButtonGroup
+              exclusive
+              fullWidth
+              size="small"
+              value={groupVisibility}
+              onChange={(_, v) => v && setGroupVisibility(v)}
+              sx={{ mb: 1 }}
+            >
+              <ToggleButton value="public" sx={{ textTransform: "none", fontWeight: 600 }}>
+                Public
+              </ToggleButton>
+              <ToggleButton value="private" sx={{ textTransform: "none", fontWeight: 600 }}>
+                Private
+              </ToggleButton>
+            </ToggleButtonGroup>
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+              Public appears for everyone; private appears only for selected attendees.
+            </Typography>
+          </>
+        ) : null}
         <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
           Color
         </Typography>
