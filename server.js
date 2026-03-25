@@ -83,6 +83,22 @@ db.connect((err) => {
     return;
   }
   console.log('Connected to MySQL database');
+
+  const createFollowsTableSql = `
+    CREATE TABLE IF NOT EXISTS User_Follows (
+      follow_id INT AUTO_INCREMENT PRIMARY KEY,
+      follower_user_id INT NOT NULL,
+      followed_user_id INT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY unique_follow (follower_user_id, followed_user_id)
+    );
+  `;
+
+  db.query(createFollowsTableSql, (tableErr) => {
+    if (tableErr) {
+      console.error('Error ensuring User_Follows table exists:', tableErr);
+    }
+  });
 });
 
 app.use(express.json({ limit: '50mb' }));
@@ -224,6 +240,52 @@ app.get("/api/profile/user-courses", checkAuth, (req, res) => {
         return res.status(500).json({ error: "Failed to fetch user courses" });
       }
       return res.json(results || []);
+    });
+  });
+});
+
+app.get("/api/profile/following", checkAuth, (req, res) => {
+  const currentUserEmail = String(req.user?.email || "").trim().toLowerCase();
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      return res.status(404).json({ error: "No database user found for this authenticated account." });
+    }
+
+    const sql = `
+      SELECT
+        up.user_id,
+        up.display_name,
+        up.bio,
+        up.avatar_url,
+        up.department,
+        up.gender,
+        up.program_id,
+        p.program_name,
+        uc.email,
+        uc.role,
+        uf.created_at AS followed_at
+      FROM User_Follows uf
+      INNER JOIN User_Profiles up
+        ON up.user_id = uf.followed_user_id
+      LEFT JOIN Programs p
+        ON p.program_id = up.program_id
+      LEFT JOIN User_Credentials uc
+        ON uc.user_id = up.user_id
+      WHERE uf.follower_user_id = ?
+      ORDER BY COALESCE(up.display_name, uc.email) ASC, uf.created_at DESC;
+    `;
+
+    db.query(sql, [currentUserId], (err, results) => {
+      if (err) {
+        console.error("Database error:", err.message);
+        return res.status(500).json({ error: "Failed to fetch following list" });
+      }
+
+      return res.json({ following: results || [] });
     });
   });
 });
@@ -472,6 +534,120 @@ app.get("/api/profile/:userId", checkAuth, (req, res) => {
         program: row.program_name || "",
         courses: (courseResults || []).map((c) => ({ course_id: c.course_id, course_code: c.course_code })),
       });
+    });
+  });
+});
+
+app.get("/api/profile/:userId/follow-status", checkAuth, (req, res) => {
+  const targetUserId = Number(req.params.userId);
+  if (!targetUserId || Number.isNaN(targetUserId)) {
+    return res.status(400).json({ error: "Invalid user id" });
+  }
+
+  const currentUserEmail = String(req.user?.email || "").trim().toLowerCase();
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      return res.status(404).json({ error: "No database user found for this authenticated account." });
+    }
+
+    if (Number(currentUserId) === targetUserId) {
+      return res.json({ isFollowing: false, isSelf: true });
+    }
+
+    const sql = `
+      SELECT 1
+      FROM User_Follows
+      WHERE follower_user_id = ? AND followed_user_id = ?
+      LIMIT 1;
+    `;
+
+    db.query(sql, [currentUserId, targetUserId], (err, results) => {
+      if (err) {
+        console.error("Database error:", err.message);
+        return res.status(500).json({ error: "Failed to fetch follow status" });
+      }
+
+      return res.json({
+        isFollowing: !!(results && results.length > 0),
+        isSelf: false,
+      });
+    });
+  });
+});
+
+app.post("/api/profile/:userId/follow", checkAuth, (req, res) => {
+  const targetUserId = Number(req.params.userId);
+  if (!targetUserId || Number.isNaN(targetUserId)) {
+    return res.status(400).json({ error: "Invalid user id" });
+  }
+
+  const currentUserEmail = String(req.user?.email || "").trim().toLowerCase();
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      return res.status(404).json({ error: "No database user found for this authenticated account." });
+    }
+
+    if (Number(currentUserId) === targetUserId) {
+      return res.status(400).json({ error: "You cannot follow yourself." });
+    }
+
+    const insertSql = `
+      INSERT INTO User_Follows (follower_user_id, followed_user_id)
+      VALUES (?, ?)
+      ON DUPLICATE KEY UPDATE followed_user_id = VALUES(followed_user_id);
+    `;
+
+    db.query(insertSql, [currentUserId, targetUserId], (err) => {
+      if (err) {
+        console.error("Database error:", err.message);
+        return res.status(500).json({ error: "Failed to follow user" });
+      }
+
+      return res.json({ ok: true, isFollowing: true });
+    });
+  });
+});
+
+app.delete("/api/profile/:userId/follow", checkAuth, (req, res) => {
+  const targetUserId = Number(req.params.userId);
+  if (!targetUserId || Number.isNaN(targetUserId)) {
+    return res.status(400).json({ error: "Invalid user id" });
+  }
+
+  const currentUserEmail = String(req.user?.email || "").trim().toLowerCase();
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      return res.status(404).json({ error: "No database user found for this authenticated account." });
+    }
+
+    if (Number(currentUserId) === targetUserId) {
+      return res.status(400).json({ error: "You cannot unfollow yourself." });
+    }
+
+    const deleteSql = `
+      DELETE FROM User_Follows
+      WHERE follower_user_id = ? AND followed_user_id = ?;
+    `;
+
+    db.query(deleteSql, [currentUserId, targetUserId], (err) => {
+      if (err) {
+        console.error("Database error:", err.message);
+        return res.status(500).json({ error: "Failed to unfollow user" });
+      }
+
+      return res.json({ ok: true, isFollowing: false });
     });
   });
 });
