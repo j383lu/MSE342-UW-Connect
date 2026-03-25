@@ -3,20 +3,20 @@ import {
   Card, CardContent, CardHeader, CardActions,
   Typography, Stack, Chip, Button, IconButton,
   Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions,
-  Divider, Box, Avatar
+  Divider, Box, Avatar, Menu, MenuItem
 } from "@mui/material";
-
 import FavoriteIcon from "@mui/icons-material/Favorite";
+import EditIcon from "@mui/icons-material/Edit"
 import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import CloseIcon from "@mui/icons-material/Close";
+import MoreHorizIcon from "@mui/icons-material/MoreHoriz"; 
+import DeleteIcon from "@mui/icons-material/Delete";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "../../contexts/UserContext";
 import { getRelativeTime } from "../../utils/timeUtils";
 import { renderTextWithLinks } from "../../utils/linkUtils";
 import { withFirebase } from "../Firebase";
-
-//const currentUser = { id : 1};
 
 function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter, firebase }) {
   const navigate = useNavigate();
@@ -24,9 +24,10 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter, fir
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [likesOpen, setLikesOpen] = useState(false);
   const [likedByUsers, setLikedByUsers] = useState([]);
+  const [anchorEl, setAnchorEl] = useState(null);
+  const menuOpen = Boolean(anchorEl);
 
-  // uses real numeric user ID from UserContext instead of hardcoded 1
-  const isAuthor = dbUser && post.author_id === dbUser.userId;
+  const isAuthor = dbUser?.userId === post.author_id;
 
   const handleDeleteConfirm = () => {
     onDeletePost(post.post_id);
@@ -38,7 +39,7 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter, fir
     try {
       const token = await firebase.auth.currentUser?.getIdToken();
       const response = await fetch(`/api/posts/${post.post_id}/likes`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` }
       });
       const data = await response.json();
       setLikedByUsers(data);
@@ -52,8 +53,72 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter, fir
     <>
       <Card sx={{ mb: 2 }}>
         <CardHeader
+          avatar={
+            <Avatar
+              src={post.author_avatar ? `/uploads/${post.author_avatar}` : undefined}
+              sx={{ width: 36, height: 36, bgcolor: '#5D6C5C', fontSize: '0.9rem' }}
+            >
+              {!post.author_avatar && (post.author_name?.[0]?.toUpperCase() ?? '?')}
+            </Avatar>
+          }
           title={post.title}
           subheader={`${post.is_anonymous ? 'Anonymous' : (post.author_name ?? 'Unknown')} · ${getRelativeTime(post.createdAt)}`}
+          action={
+            isAuthor && (
+              <>
+                {/*Horizontal 3-dot icon with the edit and delete*/}
+                <IconButton
+                  size="small"
+                  onClick={(e) => setAnchorEl(e.currentTarget)}
+                  sx={{ mt: 0.5 }}
+                >
+                  <MoreHorizIcon fontSize="small" />
+                </IconButton>
+
+                <Menu
+                  anchorEl={anchorEl}
+                  open={menuOpen}
+                  onClose={() => setAnchorEl(null)}
+                  anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                  transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                  PaperProps={{
+                    sx: {
+                      boxShadow: '0px 2px 8px rgba(0,0,0,0.08)',
+                      border: '1px solid #D6DFE2',
+                      borderRadius: 2,
+                      minWidth: 130
+                    }
+                  }}
+                >
+                  <MenuItem
+                    onClick={() => { onEditPost(post); setAnchorEl(null); }}
+                    sx={{ fontSize: '14px', justifyContent: 'space-between' }}
+                  >
+                    Edit
+                    <EditIcon fontSize="small" />
+                  </MenuItem>
+
+                  <MenuItem
+                    onClick={() => { setConfirmOpen(true); setAnchorEl(null); }}
+                    sx={{ fontSize: '14px', justifyContent: 'space-between', color: 'error.main' }}
+                  >
+                    Delete
+                    <DeleteIcon fontSize="small" />
+                  </MenuItem>
+                </Menu>
+              </>
+            )
+          }
+          titleTypographyProps={{
+            variant: 'h6',
+            fontWeight: 600,
+            fontSize: '1.1rem',
+            color: '#17292B'
+          }}
+          subheaderTypographyProps={{
+            fontSize: '0.8rem',
+            color: '#686967'
+          }}
         />
 
         <CardContent>
@@ -66,49 +131,55 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter, fir
               <img
                 src={`/uploads/${post.image_url}`}
                 alt="post attachment"
-                style={{ maxWidth: '100%', borderRadius: 8, maxHeight: 300, objectFit: 'cover' }}
+                style={{
+                  maxWidth: '100%',
+                  borderRadius: 8,
+                  maxHeight: 300,
+                  objectFit: 'cover'
+                }}
               />
             </Box>
           )}
 
           <Stack direction="row" spacing={1} flexWrap="wrap">
-            {/* Group chip — navigates to group page */}
             {post.group_id && post.group_name && (
               <Chip
-                label={`${post.group_name}`}
+                label={post.group_name}
                 size="small"
                 color="primary"
-                //edit this to go to actual group page
                 onClick={() => navigate(`/groups/${post.group_id}`)}
                 sx={{ mb: 1, cursor: 'pointer' }}
               />
             )}
 
-            {/* Regular tags */}
-            {post.tags && post.tags.length > 0 && (
-              post.tags.map((tag, index) => (
-                <Chip
-                  key={index}
-                  label={tag}
-                  size="small"
-                  sx={{ mb: 1 }}
-                  onClick={() => onTagFilter?.(tag)}
-                />
-              ))
-            )}
+            {post.tags?.map((tag, index) => (
+              <Chip
+                key={index}
+                label={tag}
+                size="small"
+                sx={{ mb: 1 }}
+                onClick={() => onTagFilter?.(tag)}
+              />
+            ))}
           </Stack>
         </CardContent>
 
         <CardActions>
-          <IconButton data-testid="like-button" onClick={() => onLikePost?.(post.post_id)} size="small">
+          <IconButton
+            data-testid="like-button"
+            onClick={() => onLikePost?.(post.post_id)}
+            size="small"
+          >
             {post.liked_by_me
               ? <FavoriteIcon fontSize="small" color="error" />
               : <FavoriteBorderIcon fontSize="small" />}
           </IconButton>
+
           <Typography
             variant="body2"
             sx={{
-              mr: 1, cursor: post.like_count > 0 ? 'pointer' : 'default',
+              mr: 1,
+              cursor: post.like_count > 0 ? 'pointer' : 'default',
               textDecoration: post.like_count > 0 ? 'underline' : 'none'
             }}
             onClick={handleOpenLikes}
@@ -116,23 +187,20 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter, fir
             {post.like_count}
           </Typography>
 
-          <IconButton size="small" onClick={() => navigate(`/feed/${post.post_id}`)}>
+          <IconButton
+            size="small"
+            onClick={() => navigate(`/feed/${post.post_id}`)}
+          >
             <ChatBubbleOutlineIcon fontSize="small" />
           </IconButton>
-          <Typography variant="body2" sx={{ mr: 1 }}>
+
+          <Typography variant="body2">
             {post.comment_count ?? 0}
           </Typography>
-
-          {/* Edit/Delete only shown to the actual author */}
-          {isAuthor && onEditPost && onDeletePost && (
-            <>
-              <Button size="small" onClick={() => onEditPost(post)}>Edit</Button>
-              <Button size="small" color="error" onClick={() => setConfirmOpen(true)}>Delete</Button>
-            </>
-          )}
         </CardActions>
       </Card>
 
+      {/* Delete Confirmation Dialog */}
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
         <DialogTitle>Delete Post?</DialogTitle>
         <DialogContent>
@@ -142,36 +210,28 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter, fir
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmOpen(false)}>Cancel</Button>
-          <Button onClick={handleDeleteConfirm} color="error" variant="contained">Delete</Button>
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained">
+            Delete
+          </Button>
         </DialogActions>
       </Dialog>
 
-
+      {/* Likes Dialog — avatar now uses avatar_url from API */}
       <Dialog
         open={likesOpen}
         onClose={() => setLikesOpen(false)}
         PaperProps={{
-          sx: {
-            width: 400,
-            maxWidth: '90vw',
-            borderRadius: 3,
-          }
+          sx: { width: 400, maxWidth: '90vw', borderRadius: 3 }
         }}
       >
         <DialogTitle sx={{
           display: 'flex',
-          alignItems: 'center',
           justifyContent: 'space-between',
-          pb: 1,
           fontWeight: 600,
           fontSize: '0.95rem'
         }}>
           Likes
-          <IconButton
-            onClick={() => setLikesOpen(false)}
-            size="small"
-            sx={{ color: 'text.secondary' }}
-          >
+          <IconButton onClick={() => setLikesOpen(false)} size="small">
             <CloseIcon fontSize="small" />
           </IconButton>
         </DialogTitle>
@@ -192,18 +252,18 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter, fir
                   alignItems: 'center',
                   gap: 1.5,
                   px: 2,
-                  py: 1.2,
-                  '&:hover': { bgcolor: 'grey.50' }
+                  py: 1.2
                 }}
               >
+                {/* avatar for the likes image*/}
                 <Avatar
                   src={user.avatar_url ? `/uploads/${user.avatar_url}` : undefined}
-                  sx={{ width: 38, height: 38, fontSize: '0.9rem' }}
+                  sx={{ bgcolor: '#5D6C5C' }}
                 >
-                  {/* Fallback to first letter of name if no avatar */}
                   {!user.avatar_url && (user.display_name?.[0]?.toUpperCase() ?? '?')}
                 </Avatar>
-                <Typography variant="body2" fontWeight={500}>
+
+                <Typography variant="body2">
                   {user.display_name ?? `User ${user.user_id}`}
                 </Typography>
               </Box>

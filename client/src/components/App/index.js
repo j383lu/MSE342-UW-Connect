@@ -27,6 +27,7 @@ import EditProfile from "./Profile/EditProfile";
 import ViewProfile from "./Profile/ViewProfile";
 import ProgramStudents from "./Profile/ProgramStudents";
 import ProfileSearch from "./Profile/ProfileSearch";
+import UserProfileView from "./Profile/UserProfileView";
 
 // Import notifications
 import Notifications from "./Notifications/Notifications";
@@ -61,6 +62,10 @@ function AppContent() {
         <Route
           path="/profile-search"
           element={authenticated ? <ProfileSearch /> : <Navigate to="/" />}
+        />
+        <Route
+          path="/users/:userId"
+          element={authenticated ? <UserProfileView /> : <Navigate to="/" />}
         />
         <Route path="/groups" element={authenticated ? <GroupsPage /> : <Navigate to="/" />} />
         <Route path="/groups/new" element={authenticated ? <CreateGroupForm /> : <Navigate to="/" />} />

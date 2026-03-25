@@ -10,20 +10,25 @@ import {
   Alert,
   Avatar,
 } from "@mui/material";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { FirebaseContext } from "../../Firebase";
 
-function Profile() {
+function UserProfileView() {
   const navigate = useNavigate();
+  const { userId } = useParams();
   const firebase = useContext(FirebaseContext);
 
   const [profile, setProfile] = useState(null);
-  const [userCourses, setUserCourses] = useState([]);
   const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchProfileData = async () => {
+    const fetchProfile = async () => {
+      if (!userId) {
+        setLoadError("Invalid user.");
+        setLoading(false);
+        return;
+      }
       try {
         setLoading(true);
         setLoadError("");
@@ -35,75 +40,49 @@ function Profile() {
 
         const token = await user.getIdToken();
 
-        const [profileRes, coursesRes] = await Promise.all([
-          fetch("/api/profile", {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }),
-          fetch("/api/profile/user-courses", {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }),
-        ]);
+        const res = await fetch(`/api/profile/${userId}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
-        if (!profileRes.ok) {
-          let msg = "Failed to fetch profile";
-          try {
-            const body = await profileRes.json();
-            if (body?.error) msg = body.error;
-          } catch (_) {}
-          throw new Error(msg);
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          if (res.status === 404) {
+            throw new Error("Profile not found.");
+          }
+          throw new Error(body?.error || "Failed to fetch profile.");
         }
 
-        const profileData = await profileRes.json();
-        setProfile(profileData);
-
-        if (coursesRes.ok) {
-          const coursesData = await coursesRes.json();
-          setUserCourses(coursesData || []);
-        } else {
-          console.error("Failed to load user courses");
-          setUserCourses([]);
-        }
+        const data = await res.json();
+        setProfile(data);
       } catch (err) {
         console.error("Failed to load profile", err);
-        setLoadError("Profile failed to load.");
+        setLoadError(err.message || "Profile failed to load.");
       } finally {
         setLoading(false);
       }
     };
 
     if (firebase?.auth) {
-      fetchProfileData();
+      fetchProfile();
     }
-  }, [firebase]);
+  }, [firebase, userId]);
 
   const formatBirthday = (birthday) => {
     if (!birthday) return "No birthday added yet.";
-
     const raw = String(birthday).slice(0, 10);
     const parts = raw.split("-");
-
     if (parts.length === 3) {
       const [year, month, day] = parts;
       return `${Number(month)}/${Number(day)}/${year}`;
     }
-
     return birthday;
   };
 
   if (loading) {
     return (
-      <Box
-        sx={{
-          p: 3,
-          display: "flex",
-          justifyContent: "center",
-          bgcolor: "background.default",
-        }}
-      >
+      <Box sx={{ p: 3, display: "flex", justifyContent: "center", bgcolor: "background.default" }}>
         <Typography variant="body1" color="text.secondary">
           Loading...
         </Typography>
@@ -113,19 +92,15 @@ function Profile() {
 
   if (loadError) {
     return (
-      <Box
-        sx={{
-          p: 3,
-          display: "flex",
-          justifyContent: "center",
-          bgcolor: "background.default",
-        }}
-      >
+      <Box sx={{ p: 3, display: "flex", justifyContent: "center", bgcolor: "background.default" }}>
         <Card sx={{ width: 800 }}>
           <CardContent>
             <Alert severity="error" variant="outlined">
               {loadError}
             </Alert>
+            <Button variant="contained" sx={{ mt: 2 }} onClick={() => navigate("/profile-search")}>
+              Back to Profile Search
+            </Button>
           </CardContent>
         </Card>
       </Box>
@@ -134,22 +109,13 @@ function Profile() {
 
   if (!profile) return null;
 
+  const courses = profile.courses || [];
+
   return (
-    <Box
-      sx={{
-        p: 3,
-        display: "flex",
-        justifyContent: "center",
-        bgcolor: "background.default",
-      }}
-    >
+    <Box sx={{ p: 3, display: "flex", justifyContent: "center", bgcolor: "background.default" }}>
       <Card sx={{ width: 800 }}>
         <CardContent>
-          <Stack
-            direction="row"
-            justifyContent="space-between"
-            alignItems="flex-start"
-          >
+          <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
             <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
               <Avatar
                 src={profile.avatar_url ? `/uploads/${profile.avatar_url}` : undefined}
@@ -164,46 +130,28 @@ function Profile() {
                 {!profile.avatar_url && (profile.name?.[0]?.toUpperCase() ?? "?")}
               </Avatar>
               <Box>
-                <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
-                  <Typography variant="h1" sx={{ mb: 1 }}>
-                    {profile.name}
+                <Typography variant="h1" sx={{ mb: 1 }}>
+                  {profile.name}
+                </Typography>
+                {profile.gender && profile.gender !== "Prefer not to say" && (
+                  <Typography variant="body1" sx={{ color: "text.secondary", fontWeight: 600 }}>
+                    {profile.gender}
                   </Typography>
-                </Stack>
-
-              {profile.gender && profile.gender !== "Prefer not to say" && (
-                <Typography
-                  variant="body1"
-                  sx={{ color: "text.secondary", fontWeight: 600 }}
-                >
-                  {profile.gender}
-                </Typography>
-              )}
-
-              {profile.role === "Staff" && (
-                <Typography
-                  variant="body1"
-                  sx={{ color: "text.secondary", fontWeight: 600, mt: 1 }}
-                >
-                  Staff
-                </Typography>
-              )}
+                )}
+                {profile.role === "Staff" && (
+                  <Typography variant="body1" sx={{ color: "text.secondary", fontWeight: 600, mt: 1 }}>
+                    Staff
+                  </Typography>
+                )}
               </Box>
             </Box>
 
             <Stack direction="row" spacing={1}>
-              <Button
-                variant="outlined"
-                onClick={() => navigate("/profile-search")}
-              >
+              <Button variant="outlined" onClick={() => navigate("/profile-search")}>
                 Profile Search
               </Button>
-
-              <Button
-                variant="contained"
-                onClick={() => navigate("/edit-profile")}
-                data-testid="edit-profile-btn"
-              >
-                Edit Profile
+              <Button variant="contained" onClick={() => navigate("/profile")}>
+                My Profile
               </Button>
             </Stack>
           </Stack>
@@ -212,25 +160,16 @@ function Profile() {
             <Typography variant="h2" sx={{ mb: 1 }}>
               Bio
             </Typography>
-
             <Typography variant="body1" color="text.secondary">
               {profile.bio || "No bio added yet."}
             </Typography>
-
             {profile.birthday && (
-              <Typography
-                variant="body1"
-                sx={{ mt: 1, color: "text.secondary", fontWeight: 600 }}
-              >
+              <Typography variant="body1" sx={{ mt: 1, color: "text.secondary", fontWeight: 600 }}>
                 Birthday: {formatBirthday(profile.birthday)}
               </Typography>
             )}
-
             {profile.phone_number && (
-              <Typography
-                variant="body1"
-                sx={{ mt: 1, color: "text.secondary", fontWeight: 600 }}
-              >
+              <Typography variant="body1" sx={{ mt: 1, color: "text.secondary", fontWeight: 600 }}>
                 Phone Number: {profile.phone_number}
               </Typography>
             )}
@@ -242,11 +181,7 @@ function Profile() {
                 Staff Department
               </Typography>
               {profile.department ? (
-                <Chip
-                  label={profile.department}
-                  color="primary"
-                  sx={{ fontWeight: 600 }}
-                />
+                <Chip label={profile.department} color="primary" sx={{ fontWeight: 600 }} />
               ) : (
                 <Typography variant="body1" color="text.secondary">
                   No department added yet.
@@ -278,13 +213,12 @@ function Profile() {
             <Typography variant="h2" sx={{ mb: 1 }}>
               Current Courses
             </Typography>
-
-            {userCourses.length > 0 ? (
+            {courses.length > 0 ? (
               <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: "wrap", gap: 1 }}>
-                {userCourses.map((course) => (
+                {courses.map((course) => (
                   <Chip
                     key={course.course_id}
-                    label={course.course_code}
+                    label={course.course_code || course}
                     color="primary"
                     sx={{ fontWeight: 600 }}
                   />
@@ -302,4 +236,4 @@ function Profile() {
   );
 }
 
-export default Profile;
+export default UserProfileView;

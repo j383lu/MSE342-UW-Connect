@@ -1,14 +1,35 @@
 import React from "react";
+import 'whatwg-fetch';
 import { render, screen, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom";
-import Post from "../Post";
+import Post from "./index";
+
+
+
+jest.mock('../../contexts/UserContext', () => ({
+  useUser: () => ({
+    dbUser: { userId: 1, displayName: 'Test User' },
+    loading: false
+  })
+}));
+
+jest.mock('../Firebase', () => ({
+  withFirebase: (Component) => {
+    const Wrapped = (props) => (
+      <Component
+        {...props}
+        firebase={{ auth: { currentUser: { getIdToken: jest.fn(() => Promise.resolve('mock-token')) } } }}
+      />
+    );
+    Wrapped.displayName = Component.displayName || Component.name;
+    return Wrapped;
+  }
+}));
+
 
 beforeEach(() => {
   global.fetch = jest.fn(() =>
-    Promise.resolve({
-      ok: true,
-      json: () => Promise.resolve([])
-    })
+    Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
   );
 });
 
@@ -32,9 +53,9 @@ describe("Create Text Post", () => {
 
     fireEvent.click(screen.getByText(/create post/i));
 
-    fireEvent.change(screen.getByLabelText(/description/i), {
+    fireEvent.change(screen.getByLabelText(/description/i), { 
       target: { value: "Test body" }
-    });
+     });
 
     fireEvent.click(screen.getByText(/submit/i));
 
@@ -45,10 +66,10 @@ describe("Create Text Post", () => {
     render(<Post />);
 
     fireEvent.click(screen.getByText(/create post/i));
-
+    
     fireEvent.change(screen.getByLabelText(/title/i), {
-      target: { value: "Test title" }
-    });
+       target: { value: "Test title" } 
+      });
 
     fireEvent.click(screen.getByText(/submit/i));
 
@@ -60,14 +81,13 @@ describe("Create Text Post", () => {
 
     fireEvent.click(screen.getByText(/create post/i));
 
-    const longText = "a".repeat(501);
 
     fireEvent.change(screen.getByLabelText(/title/i), {
-      target: { value: "Valid title" }
-    });
+       target: { value: "Valid title" } 
+      });
 
-    fireEvent.change(screen.getByLabelText(/description/i), {
-      target: { value: longText }
+    fireEvent.change(screen.getByLabelText(/description/i), { 
+      target: { value: "a".repeat(501) } 
     });
 
     fireEvent.click(screen.getByText(/submit/i));
@@ -80,31 +100,31 @@ describe("Create Text Post", () => {
 
     fireEvent.click(screen.getByText(/create post/i));
 
-    fireEvent.change(screen.getByLabelText(/title/i), {
+    fireEvent.change(screen.getByLabelText(/title/i), { 
       target: { value: "Test Title" }
-    });
+     });
 
-    fireEvent.change(screen.getByLabelText(/description/i), {
+    fireEvent.change(screen.getByLabelText(/description/i), { 
       target: { value: "Test Body" }
-    });
+     });
 
     fireEvent.click(screen.getByText(/cancel/i));
 
     expect(screen.queryByText("Test Title")).not.toBeInTheDocument();
   });
 
-  test("7. Shows error when title is too long", () => {
+  test("7. Shows error when title is too short", () => {
     render(<Post />);
-    
+
     fireEvent.click(screen.getByText(/create post/i));
 
-    fireEvent.change(screen.getByLabelText(/title/i), {
+    fireEvent.change(screen.getByLabelText(/title/i), { 
       target: { value: "Hi" }
-    });
+     });
 
     fireEvent.change(screen.getByLabelText(/description/i), {
-      target: { value: "Valid description" }
-    });
+       target: { value: "Valid description" } 
+      });
 
     fireEvent.click(screen.getByText(/submit/i));
 
@@ -118,41 +138,40 @@ describe("Create Text Post", () => {
 
     fireEvent.click(screen.getByText(/create post/i));
 
-    const longTitle = "a".repeat(101);
 
     fireEvent.change(screen.getByLabelText(/title/i), {
-      target: { value: longTitle }
-    });
+       target: { value: "a".repeat(101) }
+       });
 
     fireEvent.change(screen.getByLabelText(/description/i), {
-      target: { value: "Valid description" }
-    });
+       target: { value: "Valid description" }
+       });
 
     fireEvent.click(screen.getByText(/submit/i));
 
     expect(
       screen.getByText(/title exceeds maximum length/i)
-    ).toBeInTheDocument();
-});
-
-test("9. Shows error when title contains only spaces", () => {
-  render(<Post />);
-
-  fireEvent.click(screen.getByText(/create post/i));
-
-  fireEvent.change(screen.getByLabelText(/title/i), {
-    target: { value: "   " }
-  });
-
-  fireEvent.change(screen.getByLabelText(/description/i), {
-    target: { value: "Valid description" }
-  });
-
-  fireEvent.click(screen.getByText(/submit/i));
-
-  expect(
-    screen.getByText(/title is a required field/i)
   ).toBeInTheDocument();
-});
+  });
+
+  test("9. Shows error when title contains only spaces", () => {
+    render(<Post />);
+
+    fireEvent.click(screen.getByText(/create post/i));
+
+    fireEvent.change(screen.getByLabelText(/title/i), { 
+      target: { value: "   " } 
+    });
+
+    fireEvent.change(screen.getByLabelText(/description/i), {
+       target: { value: "Valid description" }
+       });
+
+    fireEvent.click(screen.getByText(/submit/i));
+    
+    expect(
+      screen.getByText(/title is a required field/i)
+    ).toBeInTheDocument();
+  });
 
 });

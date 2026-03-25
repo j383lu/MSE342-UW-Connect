@@ -3,7 +3,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, Grid, Typography, Autocomplete,
   FormControl, InputLabel, Select, MenuItem, Switch,
-  FormControlLabel
+  FormControlLabel, Box
 } from "@mui/material";
 //import { withFirebase } from "../Firebase";
 import { useUser } from "../../contexts/UserContext";
@@ -20,6 +20,9 @@ function EditPostForm({ open, onClose, onSubmit, post, firebase }) {
   const [selectedTags, setSelectedTags] = useState([]);
   const [error, setError] = useState({ title: "", description: "", tags: "" });
   const [isAnonymous, setIsAnonymous] = useState(false);
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [removeImage, setRemoveImage] = useState(false);
 
   useEffect(() => {
     if (!open || !dbUser?.userId) return;
@@ -46,6 +49,9 @@ function EditPostForm({ open, onClose, onSubmit, post, firebase }) {
       setSelectedTags(post.tags || []);
       setSelectedGroup(post.group_id || "");
       setIsAnonymous(post.is_anonymous || false);
+      setImageFile(null);
+      setRemoveImage(false);
+      setImagePreview(post.image_url ? `/uploads/${post.image_url}` : null);
       setError({ title: "", description: "", tags: "" });
     }
   }, [post]);
@@ -62,7 +68,9 @@ function EditPostForm({ open, onClose, onSubmit, post, firebase }) {
       description,
       tags: selectedTags,
       group_id: selectedGroup || null,
-      is_anonymous: isAnonymous ? 1 : 0
+      is_anonymous: isAnonymous ? 1 : 0,
+      imageFile,
+      removeImage
     });
   };
 
@@ -153,6 +161,40 @@ function EditPostForm({ open, onClose, onSubmit, post, firebase }) {
               )}
             />
           </Grid>
+
+          <Grid item xs={12}>
+            {/* Show current image if exists and no new one selected */}
+            {imagePreview && (
+              <Box sx={{ mb: 1 }}>
+                <Typography variant="caption" color="text.secondary">
+                  {imageFile ? "New image:" : "Current image:"}
+                </Typography>
+                <Box sx={{ mt: 0.5 }}>
+                  <img src={imagePreview} alt="preview"
+                    style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8 }} />
+                </Box>
+                <Button size="small" color="error" onClick={() => {
+                  setImageFile(null);
+                  setImagePreview(null);
+                  setRemoveImage(true);
+                }}>
+                  Remove Image
+                </Button>
+              </Box>
+            )}
+            <Button variant="outlined" component="label" fullWidth>
+              {imagePreview ? "Change Image" : "Attach Image (optional)"}
+              <input type="file" accept="image/*" hidden onChange={(e) => {
+                const file = e.target.files[0];
+                if (file) {
+                  setImageFile(file);
+                  setImagePreview(URL.createObjectURL(file));
+                }
+              }} />
+            </Button>
+          </Grid>
+
+
         </Grid>
       </DialogContent>
 
