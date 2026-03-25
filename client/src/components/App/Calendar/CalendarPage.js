@@ -152,6 +152,35 @@ function getEditFormVisibility(ev) {
   return getCalendarVisibility(ev);
 }
 
+/**
+ * One chip for group audience (Public/Private) instead of stacking "Group" + "Private" or "Private" twice.
+ */
+/** Hide RSVP capacity on invite-only / private listings (not shown to the public feed). */
+function isPrivateListing(ev) {
+  const et = String(ev?.event_type || "").trim().toLowerCase();
+  if (et === "private") return true;
+  return getCalendarVisibility(ev) === "private";
+}
+
+function getFoldedListingChips(ev) {
+  const calScope = getCalendarScope(ev);
+  const visibility = getCalendarVisibility(ev);
+  const typeBadge = getCalendarTypeBadge(ev);
+  const audienceLabel =
+    calScope === "group" ? (visibility === "private" ? "Private" : "Public") : null;
+  const foldAudience =
+    Boolean(audienceLabel) &&
+    (typeBadge.label === "Group" || typeBadge.label === audienceLabel);
+  const displayLabel = foldAudience ? audienceLabel : typeBadge.label;
+  const displayKind = foldAudience
+    ? visibility === "private"
+      ? "private"
+      : "public"
+    : typeBadge.kind;
+  const showAudienceChip = Boolean(audienceLabel) && !foldAudience;
+  return { displayLabel, displayKind, showAudienceChip, audienceLabel, visibility };
+}
+
 const HOUR_HEIGHT = 48;
 const DAY_START_HOUR = 0;
 const DAY_END_HOUR = 24;
@@ -650,16 +679,14 @@ export default function CalendarPage() {
     const overdue = isOverdue(ev);
     const mine = Number(ev.created_by) === Number(myId);
     const creatorLabel = mine ? "You" : ev.creator_name || "Peer";
-    const calScope = getCalendarScope(ev);
-    const typeBadge = getCalendarTypeBadge(ev);
-    const visibility = getCalendarVisibility(ev);
-    const visibilityLabel =
-      calScope === "group" ? (visibility === "private" ? "Private" : "Public") : null;
+    const { displayLabel, displayKind, showAudienceChip, audienceLabel, visibility } =
+      getFoldedListingChips(ev);
     const capNum =
       ev.capacity !== undefined && ev.capacity !== null && ev.capacity !== ""
         ? Number(ev.capacity)
         : NaN;
-    const capacityLabel = Number.isFinite(capNum) && capNum > 0 ? `${capNum} spots` : null;
+    const capacityLabel =
+      !isPrivateListing(ev) && Number.isFinite(capNum) && capNum > 0 ? `${capNum} spots` : null;
     const hideCreatorRow = false;
     const isPeerOwned = visibleContactIds.has(Number(ev.created_by));
 
@@ -741,27 +768,27 @@ export default function CalendarPage() {
                   py: 0.25,
                   borderRadius: 999,
                   bgcolor:
-                    typeBadge.kind === "personal"
+                    displayKind === "personal"
                       ? "#EBF8FF"
-                      : typeBadge.kind === "group"
+                      : displayKind === "group"
                         ? "#F0FFF4"
-                        : typeBadge.kind === "private"
+                        : displayKind === "private"
                           ? "#FAF5FF"
                           : "#E6FFFA",
                   color:
-                    typeBadge.kind === "personal"
+                    displayKind === "personal"
                       ? "#2B6CB0"
-                      : typeBadge.kind === "group"
+                      : displayKind === "group"
                         ? "#276749"
-                        : typeBadge.kind === "private"
+                        : displayKind === "private"
                           ? "#553C9A"
                           : "#2C7A7B",
                   fontWeight: 700,
                 }}
               >
-                {typeBadge.label}
+                {displayLabel}
               </Typography>
-              {visibilityLabel ? (
+              {showAudienceChip ? (
                 <Typography
                   variant="caption"
                   sx={{
@@ -774,7 +801,7 @@ export default function CalendarPage() {
                     fontWeight: 700,
                   }}
                 >
-                  {visibilityLabel}
+                  {audienceLabel}
                 </Typography>
               ) : null}
               {capacityLabel ? (
@@ -838,17 +865,19 @@ export default function CalendarPage() {
       const colorKey = extractCalendarColor(ev.tags);
       const hex = colorHexForKey(colorKey);
       const scope = getCalendarScope(ev);
-      const visibility = getCalendarVisibility(ev);
-      const typeBadge = getCalendarTypeBadge(ev);
+      const { displayLabel: blockPrimary, showAudienceChip: showBlockAudience, audienceLabel: blockAudience, visibility: blockVis } =
+        getFoldedListingChips(ev);
       const overdueBanner = isOverdue(ev) && scope === "personal";
-      const scopeShort = typeBadge.label;
-      const visibilityShort =
-        scope === "group" ? (visibility === "private" ? "Private" : "Public") : null;
+      const scopeShort = blockPrimary;
+      const visibilityShort = showBlockAudience ? blockAudience : null;
       const capBlock =
         ev.capacity !== undefined && ev.capacity !== null && ev.capacity !== ""
           ? Number(ev.capacity)
           : NaN;
-      const capacityShort = Number.isFinite(capBlock) && capBlock > 0 ? `${capBlock} spots` : null;
+      const capacityShort =
+        !isPrivateListing(ev) && Number.isFinite(capBlock) && capBlock > 0
+          ? `${capBlock} spots`
+          : null;
       const isPeerOwned = visibleContactIds.has(Number(ev.created_by));
       const continuesNextDay = segEnd < fullEnd;
       const continuedFromPrior = segStart > fullStart;
@@ -1471,7 +1500,23 @@ export default function CalendarPage() {
                     size="small"
                     exclusive
                     value={editEventForm.visibility || "public"}
-                    onChange={(_, v) => v && setEditEventForm((p) => ({ ...p, visibility: v }))}
+                    onChange={(_, v) => {
+                      if (!v) return;
+                      setEditEventForm((p) => {
+                        const next = { ...p, visibility: v };
+                        if (v === "private") {
+                          const fromApi = attendeeRowsToParticipantIds(detailAttendees, contacts);
+                          const merged = new Set([
+                            ...(p.participant_user_ids || [])
+                              .map((x) => Number(x))
+                              .filter((id) => Number.isInteger(id) && id > 0),
+                            ...fromApi,
+                          ]);
+                          next.participant_user_ids = [...merged];
+                        }
+                        return next;
+                      });
+                    }}
                   >
                     <ToggleButton value="public">Public</ToggleButton>
                     <ToggleButton value="private">Private</ToggleButton>
@@ -1546,16 +1591,18 @@ export default function CalendarPage() {
                   return t === "—" && detailsLoading ? "Loading..." : t;
                 })()}
               </Typography>
-              <Typography variant="body2">
-                Capacity:{" "}
-                {selectedEvent.capacity !== undefined &&
-                selectedEvent.capacity !== null &&
-                selectedEvent.capacity !== ""
-                  ? Number(selectedEvent.capacity)
-                  : detailsLoading
-                    ? "Loading..."
-                    : "—"}
-              </Typography>
+              {!isPrivateListing(selectedEvent) ? (
+                <Typography variant="body2">
+                  Capacity:{" "}
+                  {selectedEvent.capacity !== undefined &&
+                  selectedEvent.capacity !== null &&
+                  selectedEvent.capacity !== ""
+                    ? Number(selectedEvent.capacity)
+                    : detailsLoading
+                      ? "Loading..."
+                      : "—"}
+                </Typography>
+              ) : null}
               <Typography variant="body2" color="text.secondary">
                 Owner: {Number(selectedEvent.created_by) === Number(myId) ? "You" : selectedEvent.creator_name || "Unknown"}
               </Typography>
