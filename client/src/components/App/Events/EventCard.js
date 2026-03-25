@@ -1,4 +1,10 @@
-import React, { useContext, useEffect, useMemo, useState } from "react";
+import React, {
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import styles from "./eventStyles";
 import { FirebaseContext } from "../../Firebase";
 
@@ -27,6 +33,7 @@ export default function EventCard({
   const [saveLoading, setSaveLoading] = useState(false);
   const [editError, setEditError] = useState("");
   const [editMessage, setEditMessage] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const [categories, setCategories] = useState([]);
   const [joinedGroups, setJoinedGroups] = useState([]);
@@ -48,6 +55,30 @@ export default function EventCard({
   const [eventType, setEventType] = useState("public");
   const [groupSelectValue, setGroupSelectValue] = useState("");
   const [selectedGroups, setSelectedGroups] = useState([]);
+
+  const editTitleRef = useRef(null);
+  const editDescriptionRef = useRef(null);
+  const editCategoryRef = useRef(null);
+  const editGroupRef = useRef(null);
+  const editStartDateRef = useRef(null);
+  const editStartTimeRef = useRef(null);
+  const editEndDateRef = useRef(null);
+  const editEndTimeRef = useRef(null);
+  const editLocationRef = useRef(null);
+  const editCapacityRef = useRef(null);
+
+  const editFieldRefs = {
+    title: editTitleRef,
+    description: editDescriptionRef,
+    category: editCategoryRef,
+    selectedGroups: editGroupRef,
+    eventDate: editStartDateRef,
+    eventTime: editStartTimeRef,
+    endDate: editEndDateRef,
+    endTime: editEndTimeRef,
+    location: editLocationRef,
+    capacity: editCapacityRef,
+  };
 
   const current = Number(ev.current_count || 0);
   const max = Number(ev.capacity || 0);
@@ -90,6 +121,33 @@ export default function EventCard({
 
   const disableJoin = backendStatus === "ended" || isFull;
 
+  // This helper function scrolls to the first invalid input field in the edit form
+  const scrollToEditField = (fieldName) => {
+    const targetRef = editFieldRefs[fieldName];
+
+    if (targetRef && targetRef.current) {
+      targetRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+
+      if (typeof targetRef.current.focus === "function") {
+        setTimeout(() => {
+          targetRef.current.focus();
+        }, 250);
+      }
+    }
+  };
+
+  // This helper function removes the error message of one specific edit field
+  const clearEditFieldError = (fieldName) => {
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      delete next[fieldName];
+      return next;
+    });
+  };
+
   const buildSelectedGroupsFromEvent = () => {
     const ids = String(ev.group_ids || "")
       .split(",")
@@ -128,6 +186,7 @@ export default function EventCard({
     setEditError("");
     setEditMessage("");
     setGroupMessage("");
+    setFieldErrors({});
   };
 
   useEffect(() => {
@@ -229,6 +288,7 @@ export default function EventCard({
     setEventType(type);
     setEditError("");
     setEditMessage("");
+    clearEditFieldError("selectedGroups");
 
     if (type === "public") {
       setGroupSelectValue("");
@@ -288,6 +348,7 @@ export default function EventCard({
 
     setSelectedGroups((prev) => [...prev, selectedGroup]);
     setGroupSelectValue("");
+    clearEditFieldError("selectedGroups");
   };
 
   const handleRemoveGroup = (groupIdToRemove) => {
@@ -297,83 +358,139 @@ export default function EventCard({
   };
 
   const validateEventDateTime = () => {
-    if (!eventDate || !eventTime || !endDate || !endTime) {
-      return "Please fill in all start and end date and time fields.";
+    const errors = {};
+
+    if (eventDate && endDate) {
+      const startDateOnly = new Date(`${eventDate}T00:00`);
+      const endDateOnly = new Date(`${endDate}T00:00`);
+
+      if (
+        Number.isNaN(startDateOnly.getTime()) ||
+        Number.isNaN(endDateOnly.getTime())
+      ) {
+        errors.endDate = "Please enter valid start date and end date.";
+        return errors;
+      }
+
+      if (endDateOnly < startDateOnly) {
+        errors.endDate = "End date must be after or equal to start date.";
+        return errors;
+      }
     }
 
-    const startDateOnly = new Date(`${eventDate}T00:00`);
-    const endDateOnly = new Date(`${endDate}T00:00`);
+    if (eventDate && eventTime && endDate && endTime) {
+      const startDateTime = new Date(`${eventDate}T${eventTime}`);
+      const endDateTime = new Date(`${endDate}T${endTime}`);
 
-    if (
-      Number.isNaN(startDateOnly.getTime()) ||
-      Number.isNaN(endDateOnly.getTime())
-    ) {
-      return "Please enter valid start date and end date.";
+      if (
+        Number.isNaN(startDateTime.getTime()) ||
+        Number.isNaN(endDateTime.getTime())
+      ) {
+        errors.endTime = "Please enter valid start time and end time.";
+        return errors;
+      }
+
+      if (eventDate === endDate && endDateTime <= startDateTime) {
+        errors.endTime = "End time must be after start time.";
+        return errors;
+      }
+
+      if (endDateTime <= startDateTime) {
+        errors.endDate =
+          "End date and end time must be after start date and start time.";
+        return errors;
+      }
     }
 
-    if (endDateOnly < startDateOnly) {
-      return "End date must be after or equal to start date.";
+    return errors;
+  };
+
+  // This function checks every edit field and returns field level error messages
+  const validateEditFields = () => {
+    const errors = {};
+
+    if (!title.trim()) {
+      errors.title = "Event Title is empty, please enter event title.";
     }
 
-    const startDateTime = new Date(`${eventDate}T${eventTime}`);
-    const endDateTime = new Date(`${endDate}T${endTime}`);
-
-    if (
-      Number.isNaN(startDateTime.getTime()) ||
-      Number.isNaN(endDateTime.getTime())
-    ) {
-      return "Please enter valid start time and end time.";
+    if (!description.trim()) {
+      errors.description =
+        "Description is empty, please enter event description.";
     }
 
-    if (eventDate === endDate && endDateTime <= startDateTime) {
-      return "End time must be after start time.";
+    if (!category) {
+      errors.category = "Category is empty, please select a category.";
     }
 
-    if (endDateTime <= startDateTime) {
-      return "End date and end time must be after start date and start time.";
+    if (!eventDate) {
+      errors.eventDate = "Start Date is empty, please select start date.";
     }
 
-    return "";
+    if (!eventTime) {
+      errors.eventTime = "Start Time is empty, please select start time.";
+    }
+
+    if (!endDate) {
+      errors.endDate = "End Date is empty, please select end date.";
+    }
+
+    if (!endTime) {
+      errors.endTime = "End Time is empty, please select end time.";
+    }
+
+    if (!location.trim()) {
+      errors.location = "Location is empty, please enter event location.";
+    }
+
+    if (capacity === "" || capacity === null) {
+      errors.capacity =
+        "Max RSVP Spots is empty, please enter the maximum RSVP spots.";
+    } else {
+      const capNum = Number(capacity);
+
+      if (!Number.isInteger(capNum) || capNum < 2) {
+        errors.capacity =
+          "Max RSVP spots must be an integer greater than or equal to 2.";
+      }
+    }
+
+    if (eventType === "group" && selectedGroups.length === 0) {
+      errors.selectedGroups =
+        "Please select at least one group for a group event.";
+    }
+
+    const dateTimeErrors = validateEventDateTime();
+    return { ...errors, ...dateTimeErrors };
   };
 
   const handleSaveChanges = async () => {
     setEditError("");
     setEditMessage("");
 
-    if (!title || !description || !eventDate || !eventTime || !endDate || !endTime || !location || !capacity || !category) {
-      setEditError("Please fill in all fields.");
+    const validationErrors = validateEditFields();
+
+    if (Object.keys(validationErrors).length > 0) {
+      setFieldErrors(validationErrors);
+
+      const firstErrorField = Object.keys(validationErrors)[0];
+      scrollToEditField(firstErrorField);
       return;
     }
 
-    const dateTimeError = validateEventDateTime();
-    if (dateTimeError) {
-      setEditError(dateTimeError);
-      return;
-    }
-
-    const capNum = Number(capacity);
-    if (!Number.isInteger(capNum) || capNum < 2) {
-      setEditError("Max RSVP spots must be an integer greater than or equal to 2.");
-      return;
-    }
-
-    if (eventType === "group" && selectedGroups.length === 0) {
-      setEditError("Please select at least one group for a group event.");
-      return;
-    }
+    setFieldErrors({});
 
     try {
       setSaveLoading(true);
 
       const success = await onUpdateEvent(ev.id, {
-        title,
-        description,
+        title: title.trim(),
+        description: description.trim(),
         event_date: eventDate,
         event_time: eventTime,
         end_date: endDate,
         end_time: endTime,
-        location,
-        capacity: capNum,
+        location: location.trim(),
+        capacity: Number(capacity),
         category,
         tags,
         event_type: eventType,
@@ -709,20 +826,40 @@ export default function EventCard({
             <div style={styles.formField}>
               <label style={styles.formLabel}>Event Title</label>
               <input
+                ref={editTitleRef}
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                style={styles.formInput}
+                onChange={(e) => {
+                  setTitle(e.target.value);
+                  clearEditFieldError("title");
+                }}
+                style={{
+                  ...styles.formInput,
+                  ...(fieldErrors.title ? styles.formInputError : {}),
+                }}
               />
+              {fieldErrors.title ? (
+                <div style={styles.fieldErrorText}>{fieldErrors.title}</div>
+              ) : null}
             </div>
 
             <div style={styles.formField}>
               <label style={styles.formLabel}>Description</label>
               <textarea
+                ref={editDescriptionRef}
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                style={styles.formTextarea}
+                onChange={(e) => {
+                  setDescription(e.target.value);
+                  clearEditFieldError("description");
+                }}
+                style={{
+                  ...styles.formTextarea,
+                  ...(fieldErrors.description ? styles.formInputError : {}),
+                }}
                 rows={5}
               />
+              {fieldErrors.description ? (
+                <div style={styles.fieldErrorText}>{fieldErrors.description}</div>
+              ) : null}
             </div>
 
             <div style={styles.formField}>
@@ -777,9 +914,15 @@ export default function EventCard({
                   <>
                     <div style={styles.tagInputRow}>
                       <select
+                        ref={editGroupRef}
                         value={groupSelectValue}
                         onChange={(e) => setGroupSelectValue(e.target.value)}
-                        style={styles.formSelect}
+                        style={{
+                          ...styles.formSelect,
+                          ...(fieldErrors.selectedGroups
+                            ? styles.formInputError
+                            : {}),
+                        }}
                       >
                         <option value="">Select a group</option>
                         {joinedGroups.map((group) => (
@@ -797,6 +940,12 @@ export default function EventCard({
                         Add Group
                       </button>
                     </div>
+
+                    {fieldErrors.selectedGroups ? (
+                      <div style={styles.fieldErrorText}>
+                        {fieldErrors.selectedGroups}
+                      </div>
+                    ) : null}
 
                     {selectedGroups.length > 0 ? (
                       <div style={styles.tagsWrap}>
@@ -823,9 +972,16 @@ export default function EventCard({
             <div style={styles.formField}>
               <label style={styles.formLabel}>Category</label>
               <select
+                ref={editCategoryRef}
                 value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                style={styles.formSelect}
+                onChange={(e) => {
+                  setCategory(e.target.value);
+                  clearEditFieldError("category");
+                }}
+                style={{
+                  ...styles.formSelect,
+                  ...(fieldErrors.category ? styles.formInputError : {}),
+                }}
               >
                 <option value="">Select a category</option>
                 {categories.map((item) => (
@@ -834,6 +990,9 @@ export default function EventCard({
                   </option>
                 ))}
               </select>
+              {fieldErrors.category ? (
+                <div style={styles.fieldErrorText}>{fieldErrors.category}</div>
+              ) : null}
             </div>
 
             <div style={styles.formField}>
@@ -885,21 +1044,41 @@ export default function EventCard({
               <div style={styles.formField}>
                 <label style={styles.formLabel}>Start Date</label>
                 <input
+                  ref={editStartDateRef}
                   type="date"
                   value={eventDate}
-                  onChange={(e) => setEventDate(e.target.value)}
-                  style={styles.formInput}
+                  onChange={(e) => {
+                    setEventDate(e.target.value);
+                    clearEditFieldError("eventDate");
+                  }}
+                  style={{
+                    ...styles.formInput,
+                    ...(fieldErrors.eventDate ? styles.formInputError : {}),
+                  }}
                 />
+                {fieldErrors.eventDate ? (
+                  <div style={styles.fieldErrorText}>{fieldErrors.eventDate}</div>
+                ) : null}
               </div>
 
               <div style={styles.formField}>
                 <label style={styles.formLabel}>Start Time</label>
                 <input
+                  ref={editStartTimeRef}
                   type="time"
                   value={eventTime}
-                  onChange={(e) => setEventTime(e.target.value)}
-                  style={styles.formInput}
+                  onChange={(e) => {
+                    setEventTime(e.target.value);
+                    clearEditFieldError("eventTime");
+                  }}
+                  style={{
+                    ...styles.formInput,
+                    ...(fieldErrors.eventTime ? styles.formInputError : {}),
+                  }}
                 />
+                {fieldErrors.eventTime ? (
+                  <div style={styles.fieldErrorText}>{fieldErrors.eventTime}</div>
+                ) : null}
               </div>
             </div>
 
@@ -907,42 +1086,82 @@ export default function EventCard({
               <div style={styles.formField}>
                 <label style={styles.formLabel}>End Date</label>
                 <input
+                  ref={editEndDateRef}
                   type="date"
                   value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  style={styles.formInput}
+                  onChange={(e) => {
+                    setEndDate(e.target.value);
+                    clearEditFieldError("endDate");
+                  }}
+                  style={{
+                    ...styles.formInput,
+                    ...(fieldErrors.endDate ? styles.formInputError : {}),
+                  }}
                 />
+                {fieldErrors.endDate ? (
+                  <div style={styles.fieldErrorText}>{fieldErrors.endDate}</div>
+                ) : null}
               </div>
 
               <div style={styles.formField}>
                 <label style={styles.formLabel}>End Time</label>
                 <input
+                  ref={editEndTimeRef}
                   type="time"
                   value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  style={styles.formInput}
+                  onChange={(e) => {
+                    setEndTime(e.target.value);
+                    clearEditFieldError("endTime");
+                  }}
+                  style={{
+                    ...styles.formInput,
+                    ...(fieldErrors.endTime ? styles.formInputError : {}),
+                  }}
                 />
+                {fieldErrors.endTime ? (
+                  <div style={styles.fieldErrorText}>{fieldErrors.endTime}</div>
+                ) : null}
               </div>
             </div>
 
             <div style={styles.formField}>
               <label style={styles.formLabel}>Location</label>
               <input
+                ref={editLocationRef}
                 value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                style={styles.formInput}
+                onChange={(e) => {
+                  setLocation(e.target.value);
+                  clearEditFieldError("location");
+                }}
+                style={{
+                  ...styles.formInput,
+                  ...(fieldErrors.location ? styles.formInputError : {}),
+                }}
               />
+              {fieldErrors.location ? (
+                <div style={styles.fieldErrorText}>{fieldErrors.location}</div>
+              ) : null}
             </div>
 
             <div style={styles.formField}>
               <label style={styles.formLabel}>Max RSVP Spots</label>
               <input
+                ref={editCapacityRef}
                 type="number"
                 min="2"
                 value={capacity}
-                onChange={(e) => setCapacity(e.target.value)}
-                style={styles.formInput}
+                onChange={(e) => {
+                  setCapacity(e.target.value);
+                  clearEditFieldError("capacity");
+                }}
+                style={{
+                  ...styles.formInput,
+                  ...(fieldErrors.capacity ? styles.formInputError : {}),
+                }}
               />
+              {fieldErrors.capacity ? (
+                <div style={styles.fieldErrorText}>{fieldErrors.capacity}</div>
+              ) : null}
             </div>
           </div>
 

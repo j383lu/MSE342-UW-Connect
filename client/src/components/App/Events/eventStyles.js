@@ -975,6 +975,19 @@ const eventStyles = {
     fontWeight: 600,
   },
 
+  formInputError: {
+    border: "1px solid #d93025",
+    boxShadow: "0 0 0 3px rgba(217, 48, 37, 0.08)",
+  },
+
+  fieldErrorText: {
+    marginTop: "8px",
+    fontSize: "14px",
+    fontWeight: 600,
+    color: "#d93025",
+    lineHeight: 1.4,
+  },
+
 };
 
 export default eventStyles;
