@@ -1075,8 +1075,6 @@ app.get("/api/tags", checkAuth, (req, res) => {
 app.post("/api/groups", checkAuth, upload.single('coverImage'), (req, res) => {
   const { name, description, category, isOpen, maxMembers } = req.body;
 
-  const explicitCreatorId = Number(req.body.user_id);
-
   const createGroupWithCreator = (creator_id) => {
     if (!creator_id) {
       return res.status(400).json({ error: "Missing or invalid user_id for group creator" });
@@ -1098,6 +1096,8 @@ app.post("/api/groups", checkAuth, upload.single('coverImage'), (req, res) => {
     `;
 
     db.query(sql, [creator_id, name, description, category, is_private, max_members, image_url], (err, result) => {
+    db.query(sql, [creator_id, name, description, category, is_private, max_members, image_url],
+      (err, result) => {
       if (err) {
         console.error("POST /api/groups error:", err);
         return res.status(500).json({
