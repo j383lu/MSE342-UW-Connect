@@ -373,10 +373,12 @@ app.get("/api/profile/search-users", checkAuth, (req, res) => {
   let params = [];
 
   if (userQuery) {
+    const like = `%${userQuery}%`;
     sql = `
       SELECT
         up.user_id,
         up.display_name,
+        uc.email,
         up.bio,
         up.department,
         up.gender,
@@ -386,15 +388,17 @@ app.get("/api/profile/search-users", checkAuth, (req, res) => {
       FROM User_Profiles up
       LEFT JOIN Programs p ON p.program_id = up.program_id
       LEFT JOIN User_Credentials uc ON uc.user_id = up.user_id
-      WHERE up.display_name LIKE ?
+      WHERE LOWER(up.display_name) LIKE LOWER(?)
+         OR LOWER(COALESCE(uc.email, '')) LIKE LOWER(?)
       ORDER BY up.display_name ASC;
     `;
-    params = [`%${userQuery}%`];
+    params = [like, like];
   } else {
     sql = `
       SELECT
         up.user_id,
         up.display_name,
+        uc.email,
         up.bio,
         up.department,
         up.gender,

@@ -11,6 +11,15 @@ import { MemoryRouter, Routes, Route } from "react-router-dom";
 import Profile from "./Profile";
 import ProgramStudents from "./ProgramStudents";
 import ProfileSearch from "./ProfileSearch";
+import { FirebaseContext } from "../../Firebase";
+
+const mockFirebaseForSearch = {
+  auth: {
+    currentUser: {
+      getIdToken: jest.fn().mockResolvedValue("mock-token"),
+    },
+  },
+};
 
 describe("Profile feature tests", () => {
   beforeEach(() => {
@@ -82,6 +91,7 @@ describe("Profile feature tests", () => {
                 {
                   user_id: 1,
                   display_name: "Alex Chen",
+                  email: "alex.chen@uwaterloo.ca",
                   bio: "Management Engineering student",
                   role: "Student",
                   program_name: "Management Engineering",
@@ -90,6 +100,7 @@ describe("Profile feature tests", () => {
                 {
                   user_id: 2,
                   display_name: "Sarah Patel",
+                  email: "sarah.patel@uwaterloo.ca",
                   bio: "Interested in UX",
                   role: "Student",
                   program_name: "Management Engineering",
@@ -98,6 +109,7 @@ describe("Profile feature tests", () => {
                 {
                   user_id: 3,
                   display_name: "Jordan Lee",
+                  email: "jordan.lee@uwaterloo.ca",
                   bio: "Registrar staff member",
                   role: "Staff",
                   program_name: "",
@@ -115,6 +127,7 @@ describe("Profile feature tests", () => {
               {
                 user_id: 1,
                 display_name: "Alex Chen",
+                email: "alex.chen@uwaterloo.ca",
                 bio: "Management Engineering student",
                 role: "Student",
                 program_name: "Management Engineering",
@@ -123,6 +136,7 @@ describe("Profile feature tests", () => {
               {
                 user_id: 2,
                 display_name: "Sarah Patel",
+                email: "sarah.patel@uwaterloo.ca",
                 bio: "Interested in UX",
                 role: "Student",
                 program_name: "Management Engineering",
@@ -131,6 +145,7 @@ describe("Profile feature tests", () => {
               {
                 user_id: 3,
                 display_name: "Jordan Lee",
+                email: "jordan.lee@uwaterloo.ca",
                 bio: "Registrar staff member",
                 role: "Staff",
                 program_name: "",
@@ -141,9 +156,12 @@ describe("Profile feature tests", () => {
             return Promise.resolve({
               ok: true,
               json: async () => ({
-                users: allUsers.filter((u) =>
-                  u.display_name.toLowerCase().includes(query)
-                ),
+                users: allUsers.filter((u) => {
+                  const q = query;
+                  const name = (u.display_name || "").toLowerCase();
+                  const email = (u.email || "").toLowerCase();
+                  return name.includes(q) || email.includes(q);
+                }),
               }),
             });
           }
@@ -319,9 +337,11 @@ describe("Profile feature tests", () => {
 
   test("8. ProfileSearch shows full list of users when search bar is empty", async () => {
     render(
-      <MemoryRouter>
-        <ProfileSearch />
-      </MemoryRouter>
+      <FirebaseContext.Provider value={mockFirebaseForSearch}>
+        <MemoryRouter>
+          <ProfileSearch />
+        </MemoryRouter>
+      </FirebaseContext.Provider>
     );
 
     expect(await screen.findByText("Alex Chen")).toBeInTheDocument();
@@ -331,9 +351,11 @@ describe("Profile feature tests", () => {
 
   test("9. ProfileSearch filters users by typed text", async () => {
     render(
-      <MemoryRouter>
-        <ProfileSearch />
-      </MemoryRouter>
+      <FirebaseContext.Provider value={mockFirebaseForSearch}>
+        <MemoryRouter>
+          <ProfileSearch />
+        </MemoryRouter>
+      </FirebaseContext.Provider>
     );
 
     const input = await screen.findByTestId("user-search-input");
@@ -345,5 +367,25 @@ describe("Profile feature tests", () => {
 
     expect(screen.queryByText("Sarah Patel")).not.toBeInTheDocument();
     expect(screen.queryByText("Jordan Lee")).not.toBeInTheDocument();
+  });
+
+  test("10. ProfileSearch filters users by email", async () => {
+    render(
+      <FirebaseContext.Provider value={mockFirebaseForSearch}>
+        <MemoryRouter>
+          <ProfileSearch />
+        </MemoryRouter>
+      </FirebaseContext.Provider>
+    );
+
+    const input = await screen.findByTestId("user-search-input");
+    fireEvent.change(input, { target: { value: "jordan.lee@uwaterloo.ca" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("Jordan Lee")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Alex Chen")).not.toBeInTheDocument();
+    expect(screen.queryByText("Sarah Patel")).not.toBeInTheDocument();
   });
 });

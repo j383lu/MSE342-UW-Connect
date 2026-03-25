@@ -93,7 +93,11 @@ function ProfileSearch() {
 
     return users.filter((user) => {
       const name = (user.display_name || "").toLowerCase();
-      const matchesSearch = !trimmedQuery || name.includes(trimmedQuery);
+      const email = (user.email || "").toLowerCase();
+      const matchesSearch =
+        !trimmedQuery ||
+        name.includes(trimmedQuery) ||
+        email.includes(trimmedQuery);
       const matchesProgram =
         !selectedProgram || (user.program_name || "") === selectedProgram;
       const matchesGender =
@@ -125,7 +129,7 @@ function ProfileSearch() {
                 Search Users
               </Typography>
               <Typography variant="body1" color="text.secondary">
-                Find students and staff by name, program, or gender.
+                Find students and staff by name, email, program, or gender.
               </Typography>
             </Box>
 
@@ -137,8 +141,8 @@ function ProfileSearch() {
           <Stack spacing={2} sx={{ mb: 3 }}>
             <TextField
               fullWidth
-              label="Search by name"
-              placeholder="Type a first or last name"
+              label="Search by name or email"
+              placeholder="Name or email address"
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               inputProps={{ "data-testid": "user-search-input" }}

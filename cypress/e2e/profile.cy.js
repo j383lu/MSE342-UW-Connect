@@ -87,6 +87,7 @@ describe('Profile and EditProfile flows', () => {
         {
           user_id: 1,
           display_name: 'Alice',
+          email: 'alice@uwaterloo.ca',
           bio: 'Sample bio',
           role: 'Student',
           program_name: 'Management Engineering',
@@ -95,6 +96,7 @@ describe('Profile and EditProfile flows', () => {
         {
           user_id: 2,
           display_name: 'Jordan Lee',
+          email: 'jordan.lee@uwaterloo.ca',
           bio: 'Registrar staff member',
           role: 'Staff',
           program_name: '',
@@ -103,6 +105,7 @@ describe('Profile and EditProfile flows', () => {
         {
           user_id: 3,
           display_name: 'Sarah Patel',
+          email: 'sarah.patel@uwaterloo.ca',
           bio: 'Interested in UX',
           role: 'Student',
           program_name: 'Management Engineering',
@@ -111,9 +114,12 @@ describe('Profile and EditProfile flows', () => {
       ];
 
       const filteredUsers = query
-        ? allUsers.filter((user) =>
-            user.display_name.toLowerCase().includes(query)
-          )
+        ? allUsers.filter((user) => {
+            const q = query;
+            const name = user.display_name.toLowerCase();
+            const email = (user.email || '').toLowerCase();
+            return name.includes(q) || email.includes(q);
+          })
         : allUsers;
 
       req.reply({
@@ -277,6 +283,21 @@ describe('Profile and EditProfile flows', () => {
     cy.wait('@searchUsers');
     cy.contains('Alice');
     cy.contains('Jordan Lee').should('not.exist');
+    cy.contains('Sarah Patel').should('not.exist');
+  });
+
+  it('filters the profile search list by email', () => {
+    goToProfile();
+
+    cy.contains('Profile Search').click();
+    cy.url().should('include', '/profile-search');
+    cy.wait('@searchUsers');
+
+    cy.get('[data-testid="user-search-input"]').type('jordan.lee@uwaterloo.ca');
+
+    cy.wait('@searchUsers');
+    cy.contains('Jordan Lee');
+    cy.contains('Alice').should('not.exist');
     cy.contains('Sarah Patel').should('not.exist');
   });
 
