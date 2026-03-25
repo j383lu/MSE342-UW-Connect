@@ -1628,6 +1628,8 @@ app.post("/api/events/:id/join", checkAuth, (req, res) => {
                   return res.status(500).json({ error: "Failed to join event." });
                 }
 
+                notifyEventOwnerAboutAttendance(eventId, currentUserId, "JOIN");
+
                 db.query(countSql, [eventId], (reloadErr, newCountRows) => {
                   if (reloadErr) {
                     return res.status(500).json({
@@ -1692,58 +1694,66 @@ app.delete("/api/events/:id/leave", checkAuth, (req, res) => {
     return res.status(400).json({ error: "Missing authenticated user email." });
   }
 
-  const eventSql = `
-    SELECT title
-    FROM Events
-    WHERE id = ?
-    LIMIT 1
-  `;
-
-  db.query(eventSql, [eventId], (eventErr, eventRows) => {
-    if (eventErr) {
-      console.log("Leave event title lookup error:", eventErr);
-      return res.status(500).json({ error: "Failed to load event." });
+  getCurrentUserIdByEmail(attendeeEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      return res.status(500).json({ error: "Failed to identify current user." });
     }
 
-    if (eventRows.length === 0) {
-      return res.status(404).json({ error: "Event not found." });
-    }
-
-    const eventTitle = eventRows[0].title;
-
-    const deleteSql = `
-      DELETE FROM Event_Attendees
-      WHERE event_id = ? AND LOWER(attendee_name) = ?
+    const eventSql = `
+      SELECT title
+      FROM Events
+      WHERE id = ?
+      LIMIT 1
     `;
 
-    db.query(deleteSql, [eventId, attendeeEmail], (err, result) => {
-      if (err) {
-        console.log("leave event error:", err);
-        return res.status(500).json({ error: "Failed to leave event." });
+    db.query(eventSql, [eventId], (eventErr, eventRows) => {
+      if (eventErr) {
+        console.log("Leave event title lookup error:", eventErr);
+        return res.status(500).json({ error: "Failed to load event." });
       }
 
-      if (result.affectedRows === 0) {
-        return res.status(400).json({ error: "You have not joined this event yet." });
+      if (eventRows.length === 0) {
+        return res.status(404).json({ error: "Event not found." });
       }
 
-      const countSql = `
-        SELECT COUNT(*) AS current_count
-        FROM Event_Attendees
-        WHERE event_id = ?
+      const eventTitle = eventRows[0].title;
+
+      const deleteSql = `
+        DELETE FROM Event_Attendees
+        WHERE event_id = ? AND LOWER(attendee_name) = ?
       `;
 
-      db.query(countSql, [eventId], (countErr, countRows) => {
-        if (countErr) {
-          console.log("Leave event reload count error:", countErr);
-          return res.status(500).json({
-            error: "Left event, but failed to reload attendee count.",
-          });
+      db.query(deleteSql, [eventId, attendeeEmail], (err, result) => {
+        if (err) {
+          console.log("leave event error:", err);
+          return res.status(500).json({ error: "Failed to leave event." });
         }
 
-        return res.json({
-          current_count: Number(countRows[0].current_count || 0),
-          has_joined: 0,
-          message: `You have successfully left the "${eventTitle}" event.`,
+        if (result.affectedRows === 0) {
+          return res.status(400).json({ error: "You have not joined this event yet." });
+        }
+
+        notifyEventOwnerAboutAttendance(eventId, currentUserId, "LEAVE");
+
+        const countSql = `
+          SELECT COUNT(*) AS current_count
+          FROM Event_Attendees
+          WHERE event_id = ?
+        `;
+
+        db.query(countSql, [eventId], (countErr, countRows) => {
+          if (countErr) {
+            console.log("Leave event reload count error:", countErr);
+            return res.status(500).json({
+              error: "Left event, but failed to reload attendee count.",
+            });
+          }
+
+          return res.json({
+            current_count: Number(countRows[0].current_count || 0),
+            has_joined: 0,
+            message: `You have successfully left the "${eventTitle}" event.`,
+          });
         });
       });
     });
@@ -5000,5 +5010,96 @@ app.delete("/api/events/:id", checkAuth, (req, res) => {
     });
   });
 });
+
+
+const getUserDisplayNameById = (userId, callback) => {
+  const sql = `
+    SELECT COALESCE(up.display_name, uc.email) AS display_name
+    FROM User_Credentials uc
+    LEFT JOIN User_Profiles up ON up.user_id = uc.user_id
+    WHERE uc.user_id = ?
+    LIMIT 1
+  `;
+
+  db.query(sql, [userId], (err, rows) => {
+    if (err) {
+      return callback(err, null);
+    }
+
+    if (!rows || rows.length === 0) {
+      return callback(new Error("User display name not found."), null);
+    }
+
+    return callback(null, rows[0].display_name);
+  });
+};
+
+const getEventOwnerInfo = (eventId, callback) => {
+  const sql = `
+    SELECT
+      e.id,
+      e.title,
+      e.created_by,
+      COALESCE(up.display_name, uc.email) AS owner_name
+    FROM Events e
+    LEFT JOIN User_Credentials uc ON uc.user_id = e.created_by
+    LEFT JOIN User_Profiles up ON up.user_id = e.created_by
+    WHERE e.id = ?
+    LIMIT 1
+  `;
+
+  db.query(sql, [eventId], (err, rows) => {
+    if (err) {
+      return callback(err, null);
+    }
+
+    if (!rows || rows.length === 0) {
+      return callback(new Error("Event not found."), null);
+    }
+
+    return callback(null, rows[0]);
+  });
+};
+
+const notifyEventOwnerAboutAttendance = (eventId, actorUserId, actionType, callback = () => {}) => {
+  getEventOwnerInfo(eventId, (eventErr, eventInfo) => {
+    if (eventErr) {
+      console.error("Failed to load event owner info:", eventErr);
+      return callback(eventErr);
+    }
+
+    if (Number(eventInfo.created_by) === Number(actorUserId)) {
+      return callback(null);
+    }
+
+    getUserDisplayNameById(actorUserId, (actorErr, actorName) => {
+      if (actorErr) {
+        console.error("Failed to load actor display name:", actorErr);
+        return callback(actorErr);
+      }
+
+      let message = "";
+
+      if (actionType === "JOIN") {
+        message = `${actorName} joined your event '${eventInfo.title}'`;
+      } else if (actionType === "LEAVE") {
+        message = `${actorName} left your event '${eventInfo.title}'`;
+      } else {
+        return callback(null);
+      }
+
+      createNotification(
+        eventInfo.created_by,
+        actorUserId,
+        eventId,
+        "EVENT",
+        actionType,
+        message
+      );
+
+      return callback(null);
+    });
+  });
+};
 
 app.listen(port, () => console.log(`Listening on port ${port}`)); 
