@@ -242,6 +242,73 @@ const notifyGroupMembersAboutNewGroupEvent = (
   });
 };
 
+const getEventAttendeeUsers = (eventId, callback) => {
+  const sql = `
+    SELECT DISTINCT
+      uc.user_id,
+      COALESCE(up.display_name, uc.email) AS display_name
+    FROM Event_Attendees ea
+    INNER JOIN User_Credentials uc
+      ON LOWER(uc.email) = LOWER(ea.attendee_name)
+    LEFT JOIN User_Profiles up
+      ON up.user_id = uc.user_id
+    WHERE ea.event_id = ?
+    ORDER BY uc.user_id ASC
+  `;
+
+  db.query(sql, [eventId], (err, rows) => {
+    if (err) {
+      return callback(err, []);
+    }
+
+    return callback(null, rows || []);
+  });
+};
+
+const notifyEventAttendeesAboutDelete = (
+  eventId,
+  actorUserId,
+  eventTitle,
+  attendeeRows,
+  callback = () => {}
+) => {
+  getUserDisplayNameById(actorUserId, (actorErr, actorName) => {
+    if (actorErr) {
+      console.error("Failed to load actor display name:", actorErr);
+      return callback(actorErr);
+    }
+
+    const sentUserIds = new Set();
+
+    attendeeRows.forEach((row) => {
+      const recipientId = Number(row.user_id);
+
+      if (recipientId === Number(actorUserId)) {
+        return;
+      }
+
+      if (sentUserIds.has(recipientId)) {
+        return;
+      }
+
+      sentUserIds.add(recipientId);
+
+      const message = `${actorName} deleted the event '${eventTitle}'`;
+
+      createNotification(
+        recipientId,
+        actorUserId,
+        eventId,
+        "EVENT",
+        "DELETE",
+        message
+      );
+    });
+
+    return callback(null);
+  });
+};
+
 // Create database connection using your config (ONLY ONE DECLARATION)
 const db = mysql.createConnection({
   host: config.host,
@@ -5087,6 +5154,7 @@ app.delete("/api/events/:id", checkAuth, (req, res) => {
 
   getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
     if (userErr) {
+      console.log("DELETE /api/events/:id user lookup error:", userErr);
       return res.status(500).json({ error: "Failed to identify current user." });
     }
 
@@ -5099,7 +5167,7 @@ app.delete("/api/events/:id", checkAuth, (req, res) => {
 
     db.query(eventSql, [eventId], (eventErr, eventRows) => {
       if (eventErr) {
-        console.log("DELETE /api/events/:id lookup error:", eventErr);
+        console.log("DELETE /api/events/:id event lookup error:", eventErr);
         return res.status(500).json({ error: "Failed to load event." });
       }
 
@@ -5110,99 +5178,71 @@ app.delete("/api/events/:id", checkAuth, (req, res) => {
       const event = eventRows[0];
 
       if (Number(event.created_by) !== Number(currentUserId)) {
-        return res.status(403).json({
-          error: "Only the user who created this event can delete it.",
-        });
+        return res.status(403).json({ error: "Only the event owner can delete this event." });
       }
 
-      db.beginTransaction((txErr) => {
-        if (txErr) {
-          return res.status(500).json({ error: "Failed to start delete transaction." });
+      getEventAttendeeUsers(eventId, (attendeeErr, attendeeRows) => {
+        if (attendeeErr) {
+          console.log("DELETE /api/events/:id attendee lookup error:", attendeeErr);
+          return res.status(500).json({ error: "Failed to load event attendees." });
         }
 
-        const rollbackWithError = (message, errObj = null) => {
-          return db.rollback(() => {
-            if (errObj) {
-              console.log(message, errObj);
-            }
-            return res.status(500).json({ error: message });
-          });
-        };
+        const delLikes = "DELETE FROM Event_Likes WHERE event_id = ?";
+        const delTags = "DELETE FROM Event_Tags WHERE event_id = ?";
+        const delAttendees = "DELETE FROM Event_Attendees WHERE event_id = ?";
+        const delEventGroups = "DELETE FROM Event_Groups WHERE event_id = ?";
+        const delSearchHistory = "DELETE FROM Event_Search_History WHERE event_id = ?";
+        const delEvent = "DELETE FROM Events WHERE id = ?";
 
-        db.query(
-          `DELETE FROM Event_Attendees WHERE event_id = ?`,
-          [eventId],
-          (attendeeErr) => {
-            if (attendeeErr) {
-              return rollbackWithError("Failed to delete event attendees.", attendeeErr);
+        db.query(delLikes, [eventId], (likesErr) => {
+          if (likesErr) {
+            console.log("DELETE /api/events/:id likes delete error:", likesErr);
+            return res.status(500).json({ error: "Failed to delete event." });
+          }
+
+          db.query(delTags, [eventId], (tagsErr) => {
+            if (tagsErr) {
+              console.log("DELETE /api/events/:id tags delete error:", tagsErr);
+              return res.status(500).json({ error: "Failed to delete event." });
             }
 
-            db.query(
-              `DELETE FROM Event_Tags WHERE event_id = ?`,
-              [eventId],
-              (tagErr) => {
-                if (tagErr) {
-                  return rollbackWithError("Failed to delete event tags.", tagErr);
+            db.query(delAttendees, [eventId], (attendeesErr) => {
+              if (attendeesErr) {
+                console.log("DELETE /api/events/:id attendees delete error:", attendeesErr);
+                return res.status(500).json({ error: "Failed to delete event." });
+              }
+
+              db.query(delEventGroups, [eventId], (groupsErr) => {
+                if (groupsErr) {
+                  console.log("DELETE /api/events/:id event groups delete error:", groupsErr);
+                  return res.status(500).json({ error: "Failed to delete event." });
                 }
 
-                db.query(
-                  `DELETE FROM Event_Likes WHERE event_id = ?`,
-                  [eventId],
-                  (likeErr) => {
-                    if (likeErr) {
-                      return rollbackWithError("Failed to delete event likes.", likeErr);
+                db.query(delSearchHistory, [eventId], () => {
+                  db.query(delEvent, [eventId], (delErr) => {
+                    if (delErr) {
+                      console.log("DELETE /api/events/:id event delete error:", delErr);
+                      return res.status(500).json({ error: "Failed to delete event." });
                     }
 
-                    db.query(
-                      `DELETE FROM Event_Groups WHERE event_id = ?`,
-                      [eventId],
-                      (groupErr) => {
-                        if (groupErr) {
-                          return rollbackWithError(
-                            "Failed to delete event groups.",
-                            groupErr
-                          );
-                        }
-
-                        db.query(
-                          `DELETE FROM Events WHERE id = ?`,
-                          [eventId],
-                          (deleteEventErr) => {
-                            if (deleteEventErr) {
-                              return rollbackWithError(
-                                "Failed to delete event.",
-                                deleteEventErr
-                              );
-                            }
-
-                            db.commit((commitErr) => {
-                              if (commitErr) {
-                                return rollbackWithError(
-                                  "Failed to finish deleting the event.",
-                                  commitErr
-                                );
-                              }
-
-                              return res.json({
-                                message: `The event "${event.title}" was deleted successfully.`,
-                              });
-                            });
-                          }
-                        );
-                      }
+                    notifyEventAttendeesAboutDelete(
+                      eventId,
+                      currentUserId,
+                      event.title,
+                      attendeeRows
                     );
-                  }
-                );
-              }
-            );
-          }
-        );
+
+                    return res.json({ message: "Event deleted successfully." });
+                  });
+                });
+              });
+            });
+          });
+        });
       });
     });
   });
 });
-
-
 
 
 app.listen(port, () => console.log(`Listening on port ${port}`)); 
