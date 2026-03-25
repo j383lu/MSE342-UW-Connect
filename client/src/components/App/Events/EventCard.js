@@ -94,6 +94,14 @@ export default function EventCard({
       .filter(Boolean);
   }, [ev.tags]);
 
+  const visibleEventTags = useMemo(
+    () =>
+      eventTags.filter(
+        (tag) => !String(tag).toLowerCase().startsWith("__cal")
+      ),
+    [eventTags]
+  );
+
   const eventTypeText =
     String(ev.event_type || "public").toLowerCase() === "group"
       ? "Group"
@@ -686,9 +694,9 @@ export default function EventCard({
             </div>
           ) : null}
 
-          {eventTags.length > 0 ? (
+          {visibleEventTags.length > 0 ? (
             <div style={styles.tagsWrap}>
-              {eventTags.map((tag, index) => (
+              {visibleEventTags.map((tag, index) => (
                 <div key={index} style={styles.tagChip}>
                   <span style={styles.tagChipText}>{tag}</span>
                 </div>
