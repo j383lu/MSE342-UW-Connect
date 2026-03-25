@@ -105,6 +105,7 @@ export default function CalendarPage() {
     end_time: "10:00",
     scope: "personal",
     visibility: "public",
+    max_attendees: "",
     calendar_color: "blue",
     participant_user_ids: [],
   });
@@ -250,6 +251,10 @@ export default function CalendarPage() {
   };
 
   const syncEditFormFromEvent = (ev, participantIds = []) => {
+    const cap =
+      ev.capacity !== undefined && ev.capacity !== null && ev.capacity !== ""
+        ? Number(ev.capacity)
+        : 999;
     setEditEventForm({
       title: ev.title || "",
       description: ev.description || "",
@@ -260,6 +265,7 @@ export default function CalendarPage() {
       end_time: String(ev.end_time || "10:00").slice(0, 5),
       scope: extractCalendarScope(ev.tags) || "personal",
       visibility: extractCalendarVisibility(ev.tags) || "public",
+      max_attendees: Number.isFinite(cap) ? String(cap) : "999",
       calendar_color: extractCalendarColor(ev.tags) || "blue",
       participant_user_ids: participantIds,
     });
@@ -275,10 +281,21 @@ export default function CalendarPage() {
       setDetailsLoading(true);
       const res = await apiRequest(`/api/events/${ev.id}/attendees`);
       const data = await res.json().catch(() => []);
-      const participantIds =
-        res.ok && Array.isArray(data)
-          ? data.map((a) => Number(a.user_id)).filter((id) => Number.isInteger(id) && id > 0)
-          : [];
+      const participantIds = res.ok && Array.isArray(data)
+        ? data
+            .map((a) => {
+              const directId = Number(a.user_id);
+              if (Number.isInteger(directId) && directId > 0) return directId;
+              const attendeeEmail = String(a.attendee_email || "").trim().toLowerCase();
+              if (!attendeeEmail) return null;
+              const contact = contacts.find(
+                (c) => String(c.email || "").trim().toLowerCase() === attendeeEmail
+              );
+              const contactId = Number(contact?.user_id);
+              return Number.isInteger(contactId) && contactId > 0 ? contactId : null;
+            })
+            .filter((id) => Number.isInteger(id) && id > 0)
+        : [];
       syncEditFormFromEvent(ev, participantIds);
     } catch {
       syncEditFormFromEvent(ev, []);
@@ -358,25 +375,38 @@ export default function CalendarPage() {
       setDetailsError("End must be after start.");
       return;
     }
+    const isPublicGroup =
+      editEventForm.scope === "group" && (editEventForm.visibility || "public") === "public";
+    if (isPublicGroup) {
+      const n = parseInt(String(editEventForm.max_attendees).trim(), 10);
+      if (!Number.isFinite(n) || n < 1 || n > 99999) {
+        setDetailsError("Enter a maximum number of attendees (1–99999) for public group events.");
+        return;
+      }
+    }
 
     try {
       setDetailsSaving(true);
+      const body = {
+        title: editEventForm.title.trim(),
+        description: editEventForm.description.trim(),
+        category: editEventForm.category.trim(),
+        event_date: editEventForm.event_date,
+        event_time: editEventForm.event_time,
+        end_date: editEventForm.end_date,
+        end_time: editEventForm.end_time,
+        scope: editEventForm.scope,
+        visibility: editEventForm.scope === "group" ? editEventForm.visibility : "private",
+        calendar_color: editEventForm.calendar_color,
+        participant_user_ids:
+          editEventForm.scope === "group" ? editEventForm.participant_user_ids : [],
+      };
+      if (isPublicGroup) {
+        body.max_attendees = parseInt(String(editEventForm.max_attendees).trim(), 10);
+      }
       const res = await apiRequest(`/api/calendar/events/${selectedEvent.id}`, {
         method: "PUT",
-        body: JSON.stringify({
-          title: editEventForm.title.trim(),
-          description: editEventForm.description.trim(),
-          category: editEventForm.category.trim(),
-          event_date: editEventForm.event_date,
-          event_time: editEventForm.event_time,
-          end_date: editEventForm.end_date,
-          end_time: editEventForm.end_time,
-          scope: editEventForm.scope,
-          visibility: editEventForm.scope === "group" ? editEventForm.visibility : "private",
-          calendar_color: editEventForm.calendar_color,
-          participant_user_ids:
-            editEventForm.scope === "group" ? editEventForm.participant_user_ids : [],
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -1143,6 +1173,22 @@ export default function CalendarPage() {
                     <ToggleButton value="public">Public</ToggleButton>
                     <ToggleButton value="private">Private</ToggleButton>
                   </ToggleButtonGroup>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                    Public appears for everyone; private appears only for selected attendees.
+                  </Typography>
+                  {(editEventForm.visibility || "public") === "public" ? (
+                    <TextField
+                      label="Maximum attendees"
+                      type="number"
+                      fullWidth
+                      margin="dense"
+                      value={editEventForm.max_attendees}
+                      onChange={(e) => setEditEventForm((p) => ({ ...p, max_attendees: e.target.value }))}
+                      inputProps={{ min: 1, max: 99999 }}
+                      helperText="You can keep this as-is or change how many people may join."
+                      sx={{ mt: 1 }}
+                    />
+                  ) : null}
                   <Typography variant="subtitle2" sx={{ mt: 0.5 }}>
                     Attendees
                   </Typography>
@@ -1192,6 +1238,15 @@ export default function CalendarPage() {
               <Typography variant="body2">
                 Type: {extractCalendarScope(selectedEvent.tags) === "group" ? "Group" : "Personal"}
               </Typography>
+              {extractCalendarScope(selectedEvent.tags) === "group" &&
+              extractCalendarVisibility(selectedEvent.tags) === "public" ? (
+                <Typography variant="body2">
+                  Maximum attendees:{" "}
+                  {selectedEvent.capacity !== undefined && selectedEvent.capacity !== null
+                    ? Number(selectedEvent.capacity)
+                    : "—"}
+                </Typography>
+              ) : null}
               <Typography variant="body2" color="text.secondary">
                 Owner: {Number(selectedEvent.created_by) === Number(myId) ? "You" : selectedEvent.creator_name || "Unknown"}
               </Typography>

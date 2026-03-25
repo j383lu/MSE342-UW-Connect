@@ -929,6 +929,7 @@ app.get("/api/calendar/events", checkAuth, (req, res) => {
         TIME_FORMAT(e.event_time, '%H:%i') AS event_time,
         DATE_FORMAT(e.end_date, '%Y-%m-%d') AS end_date,
         TIME_FORMAT(e.end_time, '%H:%i') AS end_time,
+        e.capacity,
         e.category,
         e.created_by,
         COALESCE(creator_up.display_name, creator_uc.email) AS creator_name,
@@ -972,6 +973,7 @@ app.get("/api/calendar/events", checkAuth, (req, res) => {
         e.event_time,
         e.end_date,
         e.end_time,
+        e.capacity,
         e.category,
         e.created_by,
         creator_uc.email,
@@ -1006,6 +1008,8 @@ app.post("/api/calendar/todos", checkAuth, (req, res) => {
     calendar_color,
     scope,
     visibility,
+    max_attendees,
+    capacity: capacityBody,
   } = req.body;
 
   if (!title || !String(title).trim()) {
@@ -1048,6 +1052,25 @@ app.post("/api/calendar/todos", checkAuth, (req, res) => {
   const rawVisibility = String(visibility || "public").trim().toLowerCase();
   const eventVisibility =
     eventScope === "group" ? (rawVisibility === "private" ? "private" : "public") : "private";
+
+  const capRaw = max_attendees !== undefined && max_attendees !== null ? max_attendees : capacityBody;
+  let cap = 999;
+  if (eventScope === "group" && eventVisibility === "public") {
+    const n = Number(capRaw);
+    if (
+      capRaw === "" ||
+      capRaw === undefined ||
+      capRaw === null ||
+      !Number.isInteger(n) ||
+      n < 1 ||
+      n > 99999
+    ) {
+      return res.status(400).json({
+        error: "Maximum attendees is required for public group events (whole number from 1 to 99999).",
+      });
+    }
+    cap = n;
+  }
 
   const participantIds =
     eventScope === "group" && Array.isArray(participant_user_ids)
@@ -1096,7 +1119,6 @@ app.post("/api/calendar/todos", checkAuth, (req, res) => {
     `;
 
     const desc = description != null ? String(description) : "";
-    const cap = 999;
     const startTimeDb = et;
     const endTimeDb = xt;
 
@@ -1210,6 +1232,8 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
     calendar_color,
     scope,
     visibility,
+    max_attendees,
+    capacity: capacityBodyPut,
   } = req.body;
 
   if (!title || !String(title).trim()) {
@@ -1242,6 +1266,26 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
   const rawVisibility = String(visibility || "public").trim().toLowerCase();
   const eventVisibility =
     eventScope === "group" ? (rawVisibility === "private" ? "private" : "public") : "private";
+
+  const capRawPut = max_attendees !== undefined && max_attendees !== null ? max_attendees : capacityBodyPut;
+  let updateCap = 999;
+  if (eventScope === "group" && eventVisibility === "public") {
+    const n = Number(capRawPut);
+    if (
+      capRawPut === "" ||
+      capRawPut === undefined ||
+      capRawPut === null ||
+      !Number.isInteger(n) ||
+      n < 1 ||
+      n > 99999
+    ) {
+      return res.status(400).json({
+        error: "Maximum attendees is required for public group events (whole number from 1 to 99999).",
+      });
+    }
+    updateCap = n;
+  }
+
   const participantIds =
     eventScope === "group" && Array.isArray(participant_user_ids)
       ? [
@@ -1299,7 +1343,8 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
           event_date = ?,
           event_time = ?,
           end_date = ?,
-          end_time = ?
+          end_time = ?,
+          capacity = ?
         WHERE id = ?
       `;
 
@@ -1313,6 +1358,7 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
           et,
           end_date,
           xt,
+          updateCap,
           eventId,
         ],
         (updErr) => {
@@ -1740,6 +1786,7 @@ app.get("/api/events/:id/attendees", checkAuth, (req, res) => {
           ea.id,
           ea.joined_at,
           ea.attendee_name AS attendee_email,
+          uc.user_id AS user_id,
           COALESCE(up.display_name, SUBSTRING_INDEX(ea.attendee_name, '@', 1)) AS attendee_name
         FROM Event_Attendees ea
         LEFT JOIN User_Credentials uc
@@ -1759,6 +1806,8 @@ app.get("/api/events/:id/attendees", checkAuth, (req, res) => {
         return res.json(
           rows.map((row) => ({
             attendee_name: row.attendee_name,
+            attendee_email: row.attendee_email,
+            user_id: row.user_id ? Number(row.user_id) : null,
           }))
         );
       });
@@ -1771,6 +1820,7 @@ app.get("/api/events/:id/attendees", checkAuth, (req, res) => {
         ea.id,
         ea.joined_at,
         ea.attendee_name AS attendee_email,
+        uc.user_id AS user_id,
         COALESCE(up.display_name, SUBSTRING_INDEX(ea.attendee_name, '@', 1)) AS attendee_name
       FROM Event_Attendees ea
       INNER JOIN Events e
@@ -1807,6 +1857,8 @@ app.get("/api/events/:id/attendees", checkAuth, (req, res) => {
       return res.json(
         rows.map((row) => ({
           attendee_name: row.attendee_name,
+          attendee_email: row.attendee_email,
+          user_id: row.user_id ? Number(row.user_id) : null,
         }))
       );
     });
