@@ -633,8 +633,10 @@ app.post("/api/events", checkAuth, (req, res) => {
   }
 
   const capNum = Number(capacity);
-  if (!Number.isInteger(capNum) || capNum <= 0) {
-    return res.status(400).json({ error: "Capacity must be a positive integer." });
+  if (!Number.isInteger(capNum) || capNum < 2) {
+    return res.status(400).json({
+      error: "Max RSVP spots must be an integer greater than or equal to 2.",
+    });
   }
 
   const safeEventType =

@@ -39,24 +39,27 @@ export default function EventCard({
       ? "Group"
       : "Public";
 
-  const currentStatus =
+  const backendStatus =
     ev.event_status || (isPast ? "ended" : "open_for_application");
 
-  const statusText =
-    currentStatus === "in_progress"
-      ? "In Progress"
-      : currentStatus === "ended"
-      ? "Event has Ended"
-      : "Open For Application";
+  let statusText = "";
+  let statusStyle = {};
 
-  const statusStyle =
-    currentStatus === "in_progress"
-      ? styles.statusInProgress
-      : currentStatus === "ended"
-      ? styles.statusEnded
-      : styles.statusOpenForApplication;
+  if (backendStatus === "ended") {
+    statusText = "Event has Ended";
+    statusStyle = styles.statusEnded;
+  } else if (isFull) {
+    statusText = "Full";
+    statusStyle = styles.statusFull;
+  } else if (backendStatus === "in_progress") {
+    statusText = "In Progress";
+    statusStyle = styles.statusInProgress;
+  } else {
+    statusText = "Open For Application";
+    statusStyle = styles.statusOpenForApplication;
+  }
 
-  const disableJoin = currentStatus === "ended" || isFull;
+  const disableJoin = backendStatus === "ended" || isFull;
 
   // This handler function allows the user to like or unlike an event and update the result
   const handleLikeToggle = async (e) => {
@@ -157,7 +160,7 @@ export default function EventCard({
                 }}
               >
                 <span style={styles.metaLabel}>End Date</span>
-                <span style={styles.metaValue}>{ev.end_date}</span>
+                <span style={styles.metaValue}>{ev.end_date || "N/A"}</span>
               </div>
 
               <div
@@ -168,7 +171,7 @@ export default function EventCard({
                 }}
               >
                 <span style={styles.metaLabel}>End Time</span>
-                <span style={styles.metaValue}>{ev.end_time}</span>
+                <span style={styles.metaValue}>{ev.end_time || "N/A"}</span>
               </div>
             </div>
 
@@ -251,10 +254,10 @@ export default function EventCard({
             type="button"
             style={{
               ...styles.leaveBtn,
-              ...(currentStatus === "ended" ? styles.joinBtnDisabled : null),
+              ...(backendStatus === "ended" ? styles.joinBtnDisabled : null),
             }}
             onClick={() => handleLeave(ev)}
-            disabled={currentStatus === "ended"}
+            disabled={backendStatus === "ended"}
           >
             Leave Event
           </button>

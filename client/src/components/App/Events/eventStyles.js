@@ -533,9 +533,9 @@ const eventStyles = {
   },
 
   statusFull: {
-    background: "rgba(244,238,229,0.96)",
-    color: "#7A4E1D",
-    borderColor: "#E0D2BE",
+    background: "#f3e7d6",
+    color: "#9a6a1b",
+    border: "1px solid #e2c99c",
   },
 
   statusEnded: {
@@ -913,6 +913,7 @@ const eventStyles = {
     color: "#2d5ea8",
     border: "1px solid #bfd2f2",
   },
+  
   
 };
 

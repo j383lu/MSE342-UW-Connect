@@ -247,10 +247,10 @@ export default function CreateEventForm() {
     }
 
     const capNum = Number(capacity);
-    if (!Number.isInteger(capNum) || capNum <= 0) {
-      setError("Capacity must be a positive integer.");
+    if (!Number.isInteger(capNum) || capNum < 2) {
+      setError("Max RSVP spots must be an integer greater than or equal to 2.");
       return;
-    }
+}
 
     if (eventType === "group" && selectedGroups.length === 0) {
       setError("Please select at least one group for a group event.");
@@ -575,6 +575,7 @@ export default function CreateEventForm() {
               <label style={styles.formLabel}>Max RSVP Spots</label>
               <input
                 type="number"
+                min="2"
                 value={capacity}
                 onChange={(e) => setCapacity(e.target.value)}
                 style={styles.formInput}
