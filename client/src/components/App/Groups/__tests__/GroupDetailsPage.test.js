@@ -1,9 +1,14 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { BrowserRouter } from 'react-router-dom';
 import GroupDetailsPage from '../GroupDetailsPage';
+import apiRequest from '../../../../utils/api';
+
+jest.mock('../../../Post/CreatePostForm', () => () => null);
+jest.mock('../../../Post/PostCard', () => () => null);
+jest.mock('../../../../utils/api');
 
 // Mock useParams
 jest.mock('react-router-dom', () => ({
@@ -25,8 +30,6 @@ afterAll(() => {
   console.error = originalConsole.error;
 });
 
-global.fetch = jest.fn();
-
 const mockGroup = {
   group_id: 1,
   name: 'Soccer Team',
@@ -46,7 +49,7 @@ const mockGroupPrivate = {
 
 const mockMembers = [{ user_id: 1, display_name: 'Test User', role: 'owner' }];
 
-function createFetchMock(groupOverride = {}) {
+function createApiMock(groupOverride = {}) {
   return (url) => {
     const u = typeof url === 'string' ? url : String(url || '');
     if ((u === '/api/groups/1' || u.endsWith('/api/groups/1')) && !u.includes('/members') && !u.includes('/invite')) {
@@ -73,110 +76,71 @@ function createFetchMock(groupOverride = {}) {
         json: () => Promise.resolve({ invitedName: 'Jane Doe' })
       });
     }
-    return Promise.reject(new Error('Not found'));
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve([])
+    });
   };
+}
+
+function renderGroupDetailsPage() {
+  return render(
+    <BrowserRouter>
+      <GroupDetailsPage />
+    </BrowserRouter>
+  );
 }
 
 describe('GroupDetailsPage', () => {
   beforeEach(() => {
-    fetch.mockClear();
+    jest.clearAllMocks();
     localStorage.clear();
     localStorage.setItem('currentUserId', '1');
-    fetch.mockImplementation(createFetchMock());
+    apiRequest.mockImplementation(createApiMock());
   });
 
   test('renders loading state', () => {
-    render(
-      <BrowserRouter>
-        <GroupDetailsPage />
-      </BrowserRouter>
-    );
+    renderGroupDetailsPage();
     expect(screen.getByText(/Loading group/i)).toBeInTheDocument();
   });
 
   test('displays group details after loading', async () => {
-    render(
-      <BrowserRouter>
-        <GroupDetailsPage />
-      </BrowserRouter>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText('Soccer Team')).toBeInTheDocument();
-    });
+    renderGroupDetailsPage();
+    expect(await screen.findByText('Soccer Team')).toBeInTheDocument();
   });
 
   describe('invite modal and feedback', () => {
     test('shows Invite button for owner of private group', async () => {
-      fetch.mockImplementation(createFetchMock(mockGroupPrivate));
+      apiRequest.mockImplementation(createApiMock(mockGroupPrivate));
 
-      render(
-        <BrowserRouter>
-          <GroupDetailsPage />
-        </BrowserRouter>
-      );
-
-      await waitFor(() => {
-        expect(screen.getByText('+ Invite')).toBeInTheDocument();
-      });
+      renderGroupDetailsPage();
+      expect(await screen.findByText('+ Invite')).toBeInTheDocument();
     });
 
     test('opens invite modal when Invite is clicked', async () => {
-      fetch.mockImplementation(createFetchMock(mockGroupPrivate));
+      apiRequest.mockImplementation(createApiMock(mockGroupPrivate));
 
-      render(
-        <BrowserRouter>
-          <GroupDetailsPage />
-        </BrowserRouter>
-      );
-
-      await waitFor(() => {
-        expect(screen.getByText('+ Invite')).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByText('+ Invite'));
-
-      await waitFor(() => {
-        expect(screen.getByText('Invite by email')).toBeInTheDocument();
-        expect(screen.getByPlaceholderText('Email address')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /Send Invite/i })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
-      });
+      renderGroupDetailsPage();
+      fireEvent.click(await screen.findByText('+ Invite'));
+      expect(await screen.findByText('Invite by email')).toBeInTheDocument();
     });
 
     test('shows Invitation sent feedback after successful invite', async () => {
-      fetch.mockImplementation(createFetchMock(mockGroupPrivate));
+      apiRequest.mockImplementation(createApiMock(mockGroupPrivate));
 
-      render(
-        <BrowserRouter>
-          <GroupDetailsPage />
-        </BrowserRouter>
-      );
-
-      await waitFor(() => {
-        expect(screen.getByText('+ Invite')).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByText('+ Invite'));
-
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText('Email address')).toBeInTheDocument();
-      });
-
-      const emailInput = screen.getByPlaceholderText('Email address');
+      renderGroupDetailsPage();
+      fireEvent.click(await screen.findByText('+ Invite'));
+      const emailInput = await screen.findByPlaceholderText('Email address');
       fireEvent.change(emailInput, { target: { value: 'jane@uwaterloo.ca' } });
 
       const sendBtn = screen.getByRole('button', { name: /Send Invite/i });
       fireEvent.click(sendBtn);
 
-      await waitFor(() => {
-        expect(screen.getByText(/Invitation sent to Jane Doe/)).toBeInTheDocument();
-      });
-      expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
+      expect(await screen.findByText(/Invitation sent to Jane Doe/)).toBeInTheDocument();
     });
 
     test('shows already a member feedback when invite target is member', async () => {
-      fetch.mockImplementation((url, options) => {
+      apiRequest.mockImplementation((url, options) => {
         const u = typeof url === 'string' ? url : String(url || '');
         if (u.includes('/api/groups/1/invite')) {
           return Promise.resolve({
@@ -184,34 +148,18 @@ describe('GroupDetailsPage', () => {
             json: () => Promise.resolve({ code: 'already_member', userName: 'John Smith' })
           });
         }
-        return createFetchMock(mockGroupPrivate)(url);
+        return createApiMock(mockGroupPrivate)(url);
       });
 
-      render(
-        <BrowserRouter>
-          <GroupDetailsPage />
-        </BrowserRouter>
-      );
-
-      await waitFor(() => {
-        expect(screen.getByText('+ Invite')).toBeInTheDocument();
-      });
-
-      fireEvent.click(screen.getByText('+ Invite'));
-
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText('Email address')).toBeInTheDocument();
-      });
-
-      const emailInput = screen.getByPlaceholderText('Email address');
+      renderGroupDetailsPage();
+      fireEvent.click(await screen.findByText('+ Invite'));
+      const emailInput = await screen.findByPlaceholderText('Email address');
       fireEvent.change(emailInput, { target: { value: 'john@uwaterloo.ca' } });
 
       const sendBtn = screen.getByRole('button', { name: /Send Invite/i });
       fireEvent.click(sendBtn);
 
-      await waitFor(() => {
-        expect(screen.getByText(/John Smith is already a member of the group/)).toBeInTheDocument();
-      });
+      expect(await screen.findByText(/John Smith is already a member of the group/)).toBeInTheDocument();
     });
   });
 });

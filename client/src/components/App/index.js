@@ -21,12 +21,15 @@ import EditGroupForm from "./Groups/EditGroupForm";
 import EventsPage from "./Events/EventsPage";
 import CreateEventForm from "./Events/CreateEventForm";
 
+import CalendarPage from "./Calendar/CalendarPage";
+
 // Import profile components
 import ProfilePage from "./Profile/Profile";
 import EditProfile from "./Profile/EditProfile";
 import ViewProfile from "./Profile/ViewProfile";
 import ProgramStudents from "./Profile/ProgramStudents";
 import ProfileSearch from "./Profile/ProfileSearch";
+import UserProfileView from "./Profile/UserProfileView";
 
 // Import notifications
 import Notifications from "./Notifications/Notifications";
@@ -62,12 +65,17 @@ function AppContent() {
           path="/profile-search"
           element={authenticated ? <ProfileSearch /> : <Navigate to="/" />}
         />
+        <Route
+          path="/users/:userId"
+          element={authenticated ? <UserProfileView /> : <Navigate to="/" />}
+        />
         <Route path="/groups" element={authenticated ? <GroupsPage /> : <Navigate to="/" />} />
         <Route path="/groups/new" element={authenticated ? <CreateGroupForm /> : <Navigate to="/" />} />
         <Route path="/groups/:groupId" element={authenticated ? <GroupDetailsPage /> : <Navigate to="/" />} />
         <Route path="/groups/:groupId/edit" element={authenticated ? <EditGroupForm /> : <Navigate to="/" />} />
         <Route path="/events" element={authenticated ? <EventsPage /> : <Navigate to="/" />} />
         <Route path="/events/new" element={authenticated ? <CreateEventForm /> : <Navigate to="/" />} />
+        <Route path="/calendar" element={authenticated ? <CalendarPage /> : <Navigate to="/" />} />
         <Route path="/notifications" element={authenticated ? <Notifications /> :<Navigate to="/"/>}/>
       </Routes>
     </ThemeProvider>

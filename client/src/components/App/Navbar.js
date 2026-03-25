@@ -45,6 +45,7 @@ function Navbar({ firebase }) {
     { label: "Groups", path: "/groups" },
     { label: "Events", path: "/events" },
     { label: "Profile", path: "/profile" },
+    { label: "Calendar", path: "/calendar" },
   ];
 
   return (

@@ -19,7 +19,8 @@
     "react-scripts": "^5.0.1",
     "styled-components": "^5.3.10",
     "typeface-roboto": "^1.1.13",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "firebase": "^12.10.0"
   },
   "scripts": {
     "start": "react-scripts start",

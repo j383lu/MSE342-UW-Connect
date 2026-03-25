@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
     Grid, Typography, Card, CardContent, CardHeader,
-    Stack, Chip, Button, TextField, Divider, IconButton, Box
+    Stack, Chip, Button, TextField, Divider, IconButton, Box, Avatar
 } from "@mui/material";
 import FavoriteIcon from "@mui/icons-material/Favorite";
 import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder";
@@ -93,9 +93,17 @@ function PostDetailPage() {
             <Grid item xs={12}>
                 <Card>
                     <CardHeader
+                        avatar={
+                            <Avatar
+                                src={post.author_avatar ? `/uploads/${post.author_avatar}` : undefined}
+                                sx={{ width: 36, height: 36, bgcolor: '#5D6C5C', fontSize: '0.9rem' }}
+                            >
+                                {!post.author_avatar && (post.author_name?.[0]?.toUpperCase() ?? '?')}
+                            </Avatar>
+                        }
                         title={post.title}
+                        subheader={`${post.author_name ?? 'Unknown'} · ${getRelativeTime(post.createdAt)}`} F
                         //edit
-                        subheader={`${post.author_name ?? 'Unknown'} · ${getRelativeTime(post.createdAt)}`}
                     />
                     <CardContent>
                         <Typography variant="body1" sx={{ mb: 2, whiteSpace: 'pre-wrap' }}>
