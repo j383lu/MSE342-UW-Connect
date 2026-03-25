@@ -10,6 +10,7 @@ import IconButton from '@mui/material/IconButton';
 import DeleteIcon from '@mui/icons-material/Delete';
 import apiRequest from '../../../utils/api';
 import s from './notificationStyles';
+import DoneAllIcon from 'mui/icons-material/DoneAll';
 
 const Notifications = () => {
   const { dbUser } = useUser();
@@ -92,32 +93,67 @@ const Notifications = () => {
       <div style={s.pageWrapper}>
         
         <div style={s.hero}>
+          <div style={s.heroGlowOne} />
+          <div style={s.heroGlowTwo} />
+          <div style={s.heroOverlay} />
+          
           <div style={s.heroContent}>
             <div style={s.heroTextBlock}>
+              <div style={s.heroEyebrow}>UW Connect</div>
               <h1 style={s.heroTitle}>Notifications</h1>
               <p style={s.heroSubtitle}>Stay updated on your group activities</p>
             </div>
             {notifications.some(n => !n.is_read) && (
-              <button style={s.heroPrimaryBtn} onClick={markAllRead}>
+              <button 
+                style={s.heroActionBtn} 
+                onClick={markAllRead}
+                onMouseEnter={(e) => {
+                  e.target.style.background = "rgba(255, 255, 255, 0.2)";
+                  e.target.style.transform = "translateY(-1px)";
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background = "rgba(255, 255, 255, 0.12)";
+                  e.target.style.transform = "translateY(0)";
+                }}
+              >
+                <DoneAllIcon sx={{ fontSize: 18 }} />
                 Mark All as Read
               </button>
             )}
           </div>
         </div>
 
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-          <Tabs 
-            value={tabValue} 
-            onChange={handleTabChange} 
-            textColor="inherit"
-            TabIndicatorProps={{ style: { background: '#5D6C5C' } }} // Matches your icon color
-            sx={{ '& .MuiTab-root': { fontWeight: 600, color: 'rgba(0,0,0,0.6)' } }}
+        <div style={s.toggleContainer}>
+          <button
+            style={{
+              ...s.toggleButton,
+              ...(tabValue === 0 ? s.toggleButtonActive : {})
+            }}
+            onClick={() => setTabValue(0)}
           >
-            <Tab label={`All (${notifications.length})`} />
-            <Tab label={`New (${notifications.filter(n => !n.is_read).length})`} />
-            <Tab label={`Read (${notifications.filter(n => n.is_read).length})`} />
-          </Tabs>
-        </Box>
+            All ({notifications.length})
+          </button>
+          
+          <button
+            style={{
+              ...s.toggleButton,
+              ...(tabValue === 1 ? s.toggleButtonActive : {})
+            }}
+            onClick={() => setTabValue(1)}
+          >
+            New ({notifications.filter(n => !n.is_read).length})
+          </button>
+          
+          <button
+            style={{
+              ...s.toggleButton,
+              ...(tabValue === 2 ? s.toggleButtonActive : {})
+            }}
+            onClick={() => setTabValue(2)}
+          >
+            Read ({notifications.filter(n => n.is_read).length})
+          </button>
+        </div>
 
         <div style={s.panel}>
           {filteredNotifications.length > 0 ? (

@@ -426,8 +426,8 @@ const eventStyles = {
 
   card: {
     border: "1px solid #e6e6e6",
-    borderRadius: 18,
-    padding: 22,
+    borderRadius: 3,
+    padding: '16px 20px',
     background: "#FDFDF6",
     transition: "all 0.25s ease",
   },
