@@ -85,6 +85,90 @@ router.get("/", (req, res) => {
 });
 
 // ------------------------------------
+// GET /api/profile/users/:userId - Fetch another user's profile (view-only)
+// ------------------------------------
+router.get("/users/:userId", (req, res) => {
+  const connection = mysql.createConnection(config);
+  const userId = Number(req.params.userId);
+
+  if (!userId || Number.isNaN(userId)) {
+    connection.end();
+    return res.status(400).json({ error: "Invalid user id" });
+  }
+
+  const profileSql = `
+    SELECT
+      up.profile_id,
+      up.user_id,
+      up.display_name,
+      up.bio,
+      up.avatar_url,
+      up.program_id,
+      up.department,
+      up.gender,
+      up.birthday,
+      up.phone_number,
+      p.program_name,
+      uc.role
+    FROM User_Profiles up
+    LEFT JOIN Programs p ON p.program_id = up.program_id
+    LEFT JOIN User_Credentials uc ON uc.user_id = up.user_id
+    WHERE up.user_id = ?
+    LIMIT 1;
+  `;
+
+  connection.query(profileSql, [userId], (error, results) => {
+    if (error) {
+      connection.end();
+      console.error("Database error:", error.message);
+      return res.status(500).json({ error: "Failed to fetch profile" });
+    }
+
+    if (!results || results.length === 0) {
+      connection.end();
+      return res.status(404).json({ error: "Profile not found" });
+    }
+
+    const row = results[0];
+
+    const coursesSql = `
+      SELECT c.course_id, c.course_code
+      FROM User_Profile_Courses upc
+      JOIN User_Profiles up ON up.profile_id = upc.profile_id
+      JOIN Courses c ON c.course_id = upc.course_id
+      WHERE up.user_id = ?
+      ORDER BY c.course_code ASC;
+    `;
+
+    connection.query(coursesSql, [userId], (coursesError, courseResults) => {
+      connection.end();
+
+      if (coursesError) {
+        console.error("Database error:", coursesError.message);
+        return res.status(500).json({ error: "Failed to fetch profile courses" });
+      }
+
+      return res.json({
+        name: row.display_name || "",
+        bio: row.bio || "",
+        role: row.role || "",
+        department: row.department || "",
+        gender: row.gender || "",
+        birthday: row.birthday || null,
+        phone_number: row.phone_number || "",
+        program_id: row.program_id ?? null,
+        program_name: row.program_name || "",
+        program: row.program_name || "",
+        courses: (courseResults || []).map((c) => ({
+          course_id: c.course_id,
+          course_code: c.course_code,
+        })),
+      });
+    });
+  });
+});
+
+// ------------------------------------
 // GET /api/profile/programs
 // ------------------------------------
 router.get("/programs", (req, res) => {

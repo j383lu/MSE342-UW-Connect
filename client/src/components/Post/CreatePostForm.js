@@ -2,12 +2,20 @@ import React, { useState, useEffect } from "react";
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, Grid, Autocomplete,
-  FormControl, InputLabel, Select, MenuItem
-} from "@mui/material";
+  FormControl, InputLabel, Select, MenuItem, Switch, FormControlLabel, Box
+}
+  from "@mui/material";
 import { useUser } from "../../contexts/UserContext"; // adjust path if needed
 import { withFirebase } from "../Firebase";           // adjust path if needed
 
-function CreatePostForm({ open, onClose, onSubmit, firebase }) {
+function CreatePostForm({
+  open,
+  onClose,
+  onSubmit,
+  firebase,
+  hideGroupSelect = false,
+  fixedGroupId = null
+}) {
   const predefined_Tags = [
     "FreeFood", "Events", "StudyGroups", "Housing",
     "Jobs", "Sports", "Clubs", "Intramurals", "Tutoring"
@@ -21,26 +29,29 @@ function CreatePostForm({ open, onClose, onSubmit, firebase }) {
   const [selectedGroup, setSelectedGroup] = useState("");
   const [userGroups, setUserGroups] = useState([]);
   const [error, setError] = useState({ title: "", description: "", tags: "" });
+  const [isAnonymous, setIsAnonymous] = useState(false);
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
 
   // Fetch the groups this user belongs to when the form opens
   useEffect(() => {
     if (!open || !dbUser?.userId) return;
 
     const fetchGroups = async () => {
-        try {
-            const token = await firebase.auth.currentUser?.getIdToken();
-            const response = await fetch(`/api/users/${dbUser.userId}/groups/member`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const data = await response.json();
-            setUserGroups(Array.isArray(data) ? data : []);
-        } catch (err) {
-            console.error("Error fetching groups:", err);
-        }
+      try {
+        const token = await firebase.auth.currentUser?.getIdToken();
+        const response = await fetch(`/api/users/${dbUser.userId}/groups/member`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await response.json();
+        setUserGroups(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error("Error fetching groups:", err);
+      }
     };
 
     fetchGroups();
-}, [open, dbUser, firebase.auth.currentUser]);
+  }, [open, dbUser, firebase.auth.currentUser]);
 
   const handleSubmit = () => {
     if (!title.trim()) {
@@ -69,7 +80,7 @@ function CreatePostForm({ open, onClose, onSubmit, firebase }) {
       title,
       description,
       tags: selectedTags,
-      group_id: selectedGroup || null  // null if no group selected
+      group_id: (fixedGroupId ?? selectedGroup) || null  // null if no group selected
     });
 
     // reset form
@@ -77,6 +88,8 @@ function CreatePostForm({ open, onClose, onSubmit, firebase }) {
     setDescription("");
     setTags([]);
     setSelectedGroup("");
+    setImageFile(null);
+    setImagePreview(null);
   };
 
   const handleTagChange = (event, newValue) => {
@@ -86,6 +99,14 @@ function CreatePostForm({ open, onClose, onSubmit, firebase }) {
     }
     setTags(newValue);
     setError(prev => ({ ...prev, tags: "" }));
+  };
+
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setImageFile(file);
+      setImagePreview(URL.createObjectURL(file));
+    }
   };
 
   return (
@@ -107,6 +128,18 @@ function CreatePostForm({ open, onClose, onSubmit, firebase }) {
           </Grid>
 
           <Grid item xs={12}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={isAnonymous}
+                  onChange={(e) => setIsAnonymous(e.target.checked)}
+                />
+              }
+              label="Post anonymously"
+            />
+          </Grid>
+
+          <Grid item xs={12}>
             <TextField
               fullWidth
               multiline
@@ -119,8 +152,8 @@ function CreatePostForm({ open, onClose, onSubmit, firebase }) {
             />
           </Grid>
 
-          {/* Group dropdown — only shows if user belongs to at least one group */}
-          {userGroups.length > 0 && (
+          {/* Group dropdown — hidden when creating from a group details page */}
+          {!hideGroupSelect && userGroups.length > 0 && (
             <Grid item xs={12}>
               <FormControl fullWidth>
                 <InputLabel> Group (optional)</InputLabel>
@@ -156,6 +189,23 @@ function CreatePostForm({ open, onClose, onSubmit, firebase }) {
                 />
               )}
             />
+          </Grid>
+
+          <Grid item xs={12}>
+            <Button variant="outlined" component="label" fullWidth>
+              Attach Image (optional)
+              <input type="file" accept="image/*" hidden onChange={handleImageChange} />
+            </Button>
+            {imagePreview && (
+              <Box sx={{ mt: 1 }}>
+                <img src={imagePreview} alt="preview"
+                  style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8 }} />
+                <Button size="small" color="error"
+                  onClick={() => { setImageFile(null); setImagePreview(null); }}>
+                  Remove
+                </Button>
+              </Box>
+            )}
           </Grid>
 
         </Grid>

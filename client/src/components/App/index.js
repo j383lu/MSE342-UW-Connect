@@ -9,7 +9,7 @@ import PostDetailPage from '../Post/PostDetailPage'
 import Firebase, { FirebaseContext } from '../Firebase';
 import { useState, useEffect, useContext } from 'react';
 import PrivateRoute from '../Navigation/PrivateRoute';
-import { UserProvider } from '../../contexts/UserContext';
+import { UserProvider, useUser } from '../../contexts/UserContext';
 
 // Import groups components
 import GroupsPage from "./Groups/GroupsPage";
@@ -24,27 +24,36 @@ import CreateEventForm from "./Events/CreateEventForm";
 // Import profile components
 import ProfilePage from "./Profile/Profile";
 import EditProfile from "./Profile/EditProfile";
+import ViewProfile from "./Profile/ViewProfile";
 import ProgramStudents from "./Profile/ProgramStudents";
 import ProfileSearch from "./Profile/ProfileSearch";
 
-function AppContent({ authUser }) {
+// Import notifications
+import Notifications from "./Notifications/Notifications";
+
+function AppContent() {
   const location = useLocation();
+  const { dbUser, loading } = useUser()
+
+  if (loading) {
+    return <div style={{ textAlign: 'center', marginTop: '50px' }}>Syncing with UW Connect...</div>;
+  }
 
   const isLoginPage = location.pathname === "/";
-  const authenticated = !!authUser;
+  const authenticated = !!dbUser;
 
   return (
     <ThemeProvider theme={theme}>
-      {!isLoginPage && authenticated && <Navbar authUser={authUser} />}
+      {!isLoginPage && authenticated && <Navbar authUser={dbUser} />}
       <Routes>
-        {/* login is the default page */}
-        <Route path="/" element={<LogInAndRegister />} />
+        <Route path="/" element={authenticated ? <Navigate to="/feed" /> : <LogInAndRegister />} />
 
         {/* authenticated routes */}
         <Route path="/feed" element={authenticated ? <Post /> : <Navigate to="/" />} />
         <Route path="/feed/:postId" element={authenticated ? <PostDetailPage /> : <Navigate to="/"/>} />
         <Route path="/profile" element={authenticated ? <ProfilePage /> : <Navigate to="/" />} />
         <Route path="/edit-profile" element={authenticated ? <EditProfile /> : <Navigate to="/" />} />
+        <Route path="/users/:userId" element={authenticated ? <ViewProfile /> : <Navigate to="/" />} />
         <Route
           path="/programs/:programId/students"
           element={authenticated ? <ProgramStudents /> : <Navigate to="/" />}
@@ -59,6 +68,7 @@ function AppContent({ authUser }) {
         <Route path="/groups/:groupId/edit" element={authenticated ? <EditGroupForm /> : <Navigate to="/" />} />
         <Route path="/events" element={authenticated ? <EventsPage /> : <Navigate to="/" />} />
         <Route path="/events/new" element={authenticated ? <CreateEventForm /> : <Navigate to="/" />} />
+        <Route path="/notifications" element={authenticated ? <Notifications /> :<Navigate to="/"/>}/>
       </Routes>
     </ThemeProvider>
   );
@@ -67,32 +77,20 @@ function AppContent({ authUser }) {
 const firebase = new Firebase();
 
 const App = () => {
-  const [authUser, setAuthUser] = useState(null);
-  //const firebase = useContext(FirebaseContext);
-/*
-  useEffect(() => {
-    if (firebase) {
-      const listener = firebase.auth.onAuthStateChanged(user => {
-        setAuthUser(user || null);
-      });
-      return () => listener();
-    }
-  }, [firebase]);
-  */
- useEffect(() => {
-    const listener = firebase.auth.onAuthStateChanged(user => {
-      setAuthUser(user || null);
-    });
-    return () => listener();
-  }, []);
+  // const [authUser, setAuthUser] = useState(null);
+  // useEffect(() => {
+  //   const listener = firebase.auth.onAuthStateChanged(user => {
+  //     setAuthUser(user || null);
+  //   });
+  //   return () => listener();
+  // }, []);
 
 
   return (
     <FirebaseContext.Provider value={firebase}>
       <BrowserRouter>
-        {/* Wrap everything here so UserProvider has access to the Router */}
         <UserProvider>
-          <AppContent authUser={authUser} />
+          <AppContent />
         </UserProvider>
       </BrowserRouter>
     </FirebaseContext.Provider>

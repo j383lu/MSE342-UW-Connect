@@ -10,6 +10,7 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import PostCommentThread from "./PostCommentThread";
 import { getAuth } from 'firebase/auth';
 import { getRelativeTime } from "../../utils/timeUtils";
+import { renderTextWithLinks } from "../../utils/linkUtils";
 
 function PostDetailPage() {
     const { postId } = useParams();
@@ -24,8 +25,8 @@ function PostDetailPage() {
     }, [postId]);
 
     const getToken = async () => {
-    const auth = getAuth();
-    return await auth.currentUser?.getIdToken();
+        const auth = getAuth();
+        return await auth.currentUser?.getIdToken();
     };
 
     const fetchPost = async () => {
@@ -55,24 +56,24 @@ function PostDetailPage() {
     };
 
     //handler for adding new comments
-   const handleAddComment = async (content, parentCommentId = null) => {
-    try {
-        const token = await getToken();
-        const response = await fetch(`/api/posts/${postId}/comments`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}` 
-            },
-            body: JSON.stringify({ content, parent_comment_id: parentCommentId })
-        });
-        const data = await response.json();
-        if (!response.ok) { console.error(data.error); return; }
-        setComments(prev => [...prev, data]);
-        setNewComment("");
-    } catch (err) {
-        console.error("Error adding comment:", err);
-    }
+    const handleAddComment = async (content, parentCommentId = null) => {
+        try {
+            const token = await getToken();
+            const response = await fetch(`/api/posts/${postId}/comments`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ content, parent_comment_id: parentCommentId })
+            });
+            const data = await response.json();
+            if (!response.ok) { console.error(data.error); return; }
+            setComments(prev => [...prev, data]);
+            setNewComment("");
+        } catch (err) {
+            console.error("Error adding comment:", err);
+        }
     };
 
     const topLevelComments = comments.filter(c => c.parent_comment_id === null);
@@ -93,18 +94,34 @@ function PostDetailPage() {
                 <Card>
                     <CardHeader
                         title={post.title}
-                        subheader={getRelativeTime(post.createdAt)}
+                        //edit
+                        subheader={`${post.author_name ?? 'Unknown'} · ${getRelativeTime(post.createdAt)}`}
                     />
                     <CardContent>
-                        <Typography variant="body1" sx={{ mb: 2 }}>{post.description}</Typography>
+                        <Typography variant="body1" sx={{ mb: 2, whiteSpace: 'pre-wrap' }}>
+                            {renderTextWithLinks(post.description)}
+                        </Typography>
 
-                        {post.tags && post.tags.length > 0 && (
-                            <Stack direction="row" spacing={1} flexWrap="wrap">
-                                {post.tags.map((tag, index) => (
-                                    <Chip key={index} label={`#${tag}`} size="small" sx={{ mb: 1 }} />
-                                ))}
-                            </Stack>
-                        )}
+                        <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 1 }}>
+                            {/* Group chip */}
+                            {post.group_id && post.group_name && (
+                                <Chip
+                                    label={`${post.group_name}`}
+                                    size="small"
+                                    color="primary"
+                                    // chnage this when I get the actual path
+                                    onClick={() => navigate(`/groups/${post.group_id}`)}
+                                    sx={{ mb: 1, cursor: 'pointer' }}
+                                />
+                            )}
+
+                            {/* Regular tags */}
+                            {post.tags && post.tags.length > 0 && (
+                                post.tags.map((tag, index) => (
+                                    <Chip key={index} label={`${tag}`} size="small" sx={{ mb: 1 }} />
+                                ))
+                            )}
+                        </Stack>
 
                         <Stack direction="row" alignItems="center" sx={{ mt: 1 }}>
                             <IconButton size="small">

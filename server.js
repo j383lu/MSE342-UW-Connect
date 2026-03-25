@@ -2,6 +2,7 @@ import mysql from 'mysql';
 import config from './config.js';
 import express from 'express';
 import path from 'path';
+import 'dotenv/config';
 import { fileURLToPath } from 'url';
 import bodyParser from 'body-parser';
 import profileRoutes from "./profileRoutes.js";
@@ -9,11 +10,13 @@ import multer from 'multer'; // For file uploads
 import fs from 'fs'; // For file system operations
 import admin from 'firebase-admin';
 import serviceAccount from './serviceAccountKey.json' assert {type: 'json'};
+import { group } from 'console';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+console.log(process.env.PORT);
 const port = process.env.PORT || 5000;
 
 admin.initializeApp({
@@ -40,6 +43,30 @@ const checkAuth = (req, res, next) => {
     .catch((error) => {
        res.status(403).json({ error: 'Unauthorized', message: 'Token invalid' });
     });
+};
+
+// to create notifications
+const createNotification = (recipientId, actorId, entityId, entityType, actionType, message) => {
+  const sql = `
+    INSERT INTO Notifications (recipient_id, actor_id, entity_id, entity_type, action_type, message) 
+    VALUES (?, ?, ?, ?, ?, ?)`;
+  
+  db.query(sql, [recipientId, actorId, entityId, entityType, actionType, message], (err) => {
+    if (err) {
+      console.error("Critical: Notification failed to save:", err);
+    } else {
+      console.log(`Notification sent to User ${recipientId} for ${actionType}`);
+    }
+  });
+};
+
+const triggerNotification = (recipientId, actorId, entityId, entityType, actionType, message) => {
+  const sql = `
+    INSERT INTO Notifications (recipient_id, actor_id, entity_id, entity_type, action_type, message) 
+    VALUES (?, ?, ?, ?, ?, ?)`;
+  db.query(sql, [recipientId, actorId, entityId, entityType, actionType, message], (err) => {
+    if (err) console.error("Notification Error:", err);
+  });
 };
 
 // Create database connection using your config (ONLY ONE DECLARATION)
@@ -103,6 +130,44 @@ app.use(express.static(path.join(__dirname, "client/build")));
 // Profile routes
 app.use("/api/profile", profileRoutes);
 
+const getCurrentUserIdByEmail = (email, callback) => {
+  const sql = `
+    SELECT user_id
+    FROM User_Credentials
+    WHERE LOWER(email) = LOWER(?)
+    LIMIT 1
+  `;
+
+  db.query(sql, [email], (err, rows) => {
+    if (err) {
+      return callback(err, null);
+    }
+
+    if (!rows || rows.length === 0) {
+      return callback(new Error("User not found in User_Credentials"), null);
+    }
+
+    return callback(null, rows[0].user_id);
+  });
+};
+
+// Set up helper function to get the current like count
+const getCurrentLikeCount = (eventId, callback) => {
+  const countSql = `
+    SELECT COUNT(*) AS likes
+    FROM Event_Likes
+    WHERE event_id = ?
+  `;
+
+  db.query(countSql, [eventId], (err, rows) => {
+    if (err) {
+      return callback(err, null);
+    }
+
+    return callback(null, Number(rows[0]?.likes || 0));
+  });
+};
+
 // GET /api/events
 // default: upcoming only
 // if includePast=true: return all events
@@ -112,47 +177,89 @@ app.get("/api/events", checkAuth, (req, res) => {
     ? ""
     : "WHERE TIMESTAMP(e.event_date, e.event_time) >= NOW()";
 
-  const sql = `
-    SELECT 
-      e.id,
-      e.title,
-      e.description,
-      DATE_FORMAT(e.event_date, '%Y-%m-%d') AS event_date,
-      TIME_FORMAT(e.event_time, '%H:%i') AS event_time,
-      e.location,
-      e.capacity,
-      e.likes,
-      e.category,
-      DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
-      COUNT(DISTINCT a.id) AS current_count,
-      GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
-      (TIMESTAMP(e.event_date, e.event_time) < NOW()) AS is_past
-    FROM Events e
-    LEFT JOIN Event_Attendees a ON a.event_id = e.id
-    LEFT JOIN Event_Tags t ON t.event_id = e.id
-    ${whereClause}
-    GROUP BY e.id
-    ORDER BY e.event_date ASC, e.event_time ASC
-  `;
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
 
-  db.query(sql, (err, results) => {
-    if (err) {
-      console.log("GET /api/events error:", err);
-      return res.status(500).json({ error: "Failed to load events." });
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("GET /api/events user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
     }
-    return res.json(results);
+
+    const sql = `
+      SELECT 
+        e.id,
+        e.title,
+        e.description,
+        DATE_FORMAT(e.event_date, '%Y-%m-%d') AS event_date,
+        TIME_FORMAT(e.event_time, '%H:%i') AS event_time,
+        e.location,
+        e.capacity,
+        COUNT(DISTINCT el.id) AS likes,
+        e.category,
+        e.event_type,
+        DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
+        COUNT(DISTINCT a.id) AS current_count,
+        GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
+        (TIMESTAMP(e.event_date, e.event_time) < NOW()) AS is_past,
+        MAX(CASE WHEN LOWER(a.attendee_name) = ? THEN 1 ELSE 0 END) AS has_joined,
+        MAX(CASE WHEN el.user_id = ? THEN 1 ELSE 0 END) AS has_liked
+      FROM Events e
+      LEFT JOIN Event_Attendees a ON a.event_id = e.id
+      LEFT JOIN Event_Tags t ON t.event_id = e.id
+      LEFT JOIN Event_Likes el ON el.event_id = e.id
+      ${whereClause}
+      GROUP BY
+        e.id,
+        e.title,
+        e.description,
+        e.event_date,
+        e.event_time,
+        e.location,
+        e.capacity,
+        e.category,
+        e.event_type,
+        e.published_time
+      ORDER BY e.event_date ASC, e.event_time ASC
+    `;
+
+    db.query(sql, [currentUserEmail, currentUserId], (err, results) => {
+      if (err) {
+        console.log("GET /api/events error:", err);
+        return res.status(500).json({ error: "Failed to load events." });
+      }
+
+      return res.json(results);
+    });
   });
 });
 
 // POST /api/events (create event)
-app.post("/api/events", (req, res) => {
-  const {title, description, event_date, event_time, location, capacity, category, tags,
-  } = req.body;
-})
 app.post("/api/events", checkAuth, (req, res) => {
-  const { title, description, event_date, event_time, location, capacity } = req.body;
+  const {
+    title,
+    description,
+    event_date,
+    event_time,
+    location,
+    capacity,
+    category,
+    tags,
+    event_type,
+    group_ids,
+  } = req.body;
 
-  if (!title || !description || !event_date || !event_time || !location || capacity === undefined || !category
+  if (
+    !title ||
+    !description ||
+    !event_date ||
+    !event_time ||
+    !location ||
+    capacity === undefined ||
+    !category
   ) {
     return res.status(400).json({ error: "Missing required fields." });
   }
@@ -162,103 +269,356 @@ app.post("/api/events", checkAuth, (req, res) => {
     return res.status(400).json({ error: "Capacity must be a positive integer." });
   }
 
+  const safeEventType =
+    String(event_type || "public").trim().toLowerCase() === "group"
+      ? "group"
+      : "public";
+
   const safeTags = Array.isArray(tags) ? tags : [];
 
-  const insertEventSql = `
-    INSERT INTO Events (title, description, event_date, event_time, location, capacity, category)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `;
+  const safeGroupIds = Array.isArray(group_ids)
+    ? [...new Set(group_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))]
+    : [];
 
-  db.query(
-    insertEventSql,
-    [title, description, event_date, event_time, location, capNum, category],
-    (err, result) => {
-      if (err) {
-        console.log("POST /api/events error:", err);
-        return res.status(500).json({ error: "Failed to create event." });
-      }
+  if (safeEventType === "group" && safeGroupIds.length === 0) {
+    return res.status(400).json({
+      error: "Please select at least one group for a group event.",
+    });
+  }
 
-      const eventId = result.insertId;
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
 
-      if (safeTags.length === 0) {
-        return res.status(201).json({ id: eventId, message: "Event created successfully." });
-      }
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
 
-      const uniqueTags = [...new Set(safeTags.map((tag) => String(tag).trim()).filter(Boolean))];
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("POST /api/events user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
+    }
 
-      if (uniqueTags.length === 0) {
-        return res.status(201).json({ id: eventId, message: "Event created successfully." });
-      }
-
-      const values = uniqueTags.map((tag) => [eventId, tag]);
-
-      const insertTagsSql = `
-        INSERT INTO Event_Tags (event_id, tag_name)
-        VALUES ?
+    const verifyGroupsAndCreateEvent = () => {
+      const insertEventSql = `
+        INSERT INTO Events (
+          title,
+          description,
+          event_date,
+          event_time,
+          location,
+          capacity,
+          category,
+          event_type,
+          created_by
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
-      db.query(insertTagsSql, [values], (tagErr) => {
-        if (tagErr) {
-          console.log("Insert Event_Tags error:", tagErr);
-          return res.status(500).json({
-            error: "Event was created, but failed to save tags.",
+      db.query(
+        insertEventSql,
+        [
+          title,
+          description,
+          event_date,
+          event_time,
+          location,
+          capNum,
+          category,
+          safeEventType,
+          currentUserId,
+        ],
+        (err, result) => {
+          if (err) {
+            console.log("POST /api/events error:", err);
+            return res.status(500).json({ error: "Failed to create event." });
+          }
+
+          const eventId = result.insertId;
+
+          const uniqueTags = [
+            ...new Set(safeTags.map((tag) => String(tag).trim()).filter(Boolean)),
+          ];
+
+          const insertEventGroups = (done) => {
+            if (safeEventType !== "group" || safeGroupIds.length === 0) {
+              return done(null);
+            }
+
+            const groupValues = safeGroupIds.map((groupId) => [eventId, groupId]);
+
+            const insertGroupsSql = `
+              INSERT INTO Event_Groups (event_id, group_id)
+              VALUES ?
+            `;
+
+            db.query(insertGroupsSql, [groupValues], (groupErr) => {
+              if (groupErr) {
+                console.log("Insert Event_Groups error:", groupErr);
+                return done(new Error("Event was created, but failed to save selected groups."));
+              }
+
+              return done(null);
+            });
+          };
+
+          const insertEventTags = (done) => {
+            if (uniqueTags.length === 0) {
+              return done(null);
+            }
+
+            const tagValues = uniqueTags.map((tag) => [eventId, tag]);
+
+            const insertTagsSql = `
+              INSERT INTO Event_Tags (event_id, tag_name)
+              VALUES ?
+            `;
+
+            db.query(insertTagsSql, [tagValues], (tagErr) => {
+              if (tagErr) {
+                console.log("Insert Event_Tags error:", tagErr);
+                return done(new Error("Event was created, but failed to save tags."));
+              }
+
+              return done(null);
+            });
+          };
+
+          insertEventGroups((groupInsertErr) => {
+            if (groupInsertErr) {
+              return res.status(500).json({ error: groupInsertErr.message });
+            }
+
+            insertEventTags((tagInsertErr) => {
+              if (tagInsertErr) {
+                return res.status(500).json({ error: tagInsertErr.message });
+              }
+
+              return res.status(201).json({
+                id: eventId,
+                event_type: safeEventType,
+                group_ids: safeGroupIds,
+                message: "Event created successfully.",
+              });
+            });
+          });
+        }
+      );
+    };
+
+    if (safeEventType !== "group") {
+      return verifyGroupsAndCreateEvent();
+    }
+
+    const placeholders = safeGroupIds.map(() => "?").join(", ");
+
+    const verifyGroupsSql = `
+      SELECT DISTINCT gm.group_id
+      FROM Group_Members gm
+      WHERE gm.user_id = ?
+        AND gm.group_id IN (${placeholders})
+    `;
+
+    db.query(
+      verifyGroupsSql,
+      [currentUserId, ...safeGroupIds],
+      (verifyErr, verifyRows) => {
+        if (verifyErr) {
+          console.log("Verify selected groups error:", verifyErr);
+          return res.status(500).json({ error: "Failed to verify selected groups." });
+        }
+
+        const verifiedGroupIds = (verifyRows || []).map((row) => Number(row.group_id));
+
+        if (verifiedGroupIds.length !== safeGroupIds.length) {
+          return res.status(403).json({
+            error: "You can only create a group event for groups you have joined.",
           });
         }
 
-        return res.status(201).json({
-          id: eventId,
-          message: "Event created successfully.",
-        });
-      });
-    }
-  );
+        return verifyGroupsAndCreateEvent();
+      }
+    );
+  });
 });
 
 // POST /api/events/:id/join
 app.post("/api/events/:id/join", checkAuth, (req, res) => {
   const eventId = Number(req.params.id);
-  const attendeeName = String(req.body.attendee_name || "").trim();
+  const attendeeEmail = String(req.user.email || "").trim().toLowerCase();
 
-  if (!eventId) return res.status(400).json({ error: "Invalid event id." });
-  if (!attendeeName) return res.status(400).json({ error: "Missing attendee name." });
+  if (!eventId) {
+    return res.status(400).json({ error: "Invalid event id." });
+  }
 
-  // 1) block joining past events
-  const dateSql = `SELECT event_date, capacity FROM Events WHERE id = ?`;
-  db.query(dateSql, [eventId], (err, rows) => {
-    if (err || rows.length === 0) return res.status(404).json({ error: "Event not found." });
+  if (!attendeeEmail) {
+    return res.status(400).json({ error: "Missing authenticated user email." });
+  }
 
-    const eventDateStr = rows[0].event_date; // Date object or string, depending on mysql settings
-    const cap = Number(rows[0].capacity);
+  const eventSql = `
+    SELECT id, title, event_date, event_time, capacity
+    FROM Events
+    WHERE id = ?
+    LIMIT 1
+  `;
 
-    // compare on MySQL side for safety
-    const pastSql = `SELECT (event_date < CURDATE()) AS is_past FROM Events WHERE id = ?`;
-    db.query(pastSql, [eventId], (errPast, pastRows) => {
-      if (errPast || pastRows.length === 0) return res.status(500).json({ error: "Failed to check event date." });
+  db.query(eventSql, [eventId], (err, rows) => {
+    if (err) {
+      console.log("Join event lookup error:", err);
+      return res.status(500).json({ error: "Failed to load event." });
+    }
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Event not found." });
+    }
+
+    const event = rows[0];
+    const cap = Number(event.capacity || 0);
+
+    const isPastSql = `
+      SELECT (TIMESTAMP(event_date, event_time) < NOW()) AS is_past
+      FROM Events
+      WHERE id = ?
+      LIMIT 1
+    `;
+
+    db.query(isPastSql, [eventId], (pastErr, pastRows) => {
+      if (pastErr || pastRows.length === 0) {
+        return res.status(500).json({ error: "Failed to check event time." });
+      }
+
       if (Number(pastRows[0].is_past) === 1) {
         return res.status(400).json({ error: "This event already ended." });
       }
 
-      // 2) check capacity
-      const countSql = `SELECT COUNT(*) AS current_count FROM Event_Attendees WHERE event_id = ?`;
-      db.query(countSql, [eventId], (err2, countRows) => {
-        if (err2) return res.status(500).json({ error: "Failed to check capacity." });
+      const duplicateSql = `
+        SELECT id
+        FROM Event_Attendees
+        WHERE event_id = ? AND LOWER(attendee_name) = ?
+        LIMIT 1
+      `;
 
-        const current = Number(countRows[0].current_count || 0);
-        if (cap > 0 && current >= cap) return res.status(400).json({ error: "Event is full." });
+      db.query(duplicateSql, [eventId, attendeeEmail], (dupErr, dupRows) => {
+        if (dupErr) {
+          return res.status(500).json({ error: "Failed to check join status." });
+        }
 
-        // 3) insert attendee
-        const insertSql = `INSERT INTO Event_Attendees (event_id, attendee_name) VALUES (?, ?)`;
-        db.query(insertSql, [eventId, attendeeName], (err3) => {
-          if (err3) {
-            console.log("join insert error:", err3);
-            return res.status(500).json({ error: "Failed to join event." });
+        if (dupRows.length > 0) {
+          return res.status(400).json({ error: "You have already joined this event." });
+        }
+
+        const countSql = `
+          SELECT COUNT(*) AS current_count
+          FROM Event_Attendees
+          WHERE event_id = ?
+        `;
+
+        db.query(countSql, [eventId], (countErr, countRows) => {
+          if (countErr) {
+            return res.status(500).json({ error: "Failed to check capacity." });
           }
 
-          // 4) return updated count
-          db.query(countSql, [eventId], (err4, newCountRows) => {
-            if (err4) return res.status(500).json({ error: "Joined but failed to reload count." });
-            return res.json({ current_count: Number(newCountRows[0].current_count || 0) });
+          const current = Number(countRows[0].current_count || 0);
+
+          if (cap > 0 && current >= cap) {
+            return res.status(400).json({ error: "Event is full." });
+          }
+
+          const insertSql = `
+            INSERT INTO Event_Attendees (event_id, attendee_name)
+            VALUES (?, ?)
+          `;
+
+          db.query(insertSql, [eventId, attendeeEmail], (insertErr) => {
+            if (insertErr) {
+              console.log("join insert error:", insertErr);
+              return res.status(500).json({ error: "Failed to join event." });
+            }
+
+            db.query(countSql, [eventId], (reloadErr, newCountRows) => {
+              if (reloadErr) {
+                return res.status(500).json({
+                  error: "Joined event, but failed to reload attendee count.",
+                });
+              }
+
+              return res.json({
+                current_count: Number(newCountRows[0].current_count || 0),
+                has_joined: 1,
+                message: `You have successfully joined the "${event.title}" event.`,
+              });
+            });
           });
+        });
+      });
+    });
+  });
+});
+
+// DELETE /api/events/:id/leave
+app.delete("/api/events/:id/leave", checkAuth, (req, res) => {
+  const eventId = Number(req.params.id);
+  const attendeeEmail = String(req.user.email || "").trim().toLowerCase();
+
+  if (!eventId) {
+    return res.status(400).json({ error: "Invalid event id." });
+  }
+
+  if (!attendeeEmail) {
+    return res.status(400).json({ error: "Missing authenticated user email." });
+  }
+
+  const eventSql = `
+    SELECT title
+    FROM Events
+    WHERE id = ?
+    LIMIT 1
+  `;
+
+  db.query(eventSql, [eventId], (eventErr, eventRows) => {
+    if (eventErr) {
+      console.log("Leave event title lookup error:", eventErr);
+      return res.status(500).json({ error: "Failed to load event." });
+    }
+
+    if (eventRows.length === 0) {
+      return res.status(404).json({ error: "Event not found." });
+    }
+
+    const eventTitle = eventRows[0].title;
+
+    const deleteSql = `
+      DELETE FROM Event_Attendees
+      WHERE event_id = ? AND LOWER(attendee_name) = ?
+    `;
+
+    db.query(deleteSql, [eventId, attendeeEmail], (err, result) => {
+      if (err) {
+        console.log("leave event error:", err);
+        return res.status(500).json({ error: "Failed to leave event." });
+      }
+
+      if (result.affectedRows === 0) {
+        return res.status(400).json({ error: "You have not joined this event yet." });
+      }
+
+      const countSql = `
+        SELECT COUNT(*) AS current_count
+        FROM Event_Attendees
+        WHERE event_id = ?
+      `;
+
+      db.query(countSql, [eventId], (countErr, countRows) => {
+        if (countErr) {
+          console.log("Leave event reload count error:", countErr);
+          return res.status(500).json({
+            error: "Left event, but failed to reload attendee count.",
+          });
+        }
+
+        return res.json({
+          current_count: Number(countRows[0].current_count || 0),
+          has_joined: 0,
+          message: `You have successfully left the "${eventTitle}" event.`,
         });
       });
     });
@@ -268,18 +628,40 @@ app.post("/api/events/:id/join", checkAuth, (req, res) => {
 // GET /api/events/:id/attendees
 app.get("/api/events/:id/attendees", checkAuth, (req, res) => {
   const eventId = Number(req.params.id);
-  if (!eventId) return res.status(400).json({ error: "Invalid event id." });
+
+  if (!eventId) {
+    return res.status(400).json({ error: "Invalid event id." });
+  }
 
   const sql = `
-    SELECT attendee_name, joined_at
-    FROM Event_Attendees
-    WHERE event_id = ?
-    ORDER BY joined_at ASC
+    SELECT 
+      a.attendee_name,
+      a.joined_at,
+      uc.user_id,
+      up.display_name
+    FROM Event_Attendees a
+    LEFT JOIN User_Credentials uc
+      ON LOWER(a.attendee_name) = LOWER(uc.email)
+    LEFT JOIN User_Profiles up
+      ON uc.user_id = up.user_id
+    WHERE a.event_id = ?
+    ORDER BY a.joined_at ASC
   `;
 
   db.query(sql, [eventId], (err, results) => {
-    if (err) return res.status(500).json({ error: "Failed to load attendees." });
-    return res.json(results);
+    if (err) {
+      console.log("GET /api/events/:id/attendees error:", err);
+      return res.status(500).json({ error: "Failed to load attendees." });
+    }
+
+    const formatted = (results || []).map((row) => ({
+      attendee_name: row.display_name || row.attendee_name,
+      joined_at: row.joined_at,
+      email: row.attendee_name,
+      user_id: row.user_id || null,
+    }));
+
+    return res.json(formatted);
   });
 });
 
@@ -304,30 +686,31 @@ app.get("/api/tags", checkAuth, (req, res) => {
 // CREATE GROUP API (with optional image upload):
 app.post("/api/groups", checkAuth, upload.single('coverImage'), (req, res) => {
   const { name, description, category, isOpen, maxMembers } = req.body;
-  
-  // Creator comes from the logged-in app user (sent by client)
-  const creator_id = Number(req.body.user_id);
-  if (!creator_id) {
-    return res.status(400).json({ error: "Missing or invalid user_id for group creator" });
-  }
-  
-  // Convert isOpen (public = true, private = false) to is_private (1 for private, 0 for public)
-  const is_private = isOpen === 'true' ? 0 : 1;
-  
-  // Handle max_members (if empty/null, set to NULL for unlimited)
-  const max_members = maxMembers ? parseInt(maxMembers) : null;
-  
-  // Get the uploaded file path if exists
-  const image_url = req.file ? req.file.filename : null;
-  
-  const sql = `
-    INSERT INTO Social_Group 
-    (creator_id, name, description, category, is_private, max_members, image_url) 
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `;
-  
-  db.query(sql, [creator_id, name, description, category, is_private, max_members, image_url], 
-    (err, result) => {
+
+  const explicitCreatorId = Number(req.body.user_id);
+
+  const createGroupWithCreator = (creator_id) => {
+    if (!creator_id) {
+      return res.status(400).json({ error: "Missing or invalid user_id for group creator" });
+    }
+
+    // Convert isOpen (public = true, private = false) to is_private (1 for private, 0 for public)
+    const is_private = isOpen === 'true' ? 0 : 1;
+
+    // Handle max_members (if empty/null, set to NULL for unlimited)
+    const max_members = maxMembers ? parseInt(maxMembers) : null;
+
+    // Get the uploaded file path if exists
+    const image_url = req.file ? req.file.filename : null;
+
+    const sql = `
+      INSERT INTO Social_Group 
+      (creator_id, name, description, category, is_private, max_members, image_url) 
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    db.query(sql, [creator_id, name, description, category, is_private, max_members, image_url],
+      (err, result) => {
       if (err) {
         console.error("POST /api/groups error:", err);
         return res.status(500).json({ 
@@ -359,8 +742,22 @@ app.post("/api/groups", checkAuth, upload.single('coverImage'), (req, res) => {
           });
         }
       );
+      }
+    );
+  };
+
+  // Prefer explicit user_id if provided, otherwise resolve from auth token email.
+  if (explicitCreatorId) {
+    return createGroupWithCreator(explicitCreatorId);
+  }
+
+  getCurrentUserIdByEmail(req.user.email, (lookupErr, resolvedUserId) => {
+    if (lookupErr || !resolvedUserId) {
+      console.error("POST /api/groups user lookup error:", lookupErr);
+      return res.status(400).json({ error: "Missing or invalid user_id for group creator" });
     }
-  );
+    return createGroupWithCreator(resolvedUserId);
+  });
 });
 
 // GET ALL GROUPS (for discovery page):
@@ -522,6 +919,22 @@ app.post("/api/groups/:groupId/join", checkAuth, (req, res) => {
           return res.status(500).json({ error: "Failed to join group" });
         }
         
+        const creatorId = group.creator_id;
+        const groupName = group.name;
+
+        // get the display name of the person joining
+        db.query("SELECT display_name FROM User_Profiles WHERE user_id = ?", [userId], (err, profile) => {
+            if (!err && profile.length > 0) {
+                const actorName = profile[0].display_name || "A student";
+                const message = `${actorName} joined your group: ${groupName}`;
+
+                // trigger the notification for the creator
+                if (creatorId !== userId) {
+                    triggerNotification(creatorId, userId, groupId, 'GROUP', 'JOIN', message);
+                }
+            }
+        });
+        
         return res.status(201).json({ 
           message: "Successfully joined group",
           groupId: groupId,
@@ -536,21 +949,41 @@ app.post("/api/groups/:groupId/join", checkAuth, (req, res) => {
 app.delete("/api/groups/:groupId/leave", (req, res) => {
   const groupId = req.params.groupId;
   // Prefer explicit userId from client, fallback to 1 for now
-  const userId = Number(req.body.userId) || 1;
+  const userId = Number(req.body.userId);
+
+  const infoSql = `
+    SELECT sg.name, sg.creator_id, up.display_name
+    FROM Social_Group sg
+    JOIN User_Profiles up ON up.user_id = ?
+    WHERE sg.group_id = ?`;
   
-  const sql = "DELETE FROM Group_Members WHERE group_id = ? AND user_id = ?";
-  
-  db.query(sql, [groupId, userId], (err, result) => {
-    if (err) {
-      console.error("Error leaving group:", err);
-      return res.status(500).json({ error: "Failed to leave group" });
-    }
+  console.log("leave group fetch")
+  db.query(infoSql, [userId, groupId], (err, result) => {
     
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: "Not a member of this group" });
+    if (result.length === 0) {
+      return res.status(404).json({ error: "Group not found" });
     }
-    
-    return res.json({ message: "Successfully left group" });
+
+    if (err) return res.status(500).json({ error: "Failed to leave group" });
+
+    const { name, display_name, creator_id } = result[0];
+
+    function performDelete() {
+      const sql = "DELETE FROM Group_Members WHERE group_id = ? AND user_id = ?";
+      db.query(sql, [groupId, userId], (err, result) => {
+        if (err) return res.status(500).json({ error: "Failed to leave group" });
+        
+        // Trigger Notification if delete worked
+        if (result.affectedRows > 0 && creator_id !== userId) {
+          const msg = `${display_name || "A student"} left your group: ${name}`;
+          triggerNotification(creator_id, userId, groupId, 'GROUP', 'LEAVE', msg);
+        }
+        
+        return res.json({ message: "Successfully left group" });
+      });
+    }
+
+    performDelete();
   });
 });
 
@@ -777,6 +1210,176 @@ app.post("/api/invites/:inviteId/respond", checkAuth, (req, res) => {
   });
 });
 
+// --- Group Join Requests (Request Access for private groups) ---
+
+// POST /api/groups/:groupId/request-access - User requests to join a private group
+app.post("/api/groups/:groupId/request-access", checkAuth, async (req, res) => {
+  const groupId = Number(req.params.groupId);
+  let userId;
+  try {
+    userId = await getNumericUserId(req.user.email);
+  } catch (err) {
+    return res.status(404).json({ error: "User not found" });
+  }
+
+  if (!groupId || !userId) {
+    return res.status(400).json({ error: "groupId and userId are required" });
+  }
+
+  const groupSql = "SELECT group_id, creator_id, is_private FROM Social_Group WHERE group_id = ? LIMIT 1";
+  db.query(groupSql, [groupId], (groupErr, groupRows) => {
+    if (groupErr) {
+      console.error("Error fetching group:", groupErr);
+      return res.status(500).json({ error: "Failed to load group" });
+    }
+    if (!groupRows || groupRows.length === 0) {
+      return res.status(404).json({ error: "Group not found" });
+    }
+    const group = groupRows[0];
+    if (!group.is_private) {
+      return res.status(400).json({ error: "Group is public; use Join instead" });
+    }
+    if (group.creator_id === userId) {
+      return res.status(400).json({ error: "You own this group; use Join instead" });
+    }
+
+    const memberCheck = "SELECT 1 FROM Group_Members WHERE group_id = ? AND user_id = ? LIMIT 1";
+    db.query(memberCheck, [groupId, userId], (memberErr, memberRows) => {
+      if (memberErr) {
+        return res.status(500).json({ error: "Failed to check membership" });
+      }
+      if (memberRows && memberRows.length > 0) {
+        return res.status(400).json({ error: "Already a member of this group" });
+      }
+
+      const insertSql = `
+        INSERT INTO Group_Join_Requests (group_id, user_id, status)
+        VALUES (?, ?, 'pending')
+        ON DUPLICATE KEY UPDATE status = 'pending', created_at = CURRENT_TIMESTAMP
+      `;
+      db.query(insertSql, [groupId, userId], (insertErr) => {
+        if (insertErr) {
+          console.error("Error creating join request:", insertErr);
+          return res.status(500).json({ error: "Failed to send request" });
+        }
+        return res.status(201).json({ message: "Request sent", groupId, userId });
+      });
+    });
+  });
+});
+
+// GET /api/users/:userId/join-requests-as-owner - Pending join requests for groups the user owns
+app.get("/api/users/:userId/join-requests-as-owner", checkAuth, (req, res) => {
+  const ownerId = Number(req.params.userId);
+  if (!ownerId) {
+    return res.status(400).json({ error: "Invalid userId" });
+  }
+
+  const sql = `
+    SELECT 
+      gjr.id AS request_id,
+      gjr.group_id,
+      gjr.user_id,
+      gjr.status,
+      gjr.created_at,
+      sg.name AS group_name,
+      up.display_name AS requester_name
+    FROM Group_Join_Requests gjr
+    JOIN Social_Group sg ON sg.group_id = gjr.group_id
+    LEFT JOIN User_Profiles up ON up.user_id = gjr.user_id
+    WHERE sg.creator_id = ? AND gjr.status = 'pending'
+    ORDER BY gjr.created_at DESC
+  `;
+  db.query(sql, [ownerId], (err, rows) => {
+    if (err) {
+      console.error("GET /api/users/:userId/join-requests-as-owner error:", err);
+      return res.status(500).json({ error: "Failed to fetch join requests" });
+    }
+    return res.json(rows || []);
+  });
+});
+
+// POST /api/join-requests/:requestId/respond - Owner accepts or declines a join request
+app.post("/api/join-requests/:requestId/respond", checkAuth, async (req, res) => {
+  const requestId = Number(req.params.requestId);
+  const { action, ownerId } = req.body;
+
+  if (!requestId || !ownerId) {
+    return res.status(400).json({ error: "requestId and ownerId are required" });
+  }
+  if (action !== "accept" && action !== "decline") {
+    return res.status(400).json({ error: "action must be 'accept' or 'decline'" });
+  }
+
+  const getSql = `
+    SELECT gjr.id, gjr.group_id, gjr.user_id, gjr.status, sg.creator_id, sg.name AS group_name, sg.max_members
+    FROM Group_Join_Requests gjr
+    JOIN Social_Group sg ON sg.group_id = gjr.group_id
+    WHERE gjr.id = ? LIMIT 1
+  `;
+  db.query(getSql, [requestId], (getErr, rows) => {
+    if (getErr) {
+      console.error("Error fetching join request:", getErr);
+      return res.status(500).json({ error: "Failed to load request" });
+    }
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: "Request not found" });
+    }
+    const reqRow = rows[0];
+    if (Number(reqRow.creator_id) !== Number(ownerId)) {
+      return res.status(403).json({ error: "Only the group owner can respond" });
+    }
+    if (reqRow.status !== "pending") {
+      return res.status(400).json({ error: "Request is no longer pending" });
+    }
+
+    const updateSql = "UPDATE Group_Join_Requests SET status = ? WHERE id = ?";
+
+    if (action === "decline") {
+      db.query(updateSql, ["declined", requestId], (upErr) => {
+        if (upErr) {
+          console.error("Error declining request:", upErr);
+          return res.status(500).json({ error: "Failed to decline" });
+        }
+        return res.json({ message: "Request declined" });
+      });
+      return;
+    }
+
+    if (action === "accept") {
+      const checkFullSql = `
+        SELECT COUNT(*) AS cnt FROM Group_Members WHERE group_id = ?
+      `;
+      db.query(checkFullSql, [reqRow.group_id], (cntErr, cntRows) => {
+        if (cntErr) {
+          return res.status(500).json({ error: "Failed to check group size" });
+        }
+        const currentCount = cntRows[0]?.cnt || 0;
+        if (reqRow.max_members && currentCount >= reqRow.max_members) {
+          return res.status(400).json({ error: "Group is full" });
+        }
+
+        const addMemberSql = "INSERT INTO Group_Members (group_id, user_id) VALUES (?, ?)";
+        db.query(addMemberSql, [reqRow.group_id, reqRow.user_id], (addErr) => {
+          if (addErr) {
+            console.error("Error adding member:", addErr);
+            return res.status(500).json({ error: "Failed to add member" });
+          }
+          db.query(updateSql, ["accepted", requestId], (upErr) => {
+            if (upErr) {
+              console.error("Error updating request:", upErr);
+            }
+            return res.json({
+              message: "Request accepted",
+              group_name: reqRow.group_name,
+            });
+          });
+        });
+      });
+    }
+  });
+});
+
 // UPDATE GROUP:
 app.put("/api/groups/:groupId", upload.single('coverImage'), (req, res) => {
   const groupId = req.params.groupId;
@@ -941,11 +1544,74 @@ const getNumericUserId = (email) => {
     });
 };
 
+// GET /api/groups/:groupId/posts - get posts for a specific group
+app.get('/api/groups/:groupId/posts', checkAuth, async (req, res) => {
+    const groupId = Number(req.params.groupId);
+    if (!groupId) {
+        return res.status(400).json({ error: 'Invalid group id' });
+    }
+
+    let currentUserId;
+    try {
+        currentUserId = await getNumericUserId(req.user.email);
+    } catch (err) {
+        return res.status(404).json({ error: 'User not found' });
+    }
+
+    const sql = `
+        SELECT p.post_id, p.title, p.content, p.author_id, p.group_id, sg.name AS group_name,
+               p.is_anonymous, p.image_url, p.created_at AS createdAt,
+               up.display_name AS author_name,
+               GROUP_CONCAT(DISTINCT t.tag_name) AS tags,
+               COUNT(DISTINCT l.like_id) AS like_count,
+               MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me,
+               (SELECT COUNT(*) FROM Comments WHERE post_id = p.post_id) AS comment_count
+        FROM Posts p
+        LEFT JOIN Social_Group sg ON p.group_id = sg.group_id
+        LEFT JOIN User_Profiles up ON p.author_id = up.user_id
+        LEFT JOIN post_tags pt ON p.post_id = pt.post_id
+        LEFT JOIN Tags t ON pt.tag_id = t.tag_id
+        LEFT JOIN Likes l ON p.post_id = l.post_id
+        WHERE p.group_id = ?
+        GROUP BY p.post_id
+        ORDER BY p.post_id DESC
+    `;
+
+    db.query(sql, [currentUserId, groupId], (err, results) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ error: 'Error retrieving group posts' });
+        }
+
+        const formattedPosts = results.map(post => ({
+            post_id: post.post_id,
+            author_id: post.author_id,
+            author_name: post.author_name ?? `User ${post.author_id}`,
+            title: post.title,
+            description: post.content,
+            tags: post.tags ? post.tags.split(',') : [],
+            createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
+            like_count: post.like_count,
+            liked_by_me: post.liked_by_me === 1,
+            comment_count: post.comment_count ?? 0,
+            group_id: post.group_id,
+            group_name: post.group_name
+        }));
+
+        return res.json(formattedPosts);
+    });
+});
+
 // Post /api/posts - create a new post
-app.post('/api/posts', checkAuth, async (req, res) => {
+app.post('/api/posts', checkAuth, upload.single('image'), async (req, res) => {
     //let connection = mysql.createConnection(config);
 
-    let { title, content, group_id = null, is_anonymous = 0, image_url = null, tags = [] } = req.body;
+    let { title, content, group_id = null, is_anonymous = 0, tags = [] } = req.body;
+    const image_url = req.file ? req.file.filename : null;
+    if (typeof tags === 'string') {
+        try { tags = JSON.parse(tags); } catch { tags = []; }
+    }
+
     let author_id; // Placeholder for now, should be replaced with actual user ID from authentication
     try {
         author_id = await getNumericUserId(req.user.email);
@@ -1197,13 +1863,15 @@ app.get('/api/posts', checkAuth, async (req, res) => {
             author_name: post.author_name ?? `User ${post.author_id}`,
             title: post.title,
             description: post.content, // map content to description
+            image_url: post.image_url,
             tags: post.tags ? post.tags.split(',') : [],
             createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
             like_count: post.like_count,
             liked_by_me: post.liked_by_me === 1, 
             comment_count: post.comment_count ?? 0,
-            group_id: post.group_id,        // new
-            group_name: post.group_name     // new
+            group_id: post.group_id,        
+            group_name: post.group_name,
+            is_anonymous: post.is_anonymous === 1     
         }));
 
         res.json(formattedPosts);
@@ -1223,10 +1891,13 @@ app.get('/api/posts/:id', checkAuth, async (req, res) => {
 
     const sql = `
         SELECT p.post_id, p.title, p.content, p.author_id, p.created_at AS createdAt,
+              up.display_name AS author_name, sg.name AS group_name, p.group_id, p.is_anonymous,
                GROUP_CONCAT(DISTINCT t.tag_name) AS tags,
                COUNT(DISTINCT l.like_id) AS like_count,
                MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me
         FROM Posts p
+        LEFT JOIN User_Profiles up ON p.author_id = up.user_id
+        LEFT JOIN Social_Group sg ON p.group_id = sg.group_id
         LEFT JOIN post_tags pt ON p.post_id = pt.post_id
         LEFT JOIN Tags t ON pt.tag_id = t.tag_id
         LEFT JOIN Likes l ON p.post_id = l.post_id
@@ -1248,12 +1919,17 @@ app.get('/api/posts/:id', checkAuth, async (req, res) => {
         res.json({
             post_id: post.post_id,
             author_id: post.author_id,
+            author_name: post.is_anonymous ? 'Anonymous' : (post.author_name ?? 'Unknown'),
             title: post.title,
             description: post.content,
+            group_id: post.group_name,
             tags: post.tags ? post.tags.split(',') : [],
             createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
             like_count: post.like_count ?? 0,
-            liked_by_me: post.liked_by_me === 1
+            liked_by_me: post.liked_by_me === 1,
+            group_name: post.group_name,  
+            is_anonymous: post.is_anonymous === 1
+
         });
     });
 });
@@ -1379,7 +2055,7 @@ app.delete('/api/posts/:id', checkAuth, async(req, res) => {
 app.put('/api/posts/:id', checkAuth, async (req, res) => {
     //let connection = mysql.createConnection(config);
     const postId = req.params.id;
-    const { title, content, tags = [], group_id = null } = req.body;
+    const { title, content, tags = [], group_id = null, is_anonymous = 0 } = req.body;
 
     let requestingUserId; // Placeholder - replace with real auth user ID later
     try {
@@ -1403,8 +2079,8 @@ app.put('/api/posts/:id', checkAuth, async (req, res) => {
             return res.status(403).json({ error: 'Not authorized to edit this post' });
         }
 
-        const updateSql = 'UPDATE Posts SET title = ?, content = ?, group_id = ? WHERE post_id = ?';
-        db.query(updateSql, [title, content, group_id, postId], (err) => {
+        const updateSql = 'UPDATE Posts SET title = ?, content = ?, group_id = ?, is_anonymous = ? WHERE post_id = ?';
+        db.query(updateSql, [title, content, group_id, is_anonymous, postId], (err) => {
             if (err) {
                 //db.end();
                 return res.status(500).json({ error: 'Error updating post' });
@@ -1512,37 +2188,136 @@ app.post('/api/posts/:id/like', checkAuth, async (req, res) => {
     });
 });
 
+// GET /api/posts/:id/likes - get list of users who liked a post
+app.get('/api/posts/:id/likes', checkAuth, async (req, res) => {
+    const postId = req.params.id;
+
+    const sql = `
+        SELECT l.user_id, up.display_name
+        FROM Likes l
+        LEFT JOIN User_Profiles up ON l.user_id = up.user_id
+        WHERE l.post_id = ?
+        ORDER BY up.display_name ASC
+    `;
+
+    db.query(sql, [postId], (err, results) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ error: 'Error retrieving likes' });
+        }
+        res.json(results);
+    });
+});
+
+//---------------------EVENTs-------------------------------------
+
 // Post API for "Like an Event"
-app.post("/api/events/:id/like", (req, res) => {
+app.post("/api/events/:id/like", checkAuth, (req, res) => {
   const eventId = Number(req.params.id);
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
 
   if (!eventId) {
     return res.status(400).json({ error: "Invalid event id." });
   }
 
-  const updateSql = `UPDATE Events SET likes = likes + 1 WHERE id = ?`;
+  if (!currentUserEmail) {
+    return res.status(400).json({ error: "Missing authenticated user email." });
+  }
 
-  db.query(updateSql, [eventId], (err, result) => {
-    if (err) {
-      console.log("POST /api/events/:id/like error:", err);
-      return res.status(500).json({ error: "Failed to like event." });
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("POST /api/events/:id/like user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
     }
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: "Event not found." });
-    }
+    const eventSql = `
+      SELECT id, title
+      FROM Events
+      WHERE id = ?
+      LIMIT 1
+    `;
 
-    const selectSql = `SELECT likes FROM Events WHERE id = ?`;
-
-    db.query(selectSql, [eventId], (err2, rows) => {
-      if (err2) {
-        console.log("Reload likes error:", err2);
-        return res.status(500).json({
-          error: "Liked event, but failed to reload likes.",
-        });
+    db.query(eventSql, [eventId], (eventErr, eventRows) => {
+      if (eventErr) {
+        console.log("Like event lookup error:", eventErr);
+        return res.status(500).json({ error: "Failed to load event." });
       }
 
-      return res.json({ likes: Number(rows[0].likes || 0) });
+      if (!eventRows || eventRows.length === 0) {
+        return res.status(404).json({ error: "Event not found." });
+      }
+
+      const eventTitle = eventRows[0].title;
+
+      const checkLikeSql = `
+        SELECT id
+        FROM Event_Likes
+        WHERE event_id = ? AND user_id = ?
+        LIMIT 1
+      `;
+
+      db.query(checkLikeSql, [eventId, currentUserId], (checkErr, likeRows) => {
+        if (checkErr) {
+          console.log("Check like status error:", checkErr);
+          return res.status(500).json({ error: "Failed to check like status." });
+        }
+
+        if (likeRows.length > 0) {
+          const deleteLikeSql = `
+            DELETE FROM Event_Likes
+            WHERE event_id = ? AND user_id = ?
+          `;
+
+          db.query(deleteLikeSql, [eventId, currentUserId], (deleteErr) => {
+            if (deleteErr) {
+              console.log("Unlike event error:", deleteErr);
+              return res.status(500).json({ error: "Failed to unlike event." });
+            }
+
+            getCurrentLikeCount(eventId, (countErr, likeCount) => {
+              if (countErr) {
+                console.log("Reload like count error after unlike:", countErr);
+                return res.status(500).json({
+                  error: "Unliked event, but failed to reload like count.",
+                });
+              }
+
+              return res.json({
+                likes: likeCount,
+                has_liked: 0,
+                message: `You removed your like from "${eventTitle}".`,
+              });
+            });
+          });
+        } else {
+          const insertLikeSql = `
+            INSERT INTO Event_Likes (event_id, user_id)
+            VALUES (?, ?)
+          `;
+
+          db.query(insertLikeSql, [eventId, currentUserId], (insertErr) => {
+            if (insertErr) {
+              console.log("Like event insert error:", insertErr);
+              return res.status(500).json({ error: "Failed to like event." });
+            }
+
+            getCurrentLikeCount(eventId, (countErr, likeCount) => {
+              if (countErr) {
+                console.log("Reload like count error after like:", countErr);
+                return res.status(500).json({
+                  error: "Liked event, but failed to reload like count.",
+                });
+              }
+
+              return res.json({
+                likes: likeCount,
+                has_liked: 1,
+                message: `You liked "${eventTitle}".`,
+              });
+            });
+          });
+        }
+      });
     });
   });
 });
@@ -1564,132 +2339,196 @@ app.get("/api/categories", (req, res) => {
   });
 });
 
-app.get("/api/events/search-history", (req, res) => {
-  const userId = 1;
+app.get("/api/events/search-history", checkAuth, (req, res) => {
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
 
-  const sql = `
-    SELECT search_term
-    FROM Event_Search_History
-    WHERE user_id = ?
-    ORDER BY searched_at DESC
-    LIMIT 8
-  `;
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
 
-  db.query(sql, [userId], (err, rows) => {
-    if (err) {
-      console.log("GET search history error:", err);
-      return res.status(500).json({ error: "Failed to load search history." });
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("GET search history user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
     }
 
-    return res.json(rows);
+    const sql = `
+      SELECT search_term
+      FROM Event_Search_History
+      WHERE user_id = ?
+      ORDER BY searched_at DESC
+      LIMIT 8
+    `;
+
+    db.query(sql, [currentUserId], (err, rows) => {
+      if (err) {
+        console.log("GET search history error:", err);
+        return res.status(500).json({ error: "Failed to load search history." });
+      }
+
+      return res.json(rows);
+    });
   });
 });
 
-app.post("/api/events/search-history", (req, res) => {
-  const userId = 1;
+app.post("/api/events/search-history", checkAuth, (req, res) => {
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
   const term = String(req.body.search_term || "").trim();
+
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
 
   if (!term) {
     return res.status(400).json({ error: "Missing search term." });
   }
 
-  const sql = `
-    INSERT INTO Event_Search_History (user_id, search_term, searched_at)
-    VALUES (?, ?, NOW())
-    ON DUPLICATE KEY UPDATE searched_at = NOW()
-  `;
-
-  db.query(sql, [userId, term], (err) => {
-    if (err) {
-      console.log("Insert search history error:", err);
-      return res.status(500).json({ error: "Failed to save search history." });
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("POST search history user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
     }
 
-    return res.json({ message: "Saved" });
+    const sql = `
+      INSERT INTO Event_Search_History (user_id, search_term, searched_at)
+      VALUES (?, ?, NOW())
+      ON DUPLICATE KEY UPDATE searched_at = NOW()
+    `;
+
+    db.query(sql, [currentUserId, term], (err) => {
+      if (err) {
+        console.log("Insert search history error:", err);
+        return res.status(500).json({ error: "Failed to save search history." });
+      }
+
+      return res.json({ message: "Saved" });
+    });
   });
 });
 
-app.get("/api/events/search", (req, res) => {
+app.get("/api/events/search", checkAuth, (req, res) => {
   const keyword = String(req.query.keyword || "").trim();
   const sort = String(req.query.sort || "mostUpcoming").trim();
 
   if (!keyword) {
-    return res.json({ events: [] });
+    return res.status(400).json({ error: "Keyword is required." });
   }
 
-  const like = `%${keyword}%`;
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
 
-  let orderClause = `
-    ORDER BY e.event_date ASC, e.event_time ASC
-  `;
-
-  if (sort === "mostRecentPublished") {
-    orderClause = `
-      ORDER BY e.published_time DESC
-    `;
-  } else if (sort === "mostLiked") {
-    orderClause = `
-      ORDER BY e.likes DESC, e.published_time DESC
-    `;
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
   }
 
-  const sql = `
-    SELECT 
-      e.id,
-      e.title,
-      e.description,
-      DATE_FORMAT(e.event_date,'%Y-%m-%d') AS event_date,
-      TIME_FORMAT(e.event_time,'%H:%i') AS event_time,
-      e.location,
-      e.capacity,
-      e.likes,
-      e.category,
-      DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
-      COUNT(DISTINCT a.id) AS current_count,
-      GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
-      (TIMESTAMP(e.event_date,e.event_time) < NOW()) AS is_past
-    FROM Events e
-    LEFT JOIN Event_Attendees a ON a.event_id = e.id
-    LEFT JOIN Event_Tags t ON t.event_id = e.id
-    WHERE 
-      e.title LIKE ?
-      OR e.category LIKE ?
-      OR t.tag_name LIKE ?
-    GROUP BY e.id
-    ${orderClause}
-    LIMIT 50
-  `;
-
-  db.query(sql, [like, like, like], (err, rows) => {
-    if (err) {
-      console.log("Search events error:", err);
-      return res.status(500).json({ error: "Search failed." });
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("Search events user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
     }
 
-    return res.json({ events: rows });
+    const like = `%${keyword}%`;
+
+    let orderClause = `
+      ORDER BY e.event_date ASC, e.event_time ASC
+    `;
+
+    if (sort === "mostRecentPublished") {
+      orderClause = `
+        ORDER BY e.published_time DESC
+      `;
+    } else if (sort === "mostLiked") {
+      orderClause = `
+        ORDER BY likes DESC, e.published_time DESC
+      `;
+    }
+
+    const sql = `
+      SELECT 
+        e.id,
+        e.title,
+        e.description,
+        DATE_FORMAT(e.event_date,'%Y-%m-%d') AS event_date,
+        TIME_FORMAT(e.event_time,'%H:%i') AS event_time,
+        e.location,
+        e.capacity,
+        COUNT(DISTINCT el.id) AS likes,
+        e.category,
+        e.event_type,
+        DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
+        COUNT(DISTINCT a.id) AS current_count,
+        GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
+        (TIMESTAMP(e.event_date,e.event_time) < NOW()) AS is_past,
+        MAX(CASE WHEN LOWER(a.attendee_name) = ? THEN 1 ELSE 0 END) AS has_joined,
+        MAX(CASE WHEN el.user_id = ? THEN 1 ELSE 0 END) AS has_liked
+      FROM Events e
+      LEFT JOIN Event_Attendees a ON a.event_id = e.id
+      LEFT JOIN Event_Tags t ON t.event_id = e.id
+      LEFT JOIN Event_Likes el ON el.event_id = e.id
+      WHERE 
+        e.title LIKE ?
+        OR e.category LIKE ?
+        OR t.tag_name LIKE ?
+      GROUP BY
+        e.id,
+        e.title,
+        e.description,
+        e.event_date,
+        e.event_time,
+        e.location,
+        e.capacity,
+        e.category,
+        e.event_type,
+        e.published_time
+      ${orderClause}
+      LIMIT 50
+    `;
+
+    db.query(
+      sql,
+      [currentUserEmail, currentUserId, like, like, like],
+      (err, rows) => {
+        if (err) {
+          console.log("Search events error:", err);
+          return res.status(500).json({ error: "Search failed." });
+        }
+
+        return res.json({ events: rows });
+      }
+    );
   });
 });
 
-app.delete("/api/events/search-history", (req, res) => {
-  const userId = 1;
+app.delete("/api/events/search-history", checkAuth, (req, res) => {
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
   const term = String(req.body.search_term || "").trim();
+
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
 
   if (!term) {
     return res.status(400).json({ error: "Missing search term." });
   }
 
-  const sql = `
-    DELETE FROM Event_Search_History
-    WHERE user_id = ? AND search_term = ?
-  `;
-
-  db.query(sql, [userId, term], (err) => {
-    if (err) {
-      console.log("Delete search history error:", err);
-      return res.status(500).json({ error: "Failed to delete search history." });
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("DELETE search history user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
     }
 
-    return res.json({ message: "Deleted successfully." });
+    const sql = `
+      DELETE FROM Event_Search_History
+      WHERE user_id = ? AND search_term = ?
+    `;
+
+    db.query(sql, [currentUserId, term], (err) => {
+      if (err) {
+        console.log("Delete search history error:", err);
+        return res.status(500).json({ error: "Failed to delete search history." });
+      }
+
+      return res.json({ message: "Deleted successfully." });
+    });
   });
 });
 
@@ -1736,12 +2575,12 @@ app.get("/api/events/suggestions", (req, res) => {
 
 // for registration
 app.post('/api/register', checkAuth, (req, res) => {
-   const { email, password, username, firebase_uid } = req.body;
+   const { email, password, username, firebase_uid, role } = req.body;
     
-    const sqlCredentials = "INSERT INTO User_Credentials (email, password_hash, firebase_uid) VALUES (?, ?, ?)";
+    const sqlCredentials = "INSERT INTO User_Credentials (email, password_hash, firebase_uid, role) VALUES (?, ?, ?, ?)";
     
     // insert into Credentials
-    db.query(sqlCredentials, [email, password, firebase_uid], (err, result) => {
+    db.query(sqlCredentials, [email, password, firebase_uid, role], (err, result) => {
         if (err) {
             console.error("Credentials Error:", err);
             return res.status(500).json({ error: "Database error during registration." });
@@ -1790,7 +2629,339 @@ app.get('/api/users/by-email', checkAuth, (req, res) => {
   });
 });
 
+// GET /api/my-groups
+// return all groups the current logged-in user has joined, if user is not in any groups, return message in frontend
+app.get("/api/my-groups", checkAuth, (req, res) => {
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
 
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("GET /api/my-groups user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
+    }
+
+    const sql = `
+      SELECT 
+        sg.group_id,
+        sg.name
+      FROM Group_Members gm
+      JOIN Social_Group sg
+        ON gm.group_id = sg.group_id
+      WHERE gm.user_id = ?
+      ORDER BY sg.name ASC
+    `;
+
+    db.query(sql, [currentUserId], (err, rows) => {
+      if (err) {
+        console.log("GET /api/my-groups error:", err);
+        return res.status(500).json({ error: "Failed to load groups." });
+      }
+
+      return res.json({
+        groups: rows,
+      });
+    });
+  });
+});
+
+// GET /api/events/public
+// Show only public events with default of upcoming events only
+// if includePast=true then return all public events
+app.get("/api/events/public", checkAuth, (req, res) => {
+  const includePast = String(req.query.includePast).toLowerCase() === "true";
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
+
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("GET /api/events/public user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
+    }
+
+    const whereClause = includePast
+      ? "WHERE e.event_type = 'public'"
+      : "WHERE e.event_type = 'public' AND TIMESTAMP(e.event_date, e.event_time) >= NOW()";
+
+    const sql = `
+      SELECT 
+        e.id,
+        e.title,
+        e.description,
+        DATE_FORMAT(e.event_date, '%Y-%m-%d') AS event_date,
+        TIME_FORMAT(e.event_time, '%H:%i') AS event_time,
+        e.location,
+        e.capacity,
+        COUNT(DISTINCT el.id) AS likes,
+        e.category,
+        e.event_type,
+        e.created_by,
+        DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
+        COUNT(DISTINCT a.id) AS current_count,
+        GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
+        (TIMESTAMP(e.event_date, e.event_time) < NOW()) AS is_past,
+        MAX(CASE WHEN LOWER(a.attendee_name) = ? THEN 1 ELSE 0 END) AS has_joined,
+        MAX(CASE WHEN el.user_id = ? THEN 1 ELSE 0 END) AS has_liked
+      FROM Events e
+      LEFT JOIN Event_Attendees a ON a.event_id = e.id
+      LEFT JOIN Event_Tags t ON t.event_id = e.id
+      LEFT JOIN Event_Likes el ON el.event_id = e.id
+      ${whereClause}
+      GROUP BY
+        e.id,
+        e.title,
+        e.description,
+        e.event_date,
+        e.event_time,
+        e.location,
+        e.capacity,
+        e.category,
+        e.event_type,
+        e.created_by,
+        e.published_time
+      ORDER BY e.event_date ASC, e.event_time ASC
+    `;
+
+    db.query(sql, [currentUserEmail, currentUserId], (err, rows) => {
+      if (err) {
+        console.log("GET /api/events/public error:", err);
+        return res.status(500).json({ error: "Failed to load public events." });
+      }
+
+      return res.json(rows);
+    });
+  });
+});
+
+// GET /api/events/my-groups
+// show only group events linked to groups the current user joined with default of upcoming events only
+// if includePast=true then return all matching group events
+app.get("/api/events/my-groups", checkAuth, (req, res) => {
+  const includePast = String(req.query.includePast).toLowerCase() === "true";
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
+
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("GET /api/events/my-groups user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
+    }
+
+    const pastClause = includePast
+      ? ""
+      : "AND TIMESTAMP(e.event_date, e.event_time) >= NOW()";
+
+    const sql = `
+      SELECT 
+        e.id,
+        e.title,
+        e.description,
+        DATE_FORMAT(e.event_date, '%Y-%m-%d') AS event_date,
+        TIME_FORMAT(e.event_time, '%H:%i') AS event_time,
+        e.location,
+        e.capacity,
+        COUNT(DISTINCT el.id) AS likes,
+        e.category,
+        e.event_type,
+        e.created_by,
+        DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
+        COUNT(DISTINCT a.id) AS current_count,
+        GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
+        (TIMESTAMP(e.event_date, e.event_time) < NOW()) AS is_past,
+        MAX(CASE WHEN LOWER(a.attendee_name) = ? THEN 1 ELSE 0 END) AS has_joined,
+        MAX(CASE WHEN el.user_id = ? THEN 1 ELSE 0 END) AS has_liked
+      FROM Events e
+      INNER JOIN Event_Groups eg ON eg.event_id = e.id
+      INNER JOIN Group_Members gm ON gm.group_id = eg.group_id AND gm.user_id = ?
+      LEFT JOIN Event_Attendees a ON a.event_id = e.id
+      LEFT JOIN Event_Tags t ON t.event_id = e.id
+      LEFT JOIN Event_Likes el ON el.event_id = e.id
+      WHERE e.event_type = 'group'
+      ${pastClause}
+      GROUP BY
+        e.id,
+        e.title,
+        e.description,
+        e.event_date,
+        e.event_time,
+        e.location,
+        e.capacity,
+        e.category,
+        e.event_type,
+        e.created_by,
+        e.published_time
+      ORDER BY e.event_date ASC, e.event_time ASC
+    `;
+
+    db.query(sql, [currentUserEmail, currentUserId, currentUserId], (err, rows) => {
+      if (err) {
+        console.log("GET /api/events/my-groups error:", err);
+        return res.status(500).json({ error: "Failed to load group events." });
+      }
+
+      return res.json(rows);
+    });
+  });
+});
+
+// GET /api/events/my-events
+// show events the current user joined or created with default of upcoming events only
+// if includePast=true then return all matching events
+app.get("/api/events/my-events", checkAuth, (req, res) => {
+  const includePast = String(req.query.includePast).toLowerCase() === "true";
+  const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
+
+  if (!currentUserEmail) {
+    return res.status(401).json({ error: "Authenticated user email not found." });
+  }
+
+  getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      console.log("GET /api/events/my-events user lookup error:", userErr);
+      return res.status(500).json({ error: "Failed to identify current user." });
+    }
+
+    const pastClause = includePast
+      ? ""
+      : "AND TIMESTAMP(e.event_date, e.event_time) >= NOW()";
+
+    const sql = `
+      SELECT 
+        e.id,
+        e.title,
+        e.description,
+        DATE_FORMAT(e.event_date, '%Y-%m-%d') AS event_date,
+        TIME_FORMAT(e.event_time, '%H:%i') AS event_time,
+        e.location,
+        e.capacity,
+        COUNT(DISTINCT el.id) AS likes,
+        e.category,
+        e.event_type,
+        e.created_by,
+        DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
+        COUNT(DISTINCT a.id) AS current_count,
+        GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
+        (TIMESTAMP(e.event_date, e.event_time) < NOW()) AS is_past,
+        MAX(CASE WHEN LOWER(a.attendee_name) = ? THEN 1 ELSE 0 END) AS has_joined,
+        MAX(CASE WHEN el.user_id = ? THEN 1 ELSE 0 END) AS has_liked
+      FROM Events e
+      LEFT JOIN Event_Attendees a ON a.event_id = e.id
+      LEFT JOIN Event_Tags t ON t.event_id = e.id
+      LEFT JOIN Event_Likes el ON el.event_id = e.id
+      WHERE (
+        e.created_by = ?
+        OR EXISTS (
+          SELECT 1
+          FROM Event_Attendees a2
+          WHERE a2.event_id = e.id
+            AND LOWER(a2.attendee_name) = ?
+        )
+      )
+      ${pastClause}
+      GROUP BY
+        e.id,
+        e.title,
+        e.description,
+        e.event_date,
+        e.event_time,
+        e.location,
+        e.capacity,
+        e.category,
+        e.event_type,
+        e.created_by,
+        e.published_time
+      ORDER BY e.event_date ASC, e.event_time ASC
+    `;
+
+    db.query(
+      sql,
+      [currentUserEmail, currentUserId, currentUserId, currentUserEmail],
+      (err, rows) => {
+        if (err) {
+          console.log("GET /api/events/my-events error:", err);
+          return res.status(500).json({ error: "Failed to load your events." });
+        }
+
+        return res.json(rows);
+      }
+    );
+  });
+});
+
+// notifications
+app.get('/api/notifications', checkAuth, async (req, res) => {
+    try {
+        const currentUserId = await getNumericUserId(req.user.email);
+        
+        const sql = `
+            SELECT * FROM Notifications 
+            WHERE recipient_id = ? 
+            ORDER BY created_at DESC 
+            LIMIT 50`;
+
+        db.query(sql, [currentUserId], (err, rows) => {
+            if (err) return res.status(500).json({ error: "Failed to fetch notifications" });
+            res.json(rows);
+        });
+    } catch (err) {
+        res.status(404).json({ error: "User not found" });
+    }
+});
+
+app.put('/api/notifications/read-all', checkAuth, async (req, res) => {
+    try {
+        const currentUserId = await getNumericUserId(req.user.email);
+        const sql = "UPDATE Notifications SET is_read = 1 WHERE recipient_id = ?";
+        
+        db.query(sql, [currentUserId], (err) => {
+            if (err) return res.status(500).json({ error: "Update failed" });
+            res.json({ message: "All notifications marked as read" });
+        });
+    } catch (err) {
+        res.status(404).json({ error: "User not found" });
+    }
+});
+
+app.get('/api/notifications/unread-count', checkAuth, async (req, res) => {
+  try {
+    const currentUserId = await getNumericUserId(req.user.email);
+    const sql = "SELECT COUNT(*) as unreadCount FROM Notifications WHERE recipient_id = ? AND is_read = 0";
+    
+    db.query(sql, [currentUserId], (err, results) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ unreadCount: results[0].unreadCount });
+    });
+  } catch (err) {
+    res.status(404).json({ error: "User not found" });
+  }
+});
+
+app.delete('/api/notifications/:id', (req, res) => {
+  const notificationId = req.params.id;
+
+  const query = 'DELETE FROM Notifications WHERE id = ?';
+
+  db.query(query, [notificationId], (err, result) => {
+    if (err) {
+      console.error('Error deleting notification:', err);
+      return res.status(500).json({ error: 'Database deletion failed' });
+    }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Notification not found' });
+    }
+
+    res.status(200).json({ message: 'Deleted successfully' });
+  });
+});
 
 app.listen(port, () => console.log(`Listening on port ${port}`)); 
-
