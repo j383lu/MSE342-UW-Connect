@@ -67,6 +67,181 @@ const triggerNotification = (recipientId, actorId, entityId, entityType, actionT
   });
 };
 
+const getUserDisplayNameById = (userId, callback) => {
+  const sql = `
+    SELECT COALESCE(up.display_name, uc.email) AS display_name
+    FROM User_Credentials uc
+    LEFT JOIN User_Profiles up ON up.user_id = uc.user_id
+    WHERE uc.user_id = ?
+    LIMIT 1
+  `;
+
+  db.query(sql, [userId], (err, rows) => {
+    if (err) {
+      return callback(err, null);
+    }
+
+    if (!rows || rows.length === 0) {
+      return callback(new Error("User display name not found."), null);
+    }
+
+    return callback(null, rows[0].display_name);
+  });
+};
+
+const getEventOwnerInfo = (eventId, callback) => {
+  const sql = `
+    SELECT
+      e.id,
+      e.title,
+      e.created_by,
+      COALESCE(up.display_name, uc.email) AS owner_name
+    FROM Events e
+    LEFT JOIN User_Credentials uc ON uc.user_id = e.created_by
+    LEFT JOIN User_Profiles up ON up.user_id = e.created_by
+    WHERE e.id = ?
+    LIMIT 1
+  `;
+
+  db.query(sql, [eventId], (err, rows) => {
+    if (err) {
+      return callback(err, null);
+    }
+
+    if (!rows || rows.length === 0) {
+      return callback(new Error("Event not found."), null);
+    }
+
+    return callback(null, rows[0]);
+  });
+};
+
+const notifyEventOwnerAboutAttendance = (eventId, actorUserId, actionType, callback = () => {}) => {
+  getEventOwnerInfo(eventId, (eventErr, eventInfo) => {
+    if (eventErr) {
+      console.error("Failed to load event owner info:", eventErr);
+      return callback(eventErr);
+    }
+
+    if (Number(eventInfo.created_by) === Number(actorUserId)) {
+      return callback(null);
+    }
+
+    getUserDisplayNameById(actorUserId, (actorErr, actorName) => {
+      if (actorErr) {
+        console.error("Failed to load actor display name:", actorErr);
+        return callback(actorErr);
+      }
+
+      let message = "";
+
+      if (actionType === "JOIN") {
+        message = `${actorName} joined your event '${eventInfo.title}'`;
+      } else if (actionType === "LEAVE") {
+        message = `${actorName} left your event '${eventInfo.title}'`;
+      } else {
+        return callback(null);
+      }
+
+      createNotification(
+        eventInfo.created_by,
+        actorUserId,
+        eventId,
+        "EVENT",
+        actionType,
+        message
+      );
+
+      return callback(null);
+    });
+  });
+};
+
+const getGroupMembersForNotification = (groupIds, callback) => {
+  if (!Array.isArray(groupIds) || groupIds.length === 0) {
+    return callback(null, []);
+  }
+
+  const placeholders = groupIds.map(() => "?").join(", ");
+
+  const sql = `
+    SELECT DISTINCT
+      gm.user_id,
+      gm.group_id,
+      sg.name AS group_name,
+      COALESCE(up.display_name, uc.email) AS member_name
+    FROM Group_Members gm
+    INNER JOIN Social_Group sg
+      ON sg.group_id = gm.group_id
+    INNER JOIN User_Credentials uc
+      ON uc.user_id = gm.user_id
+    LEFT JOIN User_Profiles up
+      ON up.user_id = gm.user_id
+    WHERE gm.group_id IN (${placeholders})
+    ORDER BY gm.group_id ASC, gm.user_id ASC
+  `;
+
+  db.query(sql, groupIds, (err, rows) => {
+    if (err) {
+      return callback(err, []);
+    }
+
+    return callback(null, rows || []);
+  });
+};
+
+const notifyGroupMembersAboutNewGroupEvent = (
+  eventId,
+  creatorUserId,
+  eventTitle,
+  groupIds,
+  callback = () => {}
+) => {
+  getUserDisplayNameById(creatorUserId, (creatorErr, creatorName) => {
+    if (creatorErr) {
+      console.error("Failed to load creator display name:", creatorErr);
+      return callback(creatorErr);
+    }
+
+    getGroupMembersForNotification(groupIds, (groupErr, memberRows) => {
+      if (groupErr) {
+        console.error("Failed to load group members for notification:", groupErr);
+        return callback(groupErr);
+      }
+
+      const sentUserIds = new Set();
+
+      memberRows.forEach((row) => {
+        const recipientId = Number(row.user_id);
+        const groupName = row.group_name;
+
+        if (recipientId === Number(creatorUserId)) {
+          return;
+        }
+
+        if (sentUserIds.has(recipientId)) {
+          return;
+        }
+
+        sentUserIds.add(recipientId);
+
+        const message = `${creatorName} created a group event '${eventTitle}' in your group '${groupName}'`;
+
+        createNotification(
+          recipientId,
+          creatorUserId,
+          eventId,
+          "EVENT",
+          "CREATE",
+          message
+        );
+      });
+
+      return callback(null);
+    });
+  });
+};
+
 // Create database connection using your config (ONLY ONE DECLARATION)
 const db = mysql.createConnection({
   host: config.host,
@@ -807,12 +982,28 @@ app.post("/api/events", checkAuth, (req, res) => {
                 return res.status(500).json({ error: tagInsertErr.message });
               }
 
-              return res.status(201).json({
-                id: eventId,
-                event_type: safeEventType,
-                group_ids: safeGroupIds,
-                message: "Event created successfully.",
-              });
+              const finishResponse = () => {
+                return res.status(201).json({
+                  id: eventId,
+                  event_type: safeEventType,
+                  group_ids: safeGroupIds,
+                  message: "Event created successfully.",
+                });
+              };
+
+              if (safeEventType !== "group" || safeGroupIds.length === 0) {
+                return finishResponse();
+              }
+
+              notifyGroupMembersAboutNewGroupEvent(
+                eventId,
+                currentUserId,
+                title,
+                safeGroupIds,
+                () => {
+                  return finishResponse();
+                }
+              );
             });
           });
         }
@@ -5012,94 +5203,6 @@ app.delete("/api/events/:id", checkAuth, (req, res) => {
 });
 
 
-const getUserDisplayNameById = (userId, callback) => {
-  const sql = `
-    SELECT COALESCE(up.display_name, uc.email) AS display_name
-    FROM User_Credentials uc
-    LEFT JOIN User_Profiles up ON up.user_id = uc.user_id
-    WHERE uc.user_id = ?
-    LIMIT 1
-  `;
 
-  db.query(sql, [userId], (err, rows) => {
-    if (err) {
-      return callback(err, null);
-    }
-
-    if (!rows || rows.length === 0) {
-      return callback(new Error("User display name not found."), null);
-    }
-
-    return callback(null, rows[0].display_name);
-  });
-};
-
-const getEventOwnerInfo = (eventId, callback) => {
-  const sql = `
-    SELECT
-      e.id,
-      e.title,
-      e.created_by,
-      COALESCE(up.display_name, uc.email) AS owner_name
-    FROM Events e
-    LEFT JOIN User_Credentials uc ON uc.user_id = e.created_by
-    LEFT JOIN User_Profiles up ON up.user_id = e.created_by
-    WHERE e.id = ?
-    LIMIT 1
-  `;
-
-  db.query(sql, [eventId], (err, rows) => {
-    if (err) {
-      return callback(err, null);
-    }
-
-    if (!rows || rows.length === 0) {
-      return callback(new Error("Event not found."), null);
-    }
-
-    return callback(null, rows[0]);
-  });
-};
-
-const notifyEventOwnerAboutAttendance = (eventId, actorUserId, actionType, callback = () => {}) => {
-  getEventOwnerInfo(eventId, (eventErr, eventInfo) => {
-    if (eventErr) {
-      console.error("Failed to load event owner info:", eventErr);
-      return callback(eventErr);
-    }
-
-    if (Number(eventInfo.created_by) === Number(actorUserId)) {
-      return callback(null);
-    }
-
-    getUserDisplayNameById(actorUserId, (actorErr, actorName) => {
-      if (actorErr) {
-        console.error("Failed to load actor display name:", actorErr);
-        return callback(actorErr);
-      }
-
-      let message = "";
-
-      if (actionType === "JOIN") {
-        message = `${actorName} joined your event '${eventInfo.title}'`;
-      } else if (actionType === "LEAVE") {
-        message = `${actorName} left your event '${eventInfo.title}'`;
-      } else {
-        return callback(null);
-      }
-
-      createNotification(
-        eventInfo.created_by,
-        actorUserId,
-        eventId,
-        "EVENT",
-        actionType,
-        message
-      );
-
-      return callback(null);
-    });
-  });
-};
 
 app.listen(port, () => console.log(`Listening on port ${port}`)); 
