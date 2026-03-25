@@ -2,6 +2,7 @@ import mysql from 'mysql';
 import config from './config.js';
 import express from 'express';
 import path from 'path';
+import 'dotenv/config';
 import { fileURLToPath } from 'url';
 import bodyParser from 'body-parser';
 import multer from 'multer'; // For file uploads
@@ -13,6 +14,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+console.log(process.env.PORT);
 const port = process.env.PORT || 5000;
 
 admin.initializeApp({
@@ -472,6 +474,7 @@ const getCurrentUserIdByEmail = (email, callback) => {
 };
 
 // Set up helper function to get the current like count
+// This function gets the total number of likes for a specific event from the database.
 const getCurrentLikeCount = (eventId, callback) => {
   const countSql = `
     SELECT COUNT(*) AS likes
@@ -489,8 +492,9 @@ const getCurrentLikeCount = (eventId, callback) => {
 };
 
 // GET /api/events
-// default: upcoming only
-// if includePast=true: return all events
+// This API is used to get a list of events from the database.
+// If includePast=true is passed in the query, it will return all events including past ones.
+// It also checks the current user to see if they have joined or liked each event.
 app.get("/api/events", checkAuth, (req, res) => {
   const includePast = String(req.query.includePast).toLowerCase() === "true";
   const whereClause = includePast
@@ -558,12 +562,16 @@ app.get("/api/events", checkAuth, (req, res) => {
 });
 
 // POST /api/events (create event)
+// POST /api/events
+// This API creates a new event using the information provided by the user and saves it to the database.
 app.post("/api/events", checkAuth, (req, res) => {
   const {
     title,
     description,
     event_date,
     event_time,
+    end_date,
+    end_time,
     location,
     capacity,
     category,
@@ -577,11 +585,51 @@ app.post("/api/events", checkAuth, (req, res) => {
     !description ||
     !event_date ||
     !event_time ||
+    !end_date ||
+    !end_time ||
     !location ||
     capacity === undefined ||
     !category
   ) {
     return res.status(400).json({ error: "Missing required fields." });
+  }
+
+  const startDateOnly = new Date(`${event_date}T00:00`);
+  const endDateOnly = new Date(`${end_date}T00:00`);
+
+  if (
+    Number.isNaN(startDateOnly.getTime()) ||
+    Number.isNaN(endDateOnly.getTime())
+  ) {
+    return res.status(400).json({ error: "Invalid start date or end date." });
+  }
+
+  if (endDateOnly < startDateOnly) {
+    return res.status(400).json({
+      error: "End date must be later than or equal to start date.",
+    });
+  }
+
+  const startDateTime = new Date(`${event_date}T${event_time}`);
+  const endDateTime = new Date(`${end_date}T${end_time}`);
+
+  if (
+    Number.isNaN(startDateTime.getTime()) ||
+    Number.isNaN(endDateTime.getTime())
+  ) {
+    return res.status(400).json({ error: "Invalid event date or time." });
+  }
+
+  if (event_date === end_date && endDateTime <= startDateTime) {
+    return res.status(400).json({
+      error: "If end date is the same as start date, end time must be later than start time.",
+    });
+  }
+
+  if (endDateTime <= startDateTime) {
+    return res.status(400).json({
+      error: "End date and end time must be later than start date and start time.",
+    });
   }
 
   const capNum = Number(capacity);
@@ -597,7 +645,13 @@ app.post("/api/events", checkAuth, (req, res) => {
   const safeTags = Array.isArray(tags) ? tags : [];
 
   const safeGroupIds = Array.isArray(group_ids)
-    ? [...new Set(group_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))]
+    ? [
+        ...new Set(
+          group_ids
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id) && id > 0)
+        ),
+      ]
     : [];
 
   if (safeEventType === "group" && safeGroupIds.length === 0) {
@@ -625,13 +679,15 @@ app.post("/api/events", checkAuth, (req, res) => {
           description,
           event_date,
           event_time,
+          end_date,
+          end_time,
           location,
           capacity,
           category,
           event_type,
           created_by
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
       db.query(
@@ -641,6 +697,8 @@ app.post("/api/events", checkAuth, (req, res) => {
           description,
           event_date,
           event_time,
+          end_date,
+          end_time,
           location,
           capNum,
           category,
@@ -762,6 +820,7 @@ app.post("/api/events", checkAuth, (req, res) => {
 });
 
 // POST /api/events/:id/join
+// This API lets a user join an event if it is not full, not ended, and they have not joined before.
 app.post("/api/events/:id/join", checkAuth, (req, res) => {
   const eventId = Number(req.params.id);
   const attendeeEmail = String(req.user.email || "").trim().toLowerCase();
@@ -775,7 +834,7 @@ app.post("/api/events/:id/join", checkAuth, (req, res) => {
   }
 
   const eventSql = `
-    SELECT id, title, event_date, event_time, capacity
+    SELECT id, title, event_date, event_time, end_date, end_time, capacity
     FROM Events
     WHERE id = ?
     LIMIT 1
@@ -794,20 +853,29 @@ app.post("/api/events/:id/join", checkAuth, (req, res) => {
     const event = rows[0];
     const cap = Number(event.capacity || 0);
 
-    const isPastSql = `
-      SELECT (TIMESTAMP(event_date, event_time) < NOW()) AS is_past
+    const statusSql = `
+      SELECT
+        CASE
+          WHEN NOW() < TIMESTAMP(event_date, event_time) THEN 'open_for_application'
+          WHEN NOW() >= TIMESTAMP(event_date, event_time) AND NOW() <= TIMESTAMP(end_date, end_time) THEN 'in_progress'
+          ELSE 'ended'
+        END AS event_status,
+        CASE
+          WHEN NOW() > TIMESTAMP(end_date, end_time) THEN 1
+          ELSE 0
+        END AS is_past
       FROM Events
       WHERE id = ?
       LIMIT 1
     `;
 
-    db.query(isPastSql, [eventId], (pastErr, pastRows) => {
-      if (pastErr || pastRows.length === 0) {
-        return res.status(500).json({ error: "Failed to check event time." });
+    db.query(statusSql, [eventId], (statusErr, statusRows) => {
+      if (statusErr || statusRows.length === 0) {
+        return res.status(500).json({ error: "Failed to check event status." });
       }
 
-      if (Number(pastRows[0].is_past) === 1) {
-        return res.status(400).json({ error: "This event already ended." });
+      if (String(statusRows[0].event_status) === "ended") {
+        return res.status(400).json({ error: "This event has already ended." });
       }
 
       const duplicateSql = `
@@ -875,6 +943,7 @@ app.post("/api/events/:id/join", checkAuth, (req, res) => {
 });
 
 // DELETE /api/events/:id/leave
+// This API allows a user to leave an event they joined and updates the attendee count.
 app.delete("/api/events/:id/leave", checkAuth, (req, res) => {
   const eventId = Number(req.params.id);
   const attendeeEmail = String(req.user.email || "").trim().toLowerCase();
@@ -946,6 +1015,7 @@ app.delete("/api/events/:id/leave", checkAuth, (req, res) => {
 });
 
 // GET /api/events/:id/attendees
+// This API returns the list of users who joined a specific event with their basic information.
 app.get("/api/events/:id/attendees", checkAuth, (req, res) => {
   const eventId = Number(req.params.id);
 
@@ -1004,7 +1074,6 @@ app.get("/api/tags", checkAuth, (req, res) => {
 // CREATE GROUP API (with optional image upload):
 app.post("/api/groups", checkAuth, upload.single('coverImage'), (req, res) => {
   const { name, description, category, isOpen, maxMembers } = req.body;
-  const explicitCreatorId = Number(req.body.user_id);
 
   const createGroupWithCreator = (creator_id) => {
     if (!creator_id) {
@@ -1026,6 +1095,7 @@ app.post("/api/groups", checkAuth, upload.single('coverImage'), (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
 
+    db.query(sql, [creator_id, name, description, category, is_private, max_members, image_url], (err, result) => {
     db.query(sql, [creator_id, name, description, category, is_private, max_members, image_url],
       (err, result) => {
       if (err) {
@@ -1269,28 +1339,28 @@ app.delete("/api/groups/:groupId/leave", (req, res) => {
   const userId = Number(req.body.userId);
 
   const infoSql = `
-    SELECT sg.name, sg.creator_id, up.display_name 
+    SELECT sg.name, sg.creator_id, up.display_name
     FROM Social_Group sg
     JOIN User_Profiles up ON up.user_id = ?
     WHERE sg.group_id = ?`;
   
-  const sql = "DELETE FROM Group_Members WHERE group_id = ? AND user_id = ?";
-
-  db.query(sql, [groupId, userId], (err, result) => {
-    if (infoErr || rows.length === 0) {
-        // Just proceed with delete if info lookup fails
-        performDelete();
-        return;
+  console.log("leave group fetch")
+  db.query(infoSql, [userId, groupId], (err, result) => {
+    
+    if (result.length === 0) {
+      return res.status(404).json({ error: "Group not found" });
     }
 
-    const { name, creator_id, display_name } = rows[0];
+    if (err) return res.status(500).json({ error: "Failed to leave group" });
+
+    const { name, display_name, creator_id } = result[0];
 
     function performDelete() {
       const sql = "DELETE FROM Group_Members WHERE group_id = ? AND user_id = ?";
       db.query(sql, [groupId, userId], (err, result) => {
         if (err) return res.status(500).json({ error: "Failed to leave group" });
         
-        // 2. Trigger Notification if delete worked
+        // Trigger Notification if delete worked
         if (result.affectedRows > 0 && creator_id !== userId) {
           const msg = `${display_name || "A student"} left your group: ${name}`;
           triggerNotification(creator_id, userId, groupId, 'GROUP', 'LEAVE', msg);
@@ -2026,7 +2096,7 @@ app.get('/api/posts/search', checkAuth, async (req, res) => {
   const searchSql = `
         SELECT p.post_id, p.title, p.content AS description, p.author_id, 
           p.group_id, sg.name AS group_name, p.created_at AS createdAt,
-          up.display_name AS author_name,
+          up.display_name AS author_name, up.avatar_url AS author_avatar,
           GROUP_CONCAT(DISTINCT t.tag_name) AS tags,
           COUNT(DISTINCT l.like_id) AS like_count,
           MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me,
@@ -2063,8 +2133,10 @@ app.get('/api/posts/search', checkAuth, async (req, res) => {
       like_count: post.like_count ?? 0,
       liked_by_me: post.liked_by_me === 1,
       comment_count: post.comment_count ?? 0,
-      group_id: post.group_id,        // new
-      group_name: post.group_name     // new
+      group_id: post.group_id,        
+      group_name: post.group_name,
+      is_anonymous: post.is_anonymous === 1,
+      author_avatar: post.is_anonymous ? null : post.author_avatar,     
     }));
 
     if (formattedPosts.length === 0) {
@@ -2088,7 +2160,7 @@ app.get('/api/posts/tag/:tagName', checkAuth, async (req, res) => {
 
   const sql = `
         SELECT p.post_id, p.title, p.content, p.author_id, p.group_id, sg.name AS group_name, 
-                p.created_at AS createdAt, up.display_name AS author_name,
+                p.created_at AS createdAt, up.display_name AS author_name, up.avatar_url AS author_avatar,
                GROUP_CONCAT(DISTINCT t.tag_name) AS tags,
                COUNT(DISTINCT l.like_id) AS like_count,
                MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me,
@@ -2126,8 +2198,11 @@ app.get('/api/posts/tag/:tagName', checkAuth, async (req, res) => {
       like_count: post.like_count ?? 0,
       liked_by_me: post.liked_by_me === 1,
       comment_count: post.comment_count ?? 0,
-      group_id: post.group_id,        // new
-      group_name: post.group_name     // new
+      group_id: post.group_id,       
+      group_name: post.group_name,
+      is_anonymous: post.is_anonymous === 1,
+      author_avatar: post.is_anonymous ? null : post.author_avatar,
+
     }));
 
     if (formattedPosts.length === 0) {
@@ -2140,8 +2215,8 @@ app.get('/api/posts/tag/:tagName', checkAuth, async (req, res) => {
 
 // GET API for posts
 app.get('/api/posts', checkAuth, async (req, res) => {
-  const { filter } = req.query
-  let currentUserId; //Placeholde, need to replace with actually user id later
+  const { filter, sort } = req.query
+  let currentUserId; 
   try {
     currentUserId = await getNumericUserId(req.user.email);
   } catch (err) {
@@ -2163,10 +2238,16 @@ app.get('/api/posts', checkAuth, async (req, res) => {
             OR sg.is_private = 0
           )`;
 
+  // sort clause
+  const orderClause = sort === 'likes'
+    ? 'ORDER BY like_count DESC, p.post_id DESC'
+    : sort ==='comments'
+    ? 'ORDER BY comment_count DESC, p.post_id DESC'
+    :'ORDER BY p.post_id DESC'; // default is most recent
   let sql = `
          SELECT p.post_id, p.title, p.content, p.author_id, p.group_id, sg.name AS group_name,
                p.is_anonymous, p.image_url, p.created_at AS createdAt,
-               up.display_name AS author_name,
+               up.display_name AS author_name,up.avatar_url AS author_avatar,
                GROUP_CONCAT(DISTINCT t.tag_name) AS tags,
                COUNT(DISTINCT l.like_id) AS like_count,
                MAX(CASE WHEN l.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me,
@@ -2179,7 +2260,7 @@ app.get('/api/posts', checkAuth, async (req, res) => {
         LEFT JOIN Likes l ON p.post_id = l.post_id
         ${whereClause}
         GROUP BY p.post_id
-        ORDER BY p.post_id DESC
+        ${orderClause}
     `;
 
   db.query(sql, filter === 'mygroups' ? [currentUserId, currentUserId] : [currentUserId], (err, results) => {
@@ -2202,7 +2283,8 @@ app.get('/api/posts', checkAuth, async (req, res) => {
       comment_count: post.comment_count ?? 0,
       group_id: post.group_id,
       group_name: post.group_name,
-      is_anonymous: post.is_anonymous === 1
+      is_anonymous: post.is_anonymous === 1,
+      author_avatar: post.is_anonymous ? null : post.author_avatar,
     }));
 
     res.json(formattedPosts);
@@ -2253,7 +2335,7 @@ app.get('/api/posts/:id', checkAuth, async (req, res) => {
       author_name: post.is_anonymous ? 'Anonymous' : (post.author_name ?? 'Unknown'),
       title: post.title,
       description: post.content,
-      group_id: post.group_name,
+      group_id: post.group_id,
       tags: post.tags ? post.tags.split(',') : [],
       createdAt: post.createdAt ? new Date(post.createdAt).toISOString() : null,
       like_count: post.like_count ?? 0,
@@ -2272,7 +2354,8 @@ app.get('/api/posts/:id/comments', checkAuth, async (req, res) => {
 
   const sql = `
         SELECT c.comment_id, c.post_id, c.user_id, c.parent_comment_id,
-               c.content, c.created_at AS createdAt, up.display_name as author_name
+               c.content, c.created_at AS createdAt, 
+               up.display_name as author_name, up.avatar_url AS author_avatar
         FROM Comments c
         LEFT JOIN User_Profiles up ON c.user_id = up.user_id
         WHERE c.post_id = ?
@@ -2318,11 +2401,14 @@ app.post('/api/posts/:id/comments', checkAuth, async (req, res) => {
       [currentUserId],
       (err2, profileRows) => {
         const author_name = profileRows?.[0]?.display_name ?? `User ${currentUserId}`;
+        const author_avatar = profileRows?.[0]?.avatar_url ?? null;
+
         res.json({
           comment_id: result.insertId,
           post_id: parseInt(postId),
           user_id: currentUserId,
           author_name,
+          author_avatar,
           parent_comment_id,
           content,
           createdAt: new Date().toISOString()
@@ -2827,6 +2913,7 @@ app.get("/api/events/search", checkAuth, (req, res) => {
   });
 });
 
+// Delete API route to delete a search history for the logged-in user
 app.delete("/api/events/search-history", checkAuth, (req, res) => {
   const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
   const term = String(req.body.search_term || "").trim();
@@ -2861,6 +2948,7 @@ app.delete("/api/events/search-history", checkAuth, (req, res) => {
   });
 });
 
+// Get API route for search suggestions in the event page.
 app.get("/api/events/suggestions", checkAuth, (req, res) => {
   const keyword = String(req.query.keyword || "").trim();
   const tab = String(req.query.tab || "public").trim();
@@ -3087,8 +3175,8 @@ app.get("/api/my-groups", checkAuth, (req, res) => {
 });
 
 // GET /api/events/public
-// Show only public events with default of upcoming events only
-// if includePast=true then return all public events
+// Show public events and group events visible to this user.
+// If includePast=false, only return events that have not ended yet.
 app.get("/api/events/public", checkAuth, (req, res) => {
   const includePast = String(req.query.includePast).toLowerCase() === "true";
   const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
@@ -3105,7 +3193,7 @@ app.get("/api/events/public", checkAuth, (req, res) => {
 
     const pastClause = includePast
       ? ""
-      : "AND TIMESTAMP(e.event_date, e.event_time) >= NOW()";
+      : "AND NOW() <= TIMESTAMP(e.end_date, e.end_time)";
 
     const sql = `
       SELECT 
@@ -3114,6 +3202,8 @@ app.get("/api/events/public", checkAuth, (req, res) => {
         e.description,
         DATE_FORMAT(e.event_date, '%Y-%m-%d') AS event_date,
         TIME_FORMAT(e.event_time, '%H:%i') AS event_time,
+        DATE_FORMAT(e.end_date, '%Y-%m-%d') AS end_date,
+        TIME_FORMAT(e.end_time, '%H:%i') AS end_time,
         e.location,
         e.capacity,
         COUNT(DISTINCT el.id) AS likes,
@@ -3123,7 +3213,15 @@ app.get("/api/events/public", checkAuth, (req, res) => {
         DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
         COUNT(DISTINCT a.id) AS current_count,
         GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
-        (TIMESTAMP(e.event_date, e.event_time) < NOW()) AS is_past,
+        CASE
+          WHEN NOW() > TIMESTAMP(e.end_date, e.end_time) THEN 1
+          ELSE 0
+        END AS is_past,
+        CASE
+          WHEN NOW() < TIMESTAMP(e.event_date, e.event_time) THEN 'open_for_application'
+          WHEN NOW() >= TIMESTAMP(e.event_date, e.event_time) AND NOW() <= TIMESTAMP(e.end_date, e.end_time) THEN 'in_progress'
+          ELSE 'ended'
+        END AS event_status,
         MAX(CASE WHEN LOWER(a.attendee_name) = ? THEN 1 ELSE 0 END) AS has_joined,
         MAX(CASE WHEN el.user_id = ? THEN 1 ELSE 0 END) AS has_liked
       FROM Events e
@@ -3151,6 +3249,8 @@ app.get("/api/events/public", checkAuth, (req, res) => {
         e.description,
         e.event_date,
         e.event_time,
+        e.end_date,
+        e.end_time,
         e.location,
         e.capacity,
         e.category,
@@ -3163,7 +3263,7 @@ app.get("/api/events/public", checkAuth, (req, res) => {
     db.query(sql, [currentUserEmail, currentUserId, currentUserId], (err, rows) => {
       if (err) {
         console.log("GET /api/events/public error:", err);
-        return res.status(500).json({ error: "Failed to load upcoming events." });
+        return res.status(500).json({ error: "Failed to load events." });
       }
 
       return res.json(rows);
@@ -3172,8 +3272,8 @@ app.get("/api/events/public", checkAuth, (req, res) => {
 });
 
 // GET /api/events/my-groups
-// show only group events linked to groups the current user joined with default of upcoming events only
-// if includePast=true then return all matching group events
+// Show only group events linked to groups the current user joined.
+// If includePast=false, only return events that have not ended yet.
 app.get("/api/events/my-groups", checkAuth, (req, res) => {
   const includePast = String(req.query.includePast).toLowerCase() === "true";
   const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
@@ -3190,7 +3290,7 @@ app.get("/api/events/my-groups", checkAuth, (req, res) => {
 
     const pastClause = includePast
       ? ""
-      : "AND TIMESTAMP(e.event_date, e.event_time) >= NOW()";
+      : "AND NOW() <= TIMESTAMP(e.end_date, e.end_time)";
 
     const sql = `
       SELECT 
@@ -3199,6 +3299,8 @@ app.get("/api/events/my-groups", checkAuth, (req, res) => {
         e.description,
         DATE_FORMAT(e.event_date, '%Y-%m-%d') AS event_date,
         TIME_FORMAT(e.event_time, '%H:%i') AS event_time,
+        DATE_FORMAT(e.end_date, '%Y-%m-%d') AS end_date,
+        TIME_FORMAT(e.end_time, '%H:%i') AS end_time,
         e.location,
         e.capacity,
         COUNT(DISTINCT el.id) AS likes,
@@ -3208,7 +3310,15 @@ app.get("/api/events/my-groups", checkAuth, (req, res) => {
         DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
         COUNT(DISTINCT a.id) AS current_count,
         GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
-        (TIMESTAMP(e.event_date, e.event_time) < NOW()) AS is_past,
+        CASE
+          WHEN NOW() > TIMESTAMP(e.end_date, e.end_time) THEN 1
+          ELSE 0
+        END AS is_past,
+        CASE
+          WHEN NOW() < TIMESTAMP(e.event_date, e.event_time) THEN 'open_for_application'
+          WHEN NOW() >= TIMESTAMP(e.event_date, e.event_time) AND NOW() <= TIMESTAMP(e.end_date, e.end_time) THEN 'in_progress'
+          ELSE 'ended'
+        END AS event_status,
         MAX(CASE WHEN LOWER(a.attendee_name) = ? THEN 1 ELSE 0 END) AS has_joined,
         MAX(CASE WHEN el.user_id = ? THEN 1 ELSE 0 END) AS has_liked
       FROM Events e
@@ -3225,6 +3335,8 @@ app.get("/api/events/my-groups", checkAuth, (req, res) => {
         e.description,
         e.event_date,
         e.event_time,
+        e.end_date,
+        e.end_time,
         e.location,
         e.capacity,
         e.category,
@@ -3246,8 +3358,8 @@ app.get("/api/events/my-groups", checkAuth, (req, res) => {
 });
 
 // GET /api/events/my-events
-// show events the current user joined or created with default of upcoming events only
-// if includePast=true then return all matching events
+// Show events the current user created or joined.
+// If includePast=false, only return events that have not ended yet.
 app.get("/api/events/my-events", checkAuth, (req, res) => {
   const includePast = String(req.query.includePast).toLowerCase() === "true";
   const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
@@ -3264,7 +3376,7 @@ app.get("/api/events/my-events", checkAuth, (req, res) => {
 
     const pastClause = includePast
       ? ""
-      : "AND TIMESTAMP(e.event_date, e.event_time) >= NOW()";
+      : "AND NOW() <= TIMESTAMP(e.end_date, e.end_time)";
 
     const sql = `
       SELECT 
@@ -3273,6 +3385,8 @@ app.get("/api/events/my-events", checkAuth, (req, res) => {
         e.description,
         DATE_FORMAT(e.event_date, '%Y-%m-%d') AS event_date,
         TIME_FORMAT(e.event_time, '%H:%i') AS event_time,
+        DATE_FORMAT(e.end_date, '%Y-%m-%d') AS end_date,
+        TIME_FORMAT(e.end_time, '%H:%i') AS end_time,
         e.location,
         e.capacity,
         COUNT(DISTINCT el.id) AS likes,
@@ -3282,7 +3396,15 @@ app.get("/api/events/my-events", checkAuth, (req, res) => {
         DATE_FORMAT(e.published_time, '%Y-%m-%d %H:%i') AS published_time,
         COUNT(DISTINCT a.id) AS current_count,
         GROUP_CONCAT(DISTINCT t.tag_name ORDER BY t.tag_name SEPARATOR ',') AS tags,
-        (TIMESTAMP(e.event_date, e.event_time) < NOW()) AS is_past,
+        CASE
+          WHEN NOW() > TIMESTAMP(e.end_date, e.end_time) THEN 1
+          ELSE 0
+        END AS is_past,
+        CASE
+          WHEN NOW() < TIMESTAMP(e.event_date, e.event_time) THEN 'open_for_application'
+          WHEN NOW() >= TIMESTAMP(e.event_date, e.event_time) AND NOW() <= TIMESTAMP(e.end_date, e.end_time) THEN 'in_progress'
+          ELSE 'ended'
+        END AS event_status,
         MAX(CASE WHEN LOWER(a.attendee_name) = ? THEN 1 ELSE 0 END) AS has_joined,
         MAX(CASE WHEN el.user_id = ? THEN 1 ELSE 0 END) AS has_liked
       FROM Events e
@@ -3321,6 +3443,8 @@ app.get("/api/events/my-events", checkAuth, (req, res) => {
         e.description,
         e.event_date,
         e.event_time,
+        e.end_date,
+        e.end_time,
         e.location,
         e.capacity,
         e.category,
@@ -3391,6 +3515,25 @@ app.get('/api/notifications/unread-count', checkAuth, async (req, res) => {
   } catch (err) {
     res.status(404).json({ error: "User not found" });
   }
+});
+
+app.delete('/api/notifications/:id', (req, res) => {
+  const notificationId = req.params.id;
+
+  const query = 'DELETE FROM Notifications WHERE id = ?';
+
+  db.query(query, [notificationId], (err, result) => {
+    if (err) {
+      console.error('Error deleting notification:', err);
+      return res.status(500).json({ error: 'Database deletion failed' });
+    }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Notification not found' });
+    }
+
+    res.status(200).json({ message: 'Deleted successfully' });
+  });
 });
 
 app.listen(port, () => console.log(`Listening on port ${port}`)); 

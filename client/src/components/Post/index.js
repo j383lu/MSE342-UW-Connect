@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { Grid, Button, Typography, TextField, Stack, Chip, Box } from "@mui/material";
+import { Grid, Button, Typography, TextField, Stack, Chip, Box, Collapse } from "@mui/material";
 import PostList from "./PostList";
 import CreatePostForm from "./CreatePostForm";
 import EditPostForm from "./EditPostForm";
 import { withFirebase } from "../Firebase";
 import { useUser } from "../../contexts/UserContext";
+import TuneIcon from "@mui/icons-material/Tune";
 
 function Post({ firebase }) {
   const { dbUser, loading } = useUser();
@@ -16,19 +17,23 @@ function Post({ firebase }) {
   const [editingPost, setEditingPost] = useState(null);
   const [activeTag, setActiveTag] = useState(null);
   const [activeView, setActiveView] = useState('all');
+  const [sortBy, setSortBy] = useState('recent');
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && dbUser) {
       fetchPosts();
     }
-  }, [dbUser, loading, activeView]);
+  }, [dbUser, loading, activeView, sortBy]);
 
   const fetchPosts = async () => {
     try {
       const token = await firebase.auth.currentUser?.getIdToken();
-      const url = activeView === 'groups'
-        ? '/api/posts?filter=mygroups'
-        : '/api/posts';
+      const params = new URLSearchParams();
+      if (activeView === 'groups') params.append('filter', 'mygroups');
+      if (sortBy !== 'recent') params.append('sort', sortBy);
+
+      const url = `/api/posts?${params.toString()}`;
       const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -242,6 +247,7 @@ function Post({ firebase }) {
             label="Search posts..."
             value={searchKeyword}
             onChange={(e) => setSearchKeyword(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
             error={Boolean(searchError)}
             helperText={searchError}
             sx={{
@@ -255,7 +261,7 @@ function Post({ firebase }) {
             Search
           </Button>
           <Button variant="outlined" onClick={handleReset}>
-            Reset
+            Clear
           </Button>
         </Stack>
         {/* Active tag indicator */}
@@ -329,7 +335,70 @@ function Post({ firebase }) {
           </Button>
         </Box>
       </Grid>
-      
+
+      {/* Filter/sort toggle button */}
+      <Grid item xs={12}>
+        <Button
+          startIcon={<TuneIcon />}
+          onClick={() => setFiltersOpen(prev => !prev)}
+          variant="outlined"
+          size="small"
+          sx={{
+            borderRadius: '20px',
+            textTransform: 'none',
+            borderColor: filtersOpen ? '#5D6C5C' : '#D6DFE2',
+            color: filtersOpen ? '#5D6C5C' : '#686967',
+            fontWeight: filtersOpen ? 600 : 400,
+          }}
+        >
+          {filtersOpen ? 'Hide filters' : 'Filters & sort'}
+        </Button>
+      </Grid>
+
+      {/* Collapsible panel */}
+      <Grid item xs={12}>
+        <Collapse in={filtersOpen}>
+          <Box sx={{
+            border: '1px solid #D6DFE2',
+            borderRadius: 2,
+            p: 2,
+            background: '#F8F9F8'
+          }}>
+            <Typography variant="body2" sx={{
+              fontWeight: 600,
+              color: '#17292B',
+              mb: 1
+            }}>
+              Sort by
+            </Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap">
+              {[
+                { label: 'Most recent', value: 'recent' },
+                { label: 'Most liked', value: 'likes' },
+                { label: 'Most commented', value: 'comments' }
+              ].map(option => (
+                <Chip
+                  key={option.value}
+                  label={option.label}
+                  onClick={() => setSortBy(option.value)}
+                  sx={{
+                    borderRadius: '20px',
+                    fontWeight: sortBy === option.value ? 600 : 400,
+                    background: sortBy === option.value ? '#5D6C5C' : 'transparent',
+                    color: sortBy === option.value ? '#FDFDF6' : '#686967',
+                    border: '1px solid',
+                    borderColor: sortBy === option.value ? '#5D6C5C' : '#D6DFE2',
+                    '&:hover': {
+                      background: sortBy === option.value ? '#5D6C5C' : 'rgba(93,108,92,0.08)'
+                    }
+                  }}
+                />
+              ))}
+            </Stack>
+          </Box>
+        </Collapse>
+      </Grid>
+
       {/* Post List */}
       <Grid item xs={12}>
         <PostList

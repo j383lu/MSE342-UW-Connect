@@ -901,6 +901,18 @@ const eventStyles = {
     fontSize: "13px",
     border: "1px solid #c7dcf7",
   },
+
+  statusOpenForApplication: {
+  background: "#dfe8db",
+  color: "#49654b",
+  border: "1px solid #b9cab7",
+},
+
+  statusInProgress: {
+    background: "#e8f1ff",
+    color: "#2d5ea8",
+    border: "1px solid #bfd2f2",
+  },
   
 };
 

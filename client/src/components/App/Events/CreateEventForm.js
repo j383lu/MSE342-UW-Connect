@@ -11,6 +11,8 @@ export default function CreateEventForm() {
   const [description, setDescription] = useState("");
   const [eventDate, setEventDate] = useState("");
   const [eventTime, setEventTime] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [endTime, setEndTime] = useState("");
   const [location, setLocation] = useState("");
   const [capacity, setCapacity] = useState("");
 
@@ -31,7 +33,9 @@ export default function CreateEventForm() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
+  // This hook runs once when the page loads and fetches category data from the server
   useEffect(() => {
+    // The loadCategories function loads event categories from the backend when the page first opens
     const loadCategories = async () => {
       try {
         const res = await fetch("/api/categories");
@@ -51,6 +55,7 @@ export default function CreateEventForm() {
     loadCategories();
   }, []);
 
+  // This function loads the groups that user has joined so they can create group events
   const loadMyGroups = async () => {
     try {
       setGroupsLoading(true);
@@ -98,6 +103,7 @@ export default function CreateEventForm() {
     }
   };
 
+  // This function changes between public and private event types and loads group data
   const handleEventTypeChange = async (type) => {
     setEventType(type);
     setError("");
@@ -118,6 +124,7 @@ export default function CreateEventForm() {
     }
   };
 
+  // This handler function adds a new tag to the event if it is not empty or already added
   const handleAddTag = () => {
     const cleanTag = tagInput.trim();
 
@@ -136,10 +143,12 @@ export default function CreateEventForm() {
     setTagInput("");
   };
 
+  // This handler function removes a selected tag from the tag list
   const handleRemoveTag = (tagToRemove) => {
     setTags((prev) => prev.filter((tag) => tag !== tagToRemove));
   };
 
+  // This handler function adds a selected group to the event
   const handleAddGroup = () => {
     if (!groupSelectValue) return;
 
@@ -162,12 +171,55 @@ export default function CreateEventForm() {
     setGroupSelectValue("");
   };
 
+  // This handler function removes a selected group from the group list
   const handleRemoveGroup = (groupIdToRemove) => {
     setSelectedGroups((prev) =>
       prev.filter((group) => String(group.group_id) !== String(groupIdToRemove))
     );
   };
 
+  // This function checks whether end date and end time are valid compared to start date and start time
+  const validateEventDateTime = () => {
+    if (!eventDate || !eventTime || !endDate || !endTime) {
+      return "Please fill in all start and end date and time fields.";
+    }
+
+    const startDateOnly = new Date(`${eventDate}T00:00`);
+    const endDateOnly = new Date(`${endDate}T00:00`);
+
+    if (
+      Number.isNaN(startDateOnly.getTime()) ||
+      Number.isNaN(endDateOnly.getTime())
+    ) {
+      return "Please enter valid start date and end date.";
+    }
+
+    if (endDateOnly < startDateOnly) {
+      return "End date must be later than or equal to start date.";
+    }
+
+    const startDateTime = new Date(`${eventDate}T${eventTime}`);
+    const endDateTime = new Date(`${endDate}T${endTime}`);
+
+    if (
+      Number.isNaN(startDateTime.getTime()) ||
+      Number.isNaN(endDateTime.getTime())
+    ) {
+      return "Please enter valid start time and end time.";
+    }
+
+    if (eventDate === endDate && endDateTime <= startDateTime) {
+      return "If end date is the same as start date, end time must be later than start time.";
+    }
+
+    if (endDateTime <= startDateTime) {
+      return "End date and end time must be later than start date and start time.";
+    }
+
+    return "";
+  };
+
+  // Check the input fields and send request to the backend and create a new event
   const handleCreate = async (e) => {
     e.preventDefault();
     setError("");
@@ -178,11 +230,19 @@ export default function CreateEventForm() {
       !description ||
       !eventDate ||
       !eventTime ||
+      !endDate ||
+      !endTime ||
       !location ||
       !capacity ||
       !category
     ) {
       setError("Please fill in all fields.");
+      return;
+    }
+
+    const dateTimeError = validateEventDateTime();
+    if (dateTimeError) {
+      setError(dateTimeError);
       return;
     }
 
@@ -217,6 +277,8 @@ export default function CreateEventForm() {
           description,
           event_date: eventDate,
           event_time: eventTime,
+          end_date: endDate,
+          end_time: endTime,
           location,
           capacity: capNum,
           category,
@@ -458,7 +520,7 @@ export default function CreateEventForm() {
 
             <div style={styles.formRow}>
               <div style={styles.formField}>
-                <label style={styles.formLabel}>Date</label>
+                <label style={styles.formLabel}>Start Date</label>
                 <input
                   type="date"
                   value={eventDate}
@@ -468,11 +530,33 @@ export default function CreateEventForm() {
               </div>
 
               <div style={styles.formField}>
-                <label style={styles.formLabel}>Time</label>
+                <label style={styles.formLabel}>Start Time</label>
                 <input
                   type="time"
                   value={eventTime}
                   onChange={(e) => setEventTime(e.target.value)}
+                  style={styles.formInput}
+                />
+              </div>
+            </div>
+
+            <div style={styles.formRow}>
+              <div style={styles.formField}>
+                <label style={styles.formLabel}>End Date</label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  style={styles.formInput}
+                />
+              </div>
+
+              <div style={styles.formField}>
+                <label style={styles.formLabel}>End Time</label>
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
                   style={styles.formInput}
                 />
               </div>

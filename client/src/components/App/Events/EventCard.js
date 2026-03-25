@@ -21,6 +21,7 @@ export default function EventCard({
   const [liked, setLiked] = useState(Number(ev.has_liked || 0) === 1);
   const [likeLoading, setLikeLoading] = useState(false);
 
+  // This hook updates the like data when the event props change
   useEffect(() => {
     setLikes(Number(ev.likes || 0));
     setLiked(Number(ev.has_liked || 0) === 1);
@@ -31,19 +32,33 @@ export default function EventCard({
   const isFull = max > 0 && current >= max;
   const hasJoined = Number(ev.has_joined || 0) === 1;
 
-  const statusStyle = isPast
-    ? styles.statusEnded
-    : isFull
-    ? styles.statusFull
-    : styles.statusOpen;
-
-  const statusText = isPast ? "Ended" : isFull ? "Full" : "Open";
   const eventTags = ev.tags ? ev.tags.split(",") : [];
+
   const eventTypeText =
     String(ev.event_type || "public").toLowerCase() === "group"
       ? "Group"
       : "Public";
 
+  const currentStatus =
+    ev.event_status || (isPast ? "ended" : "open_for_application");
+
+  const statusText =
+    currentStatus === "in_progress"
+      ? "In Progress"
+      : currentStatus === "ended"
+      ? "Event has Ended"
+      : "Open For Application";
+
+  const statusStyle =
+    currentStatus === "in_progress"
+      ? styles.statusInProgress
+      : currentStatus === "ended"
+      ? styles.statusEnded
+      : styles.statusOpenForApplication;
+
+  const disableJoin = currentStatus === "ended" || isFull;
+
+  // This handler function allows the user to like or unlike an event and update the result
   const handleLikeToggle = async (e) => {
     e.preventDefault();
 
@@ -109,14 +124,52 @@ export default function EventCard({
           <div style={styles.title}>{ev.title}</div>
 
           <div style={styles.metaBlock}>
-            <div style={styles.metaLine}>
-              <span style={styles.metaLabel}>Date</span>
-              <span style={styles.metaValue}>{ev.event_date}</span>
+            <div style={{ display: "flex", gap: "24px", flexWrap: "wrap" }}>
+              <div
+                style={{
+                  ...styles.metaLine,
+                  flex: "1 1 220px",
+                  minWidth: "220px",
+                }}
+              >
+                <span style={styles.metaLabel}>Start Date</span>
+                <span style={styles.metaValue}>{ev.event_date}</span>
+              </div>
+
+              <div
+                style={{
+                  ...styles.metaLine,
+                  flex: "1 1 220px",
+                  minWidth: "220px",
+                }}
+              >
+                <span style={styles.metaLabel}>Start Time</span>
+                <span style={styles.metaValue}>{ev.event_time}</span>
+              </div>
             </div>
 
-            <div style={styles.metaLine}>
-              <span style={styles.metaLabel}>Time</span>
-              <span style={styles.metaValue}>{ev.event_time}</span>
+            <div style={{ display: "flex", gap: "24px", flexWrap: "wrap" }}>
+              <div
+                style={{
+                  ...styles.metaLine,
+                  flex: "1 1 220px",
+                  minWidth: "220px",
+                }}
+              >
+                <span style={styles.metaLabel}>End Date</span>
+                <span style={styles.metaValue}>{ev.end_date}</span>
+              </div>
+
+              <div
+                style={{
+                  ...styles.metaLine,
+                  flex: "1 1 220px",
+                  minWidth: "220px",
+                }}
+              >
+                <span style={styles.metaLabel}>End Time</span>
+                <span style={styles.metaValue}>{ev.end_time}</span>
+              </div>
             </div>
 
             <div style={styles.metaLine}>
@@ -132,14 +185,14 @@ export default function EventCard({
         </div>
 
         <div style={styles.rightBox}>
+          <div style={{ ...styles.statusPill, ...statusStyle, marginBottom: "12px" }}>
+            {statusText}
+          </div>
+
           <div style={styles.capacity}>
             {current}/{max}
           </div>
           <div style={styles.capacityHint}>RSVP spots</div>
-
-          <div style={{ ...styles.statusPill, ...statusStyle }}>
-            {statusText}
-          </div>
         </div>
       </div>
 
@@ -196,8 +249,12 @@ export default function EventCard({
         {hasJoined ? (
           <button
             type="button"
-            style={styles.leaveBtn}
+            style={{
+              ...styles.leaveBtn,
+              ...(currentStatus === "ended" ? styles.joinBtnDisabled : null),
+            }}
             onClick={() => handleLeave(ev)}
+            disabled={currentStatus === "ended"}
           >
             Leave Event
           </button>
@@ -206,9 +263,9 @@ export default function EventCard({
             type="button"
             style={{
               ...styles.joinBtn,
-              ...(isFull || isPast ? styles.joinBtnDisabled : null),
+              ...(disableJoin ? styles.joinBtnDisabled : null),
             }}
-            disabled={isFull || isPast}
+            disabled={disableJoin}
             onClick={() => handleJoin(ev)}
           >
             Join Event

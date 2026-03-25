@@ -44,6 +44,7 @@ describe('Signup Component', () => {
     fireEvent.change(container.querySelector('input[name="email"]'), { target: { value: 'lauren@uwaterloo.ca' } });
     fireEvent.change(container.querySelector('input[name="password"]'), { target: { value: 'ValidPass1!' } });
     fireEvent.change(container.querySelector('input[name="confirmpassword"]'), { target: { value: 'ValidPass1!' } });
+    fireEvent.change(container.querySelector('input[name="role"]'), { target: { value: 'Student' } });
 
     fireEvent.submit(container.querySelector('form'));
 
@@ -55,7 +56,7 @@ describe('Signup Component', () => {
   // Acceptance Criteria 2: Empty entries
   test('shows validation errors when fields are empty', async() => {
     renderWithProviders();
-    fireEvent.click(screen.getByRole('button', { name: /register/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
     
     const errorMessages = await screen.findAllByText(/This field is required./i);
     expect(errorMessages.length).toBeGreaterThan(0);
@@ -64,7 +65,7 @@ describe('Signup Component', () => {
   test('rejects non-uwaterloo email addresses', async () => {
     renderWithProviders();
     fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: 'lauren@gmail.com' } });
-    fireEvent.click(screen.getByRole('button', { name: /register/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 
     const errorMsg = await screen.findByText(/Only @uwaterloo.ca addresses are allowed./i);
     expect(errorMsg).toBeInTheDocument();
@@ -86,8 +87,9 @@ describe('Signup Component', () => {
     fireEvent.change(container.querySelector('input[name="email"]'), { target: { value: 'existing@uwaterloo.ca' } });
     fireEvent.change(container.querySelector('input[name="password"]'), { target: { value: 'ValidPass1!' } });
     fireEvent.change(container.querySelector('input[name="confirmpassword"]'), { target: { value: 'ValidPass1!' } });
+    fireEvent.change(container.querySelector('input[name="role"]'), { target: { value: 'Student' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /register/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
 
     // Now it will correctly find the text inside the error state
     expect(await screen.findByText(/email is already in use/i)).toBeInTheDocument();
@@ -102,7 +104,7 @@ describe('Signup Component', () => {
   test('password must be at least 8 characters', async () => {
     renderWithProviders();
     fireEvent.change(screen.getAllByLabelText(/Password/i)[0], { target: { value: 'Short1' } });
-    fireEvent.click(screen.getByRole('button', { name: /register/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
     expect(await screen.findByText(/Password doesn’t meet minimum character length./i)).toBeInTheDocument();
   });
 
@@ -110,14 +112,14 @@ describe('Signup Component', () => {
   test('password must contain at least one uppercase letter', async () => {
     renderWithProviders();
     fireEvent.change(screen.getAllByLabelText(/Password/i)[0], { target: { value: 'alllowercase1!' } });
-    fireEvent.click(screen.getByRole('button', { name: /register/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
     expect(await screen.findByText(/Password must contain an uppercase/i)).toBeInTheDocument();
   });
 
   test('password must contain at least one lowercase letter', async () => {
     renderWithProviders();
     fireEvent.change(screen.getAllByLabelText(/Password/i)[0], { target: { value: 'ALLLOWERCASE1!' } });
-    fireEvent.click(screen.getByRole('button', { name: /register/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
     expect(await screen.findByText(/Password must contain a lowercase letter./i)).toBeInTheDocument();
   });
 
@@ -126,7 +128,7 @@ describe('Signup Component', () => {
     renderWithProviders();
     fireEvent.change(screen.getAllByLabelText(/Password/i)[0], { target: { value: 'ValidPass1!' } });
     fireEvent.change(screen.getByLabelText(/Confirm Password/i), { target: { value: 'DifferentPass2!' } });
-    fireEvent.click(screen.getByRole('button', { name: /register/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }));
     expect(await screen.findByText(/Passwords must match/i)).toBeInTheDocument();
   });
 
