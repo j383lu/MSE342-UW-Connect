@@ -1074,6 +1074,7 @@ app.get("/api/tags", checkAuth, (req, res) => {
 // CREATE GROUP API (with optional image upload):
 app.post("/api/groups", checkAuth, upload.single('coverImage'), (req, res) => {
   const { name, description, category, isOpen, maxMembers } = req.body;
+  const explicitCreatorId = req.body.user_id ?? req.body.creator_id ?? null;
 
   const createGroupWithCreator = (creator_id) => {
     if (!creator_id) {
@@ -1095,7 +1096,6 @@ app.post("/api/groups", checkAuth, upload.single('coverImage'), (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
 
-    db.query(sql, [creator_id, name, description, category, is_private, max_members, image_url], (err, result) => {
     db.query(sql, [creator_id, name, description, category, is_private, max_members, image_url],
       (err, result) => {
       if (err) {
