@@ -56,10 +56,10 @@ function attendeeRowsToParticipantIds(data, contactsList) {
     .map((a) => {
       const directId = Number(a.user_id);
       if (Number.isInteger(directId) && directId > 0) return directId;
-      const attendeeEmail = String(a.attendee_email || "").trim().toLowerCase();
-      if (!attendeeEmail) return null;
+      const rawEmail = String(a.attendee_email || a.attendee_name || "").trim().toLowerCase();
+      if (!rawEmail || !rawEmail.includes("@")) return null;
       const contact = (contactsList || []).find(
-        (c) => String(c.email || "").trim().toLowerCase() === attendeeEmail
+        (c) => String(c.email || "").trim().toLowerCase() === rawEmail
       );
       const contactId = Number(contact?.user_id);
       return Number.isInteger(contactId) && contactId > 0 ? contactId : null;
@@ -72,6 +72,10 @@ function getCalendarScope(ev) {
   if (explicit === "personal" || explicit === "group") return explicit;
   const fromTags = extractCalendarScope(ev?.tags);
   if (fromTags) return fromTags;
+  // Events created via /api/events use event_type 'group' but often have no __calscope__ tag;
+  // calendar list does not include attendee_count, so do not rely on that heuristic alone.
+  const eventType = String(ev?.event_type || "").trim().toLowerCase();
+  if (eventType === "group") return "group";
   const attendeeCount = Number(ev?.attendee_count || 0);
   return attendeeCount > 0 ? "group" : "personal";
 }
@@ -91,6 +95,54 @@ function getCalendarEventTypeText(ev) {
   if (t === "group") return "Group";
   if (t === "public") return "Public";
   return raw;
+}
+
+/** True when this row came from the calendar quick-add flow (tags include __calendar__). */
+function eventHasCalendarTag(ev) {
+  if (!ev?.tags || typeof ev.tags !== "string") return false;
+  return ev.tags.split(",").some((p) => String(p).trim() === "__calendar__");
+}
+
+/**
+ * Primary type chip: matches Event Details "Type" for feed events (public/group).
+ * Calendar items use Personal/Group from __calscope__ even though todos store event_type "public" in DB.
+ */
+function getCalendarTypeBadge(ev) {
+  if (eventHasCalendarTag(ev)) {
+    const scope = getCalendarScope(ev);
+    if (scope === "group") return { label: "Group", kind: "group" };
+    return { label: "Personal", kind: "personal" };
+  }
+  const et = String(ev?.event_type || "").trim().toLowerCase();
+  if (et === "group") return { label: "Group", kind: "group" };
+  if (et === "public") return { label: "Public", kind: "public" };
+  const scope = getCalendarScope(ev);
+  if (scope === "group") return { label: "Group", kind: "group" };
+  return { label: "Personal", kind: "personal" };
+}
+
+/** Edit dialog scope: calendar rows use __calscope__; feed events (public/group) use group UI. */
+function getEditFormScope(ev) {
+  if (eventHasCalendarTag(ev)) {
+    return getCalendarScope(ev);
+  }
+  const et = String(ev?.event_type || "").trim().toLowerCase();
+  if (et === "group" || et === "public") {
+    return "group";
+  }
+  return getCalendarScope(ev);
+}
+
+/** Visibility for group section of edit form (matches listing semantics for feed events). */
+function getEditFormVisibility(ev) {
+  if (eventHasCalendarTag(ev)) {
+    return getCalendarVisibility(ev);
+  }
+  const et = String(ev?.event_type || "").trim().toLowerCase();
+  if (et === "public" || et === "group") {
+    return "public";
+  }
+  return getCalendarVisibility(ev);
 }
 
 const HOUR_HEIGHT = 48;
@@ -158,7 +210,9 @@ export default function CalendarPage() {
   const fetchContacts = useCallback(async () => {
     const res = await apiRequest("/api/calendar/contacts");
     const data = await res.json().catch(() => []);
-    if (res.ok) setContacts(Array.isArray(data) ? data : []);
+    const list = res.ok && Array.isArray(data) ? data : [];
+    setContacts(list);
+    return list;
   }, []);
 
   const fetchEvents = useCallback(async () => {
@@ -309,6 +363,7 @@ export default function CalendarPage() {
       ev.capacity !== undefined && ev.capacity !== null && ev.capacity !== ""
         ? Number(ev.capacity)
         : 999;
+    const editScope = getEditFormScope(ev);
     setEditEventForm({
       title: ev.title || "",
       description: ev.description || "",
@@ -317,8 +372,8 @@ export default function CalendarPage() {
       event_time: String(ev.event_time || "09:00").slice(0, 5),
       end_date: ev.end_date || ev.event_date || "",
       end_time: String(ev.end_time || "10:00").slice(0, 5),
-      scope: getCalendarScope(ev),
-      visibility: getCalendarVisibility(ev),
+      scope: editScope,
+      visibility: editScope === "group" ? getEditFormVisibility(ev) : "private",
       max_attendees: Number.isFinite(cap) ? String(cap) : "999",
       calendar_color: extractCalendarColor(ev.tags) || "blue",
       participant_user_ids: participantIds,
@@ -370,6 +425,24 @@ export default function CalendarPage() {
     } finally {
       setDetailsLoading(false);
     }
+  };
+
+  const beginEditingEvent = async () => {
+    const ev = selectedEvent;
+    if (!ev) return;
+    setDetailsError("");
+    try {
+      const contactList = await fetchContacts();
+      const res = await apiRequest(`/api/events/${ev.id}/attendees`);
+      const data = await res.json().catch(() => []);
+      const rows = res.ok && Array.isArray(data) ? data : [];
+      setDetailAttendees(rows);
+      const participantIds = attendeeRowsToParticipantIds(rows, contactList);
+      syncEditFormFromEvent(ev, participantIds);
+    } catch {
+      syncEditFormFromEvent(ev, []);
+    }
+    setEditingEvent(true);
   };
 
   const closeDetails = () => {
@@ -569,7 +642,15 @@ export default function CalendarPage() {
     const mine = Number(ev.created_by) === Number(myId);
     const creatorLabel = mine ? "You" : ev.creator_name || "Peer";
     const calScope = getCalendarScope(ev);
-    const scopeLabel = calScope === "personal" ? "Personal" : calScope === "group" ? "Group" : null;
+    const typeBadge = getCalendarTypeBadge(ev);
+    const visibility = getCalendarVisibility(ev);
+    const visibilityLabel =
+      calScope === "group" ? (visibility === "private" ? "Private" : "Public") : null;
+    const capNum =
+      ev.capacity !== undefined && ev.capacity !== null && ev.capacity !== ""
+        ? Number(ev.capacity)
+        : NaN;
+    const capacityLabel = Number.isFinite(capNum) && capNum > 0 ? `${capNum} spots` : null;
     const hideCreatorRow = false;
     const isPeerOwned = visibleContactIds.has(Number(ev.created_by));
 
@@ -643,7 +724,31 @@ export default function CalendarPage() {
               >
                 {ev.category}
               </Typography>
-              {scopeLabel ? (
+              <Typography
+                variant="caption"
+                sx={{
+                  display: "inline-block",
+                  px: 1,
+                  py: 0.25,
+                  borderRadius: 999,
+                  bgcolor:
+                    typeBadge.kind === "personal"
+                      ? "#EBF8FF"
+                      : typeBadge.kind === "group"
+                        ? "#F0FFF4"
+                        : "#E6FFFA",
+                  color:
+                    typeBadge.kind === "personal"
+                      ? "#2B6CB0"
+                      : typeBadge.kind === "group"
+                        ? "#276749"
+                        : "#2C7A7B",
+                  fontWeight: 700,
+                }}
+              >
+                {typeBadge.label}
+              </Typography>
+              {visibilityLabel ? (
                 <Typography
                   variant="caption"
                   sx={{
@@ -651,12 +756,28 @@ export default function CalendarPage() {
                     px: 1,
                     py: 0.25,
                     borderRadius: 999,
-                    bgcolor: calScope === "personal" ? "#EBF8FF" : "#F0FFF4",
-                    color: calScope === "personal" ? "#2B6CB0" : "#276749",
+                    bgcolor: visibility === "private" ? "#FAF5FF" : "#FFFAF0",
+                    color: visibility === "private" ? "#553C9A" : "#C05621",
                     fontWeight: 700,
                   }}
                 >
-                  {scopeLabel}
+                  {visibilityLabel}
+                </Typography>
+              ) : null}
+              {capacityLabel ? (
+                <Typography
+                  variant="caption"
+                  sx={{
+                    display: "inline-block",
+                    px: 1,
+                    py: 0.25,
+                    borderRadius: 999,
+                    bgcolor: "#EDF2F7",
+                    color: "#2D3748",
+                    fontWeight: 600,
+                  }}
+                >
+                  {capacityLabel}
                 </Typography>
               ) : null}
             </Box>
@@ -704,8 +825,17 @@ export default function CalendarPage() {
       const colorKey = extractCalendarColor(ev.tags);
       const hex = colorHexForKey(colorKey);
       const scope = getCalendarScope(ev);
+      const visibility = getCalendarVisibility(ev);
+      const typeBadge = getCalendarTypeBadge(ev);
       const overdueBanner = isOverdue(ev) && scope === "personal";
-      const scopeShort = scope === "personal" ? "Personal" : scope === "group" ? "Group" : null;
+      const scopeShort = typeBadge.label;
+      const visibilityShort =
+        scope === "group" ? (visibility === "private" ? "Private" : "Public") : null;
+      const capBlock =
+        ev.capacity !== undefined && ev.capacity !== null && ev.capacity !== ""
+          ? Number(ev.capacity)
+          : NaN;
+      const capacityShort = Number.isFinite(capBlock) && capBlock > 0 ? `${capBlock} spots` : null;
       const isPeerOwned = visibleContactIds.has(Number(ev.created_by));
       const continuesNextDay = segEnd < fullEnd;
       const continuedFromPrior = segStart > fullStart;
@@ -808,6 +938,7 @@ export default function CalendarPage() {
                 sx={{
                   display: "inline-block",
                   mt: 0.35,
+                  mr: 0.35,
                   px: 0.6,
                   py: 0.1,
                   borderRadius: 1,
@@ -817,6 +948,41 @@ export default function CalendarPage() {
                 }}
               >
                 {scopeShort}
+              </Typography>
+            ) : null}
+            {visibilityShort ? (
+              <Typography
+                variant="caption"
+                sx={{
+                  display: "inline-block",
+                  mt: 0.35,
+                  mr: 0.35,
+                  px: 0.6,
+                  py: 0.1,
+                  borderRadius: 1,
+                  bgcolor: isPeerOwned ? "rgba(17,24,39,0.06)" : "rgba(255,255,255,0.2)",
+                  fontSize: "0.58rem",
+                  fontWeight: 800,
+                }}
+              >
+                {visibilityShort}
+              </Typography>
+            ) : null}
+            {capacityShort ? (
+              <Typography
+                variant="caption"
+                sx={{
+                  display: "inline-block",
+                  mt: 0.35,
+                  px: 0.6,
+                  py: 0.1,
+                  borderRadius: 1,
+                  bgcolor: isPeerOwned ? "rgba(17,24,39,0.08)" : "rgba(255,255,255,0.22)",
+                  fontSize: "0.58rem",
+                  fontWeight: 700,
+                }}
+              >
+                {capacityShort}
               </Typography>
             ) : null}
             {ev.description ? (
@@ -1402,7 +1568,7 @@ export default function CalendarPage() {
         </DialogContent>
         <DialogActions sx={{ px: 2, py: 1.5 }}>
           {selectedEvent && Number(selectedEvent.created_by) === Number(myId) && !editingEvent ? (
-            <Button onClick={() => setEditingEvent(true)} variant="outlined">
+            <Button onClick={beginEditingEvent} variant="outlined">
               Edit Event
             </Button>
           ) : null}

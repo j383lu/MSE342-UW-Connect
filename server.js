@@ -1301,6 +1301,8 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
     calendar_color,
     scope,
     visibility,
+    capacity: capacityBody,
+    max_attendees: maxAttendeesBody,
   } = req.body;
 
   if (!title || !String(title).trim()) {
@@ -1349,6 +1351,22 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
     .replace(/[^a-z0-9_-]/g, "")
     .slice(0, 32);
 
+  const capBodyNum = Number(capacityBody);
+  const capMaxNum = Number(maxAttendeesBody);
+  let capacityNum =
+    Number.isFinite(capBodyNum) && capBodyNum >= 1 && capBodyNum <= 99999 ? capBodyNum : NaN;
+  if (
+    !Number.isFinite(capacityNum) &&
+    Number.isFinite(capMaxNum) &&
+    capMaxNum >= 1 &&
+    capMaxNum <= 99999
+  ) {
+    capacityNum = capMaxNum;
+  }
+  if (!Number.isFinite(capacityNum)) {
+    capacityNum = 999;
+  }
+
   const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
   if (!currentUserEmail) {
     return res.status(401).json({ error: "Authenticated user email not found." });
@@ -1361,14 +1379,15 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
     }
 
     const ownershipSql = `
-      SELECT e.id
+      SELECT
+        e.id,
+        EXISTS (
+          SELECT 1 FROM Event_Tags ct
+          WHERE ct.event_id = e.id AND ct.tag_name = '__calendar__'
+        ) AS has_calendar
       FROM Events e
       WHERE e.id = ?
         AND e.created_by = ?
-        AND EXISTS (
-          SELECT 1 FROM Event_Tags ct
-          WHERE ct.event_id = e.id AND ct.tag_name = '__calendar__'
-        )
       LIMIT 1
     `;
 
@@ -1378,8 +1397,10 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
         return res.status(500).json({ error: "Failed to verify event ownership." });
       }
       if (!ownRows || ownRows.length === 0) {
-        return res.status(403).json({ error: "Only the owner can edit this calendar event." });
+        return res.status(403).json({ error: "Only the owner can edit this event." });
       }
+
+      const hasCalendar = Number(ownRows[0].has_calendar) === 1;
 
       const updateSql = `
         UPDATE Events
@@ -1390,9 +1411,54 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
           event_date = ?,
           event_time = ?,
           end_date = ?,
-          end_time = ?
+          end_time = ?,
+          capacity = ?
         WHERE id = ?
       `;
+
+      const respondSuccess = () =>
+        res.json({ message: "Event updated successfully.", capacity: capacityNum });
+
+      const syncGroupAttendees = () => {
+        if (eventScope !== "group") {
+          return respondSuccess();
+        }
+
+        const clearAttendeeSql = "DELETE FROM Event_Attendees WHERE event_id = ?";
+        db.query(clearAttendeeSql, [eventId], (clearAttErr) => {
+          if (clearAttErr) {
+            console.log("PUT /api/calendar/events/:id clear attendees error:", clearAttErr);
+            return res.status(500).json({ error: "Failed to update attendees." });
+          }
+
+          if (participantIds.length === 0) {
+            return respondSuccess();
+          }
+
+          const ph = participantIds.map(() => "?").join(", ");
+          const emailSql = `SELECT LOWER(email) AS email FROM User_Credentials WHERE user_id IN (${ph})`;
+          db.query(emailSql, participantIds, (emErr, emRows) => {
+            if (emErr) {
+              console.log("PUT /api/calendar/events/:id attendee lookup error:", emErr);
+              return res.status(500).json({ error: "Failed to lookup attendees." });
+            }
+            const emails = (emRows || [])
+              .map((r) => r.email)
+              .filter((e) => e && String(e).toLowerCase() !== currentUserEmail);
+            if (emails.length === 0) {
+              return respondSuccess();
+            }
+            const rows = emails.map((email) => [eventId, email]);
+            db.query("INSERT INTO Event_Attendees (event_id, attendee_name) VALUES ?", [rows], (attErr) => {
+              if (attErr) {
+                console.log("PUT /api/calendar/events/:id insert attendees error:", attErr);
+                return res.status(500).json({ error: "Failed to save attendees." });
+              }
+              return respondSuccess();
+            });
+          });
+        });
+      };
 
       db.query(
         updateSql,
@@ -1404,12 +1470,17 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
           et,
           end_date,
           xt,
+          capacityNum,
           eventId,
         ],
         (updErr) => {
           if (updErr) {
             console.log("PUT /api/calendar/events/:id update error:", updErr);
             return res.status(500).json({ error: "Failed to update event." });
+          }
+
+          if (!hasCalendar) {
+            return syncGroupAttendees();
           }
 
           const clearMetaSql = `
@@ -1440,41 +1511,7 @@ app.put("/api/calendar/events/:id", checkAuth, (req, res) => {
                 console.log("PUT /api/calendar/events/:id insert tags error:", tagErr);
                 return res.status(500).json({ error: "Failed to save calendar metadata." });
               }
-
-              const clearAttendeeSql = "DELETE FROM Event_Attendees WHERE event_id = ?";
-              db.query(clearAttendeeSql, [eventId], (clearAttErr) => {
-                if (clearAttErr) {
-                  console.log("PUT /api/calendar/events/:id clear attendees error:", clearAttErr);
-                  return res.status(500).json({ error: "Failed to update attendees." });
-                }
-
-                if (participantIds.length === 0) {
-                  return res.json({ message: "Event updated successfully." });
-                }
-
-                const ph = participantIds.map(() => "?").join(", ");
-                const emailSql = `SELECT LOWER(email) AS email FROM User_Credentials WHERE user_id IN (${ph})`;
-                db.query(emailSql, participantIds, (emErr, emRows) => {
-                  if (emErr) {
-                    console.log("PUT /api/calendar/events/:id attendee lookup error:", emErr);
-                    return res.status(500).json({ error: "Failed to lookup attendees." });
-                  }
-                  const emails = (emRows || [])
-                    .map((r) => r.email)
-                    .filter((e) => e && String(e).toLowerCase() !== currentUserEmail);
-                  if (emails.length === 0) {
-                    return res.json({ message: "Event updated successfully." });
-                  }
-                  const rows = emails.map((email) => [eventId, email]);
-                  db.query("INSERT INTO Event_Attendees (event_id, attendee_name) VALUES ?", [rows], (attErr) => {
-                    if (attErr) {
-                      console.log("PUT /api/calendar/events/:id insert attendees error:", attErr);
-                      return res.status(500).json({ error: "Failed to save attendees." });
-                    }
-                    return res.json({ message: "Event updated successfully." });
-                  });
-                });
-              });
+              return syncGroupAttendees();
             });
           });
         }
@@ -1831,6 +1868,7 @@ app.get("/api/events/:id/attendees", checkAuth, (req, res) => {
           ea.id,
           ea.joined_at,
           ea.attendee_name AS attendee_email,
+          uc.user_id AS user_id,
           COALESCE(up.display_name, SUBSTRING_INDEX(ea.attendee_name, '@', 1)) AS attendee_name
         FROM Event_Attendees ea
         LEFT JOIN User_Credentials uc
@@ -1849,6 +1887,10 @@ app.get("/api/events/:id/attendees", checkAuth, (req, res) => {
 
         return res.json(
           rows.map((row) => ({
+            id: row.id,
+            joined_at: row.joined_at,
+            user_id: row.user_id,
+            attendee_email: row.attendee_email,
             attendee_name: row.attendee_name,
           }))
         );
@@ -1862,6 +1904,7 @@ app.get("/api/events/:id/attendees", checkAuth, (req, res) => {
         ea.id,
         ea.joined_at,
         ea.attendee_name AS attendee_email,
+        uc.user_id AS user_id,
         COALESCE(up.display_name, SUBSTRING_INDEX(ea.attendee_name, '@', 1)) AS attendee_name
       FROM Event_Attendees ea
       INNER JOIN Events e
@@ -1897,6 +1940,10 @@ app.get("/api/events/:id/attendees", checkAuth, (req, res) => {
 
       return res.json(
         rows.map((row) => ({
+          id: row.id,
+          joined_at: row.joined_at,
+          user_id: row.user_id,
+          attendee_email: row.attendee_email,
           attendee_name: row.attendee_name,
         }))
       );
