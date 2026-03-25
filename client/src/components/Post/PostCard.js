@@ -66,7 +66,7 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter, fir
           action={
             isAuthor && (
               <>
-                {/* ↓ Horizontal 3-dot icon, anchored top-right */}
+                {/*Horizontal 3-dot icon with the edit and delete*/}
                 <IconButton
                   size="small"
                   onClick={(e) => setAnchorEl(e.currentTarget)}
@@ -255,7 +255,7 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter, fir
                   py: 1.2
                 }}
               >
-                {/* use avatar for the likes image*/}
+                {/* avatar for the likes image*/}
                 <Avatar
                   src={user.avatar_url ? `/uploads/${user.avatar_url}` : undefined}
                   sx={{ bgcolor: '#5D6C5C' }}

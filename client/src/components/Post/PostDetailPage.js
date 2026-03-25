@@ -8,11 +8,11 @@ import FavoriteIcon from "@mui/icons-material/Favorite";
 import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import PostCommentThread from "./PostCommentThread";
-import { getAuth } from 'firebase/auth';
+import { withFirebase } from '../Firebase';
 import { getRelativeTime } from "../../utils/timeUtils";
 import { renderTextWithLinks } from "../../utils/linkUtils";
 
-function PostDetailPage() {
+function PostDetailPage({ firebase }) {
     const { postId } = useParams();
     const navigate = useNavigate();
     const [post, setPost] = useState(null);
@@ -25,8 +25,7 @@ function PostDetailPage() {
     }, [postId]);
 
     const getToken = async () => {
-        const auth = getAuth();
-        return await auth.currentUser?.getIdToken();
+        return await firebase.auth.currentUser?.getIdToken();
     };
 
     const fetchPost = async () => {
@@ -170,9 +169,9 @@ function PostDetailPage() {
                             {/* Regular Tags */}
                             {post.tags && post.tags.length > 0 && (
                                 post.tags.map((tag, index) => (
-                                <Chip key={index} label={tag} size="small" sx={{ mb: 1 }} />
-                            ))
-                        )}
+                                    <Chip key={index} label={tag} size="small" sx={{ mb: 1 }} />
+                                ))
+                            )}
                         </Stack>
 
                         {/* Like button */}
@@ -234,4 +233,4 @@ function PostDetailPage() {
     );
 }
 
-export default PostDetailPage;
+export default withFirebase(PostDetailPage);
