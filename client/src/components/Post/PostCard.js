@@ -53,6 +53,14 @@ function PostCard({ post, onDeletePost, onEditPost, onLikePost, onTagFilter, fir
     <>
       <Card sx={{ mb: 2 }}>
         <CardHeader
+          avatar={
+            <Avatar
+              src={post.author_avatar ? `/uploads/${post.author_avatar}` : undefined}
+              sx={{ width: 36, height: 36, bgcolor: '#5D6C5C', fontSize: '0.9rem' }}
+            >
+              {!post.author_avatar && (post.author_name?.[0]?.toUpperCase() ?? '?')}
+            </Avatar>
+          }
           title={post.title}
           subheader={`${post.is_anonymous ? 'Anonymous' : (post.author_name ?? 'Unknown')} · ${getRelativeTime(post.createdAt)}`}
           action={

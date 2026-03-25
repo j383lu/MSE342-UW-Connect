@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styles from "./eventStyles";
 import EventCard from "./EventCard";
@@ -32,6 +32,7 @@ export default function EventsPage() {
   const [sortBy, setSortBy] = useState("mostUpcoming");
   const [activeTab, setActiveTab] = useState("public");
 
+  // This function gets authentication headers and includes the user token if logged in.
   const getAuthHeaders = async (includeJson = false) => {
     const headers = {};
 
@@ -48,6 +49,7 @@ export default function EventsPage() {
     return headers;
   };
 
+  // Return the correct API route based on the selected tab.
   const getEventsRouteByTab = (tab, includePastValue = true) => {
     const includePastParam = includePastValue ? "true" : "false";
 
@@ -62,6 +64,7 @@ export default function EventsPage() {
     return `/api/events/public?includePast=${includePastParam}`;
   };
 
+  // Update event data in both the main list and search results.
   const updateEventStateEverywhere = (eventId, updates) => {
     setEvents((prev) =>
       prev.map((item) => (item.id === eventId ? { ...item, ...updates } : item))
@@ -72,6 +75,7 @@ export default function EventsPage() {
     );
   };
 
+  // This function loads events from the backend based on the selected tab and filter.
   const loadEvents = async (
     tab = activeTab,
     includePastValue = showPastEvents,
@@ -109,6 +113,7 @@ export default function EventsPage() {
     }
   };
 
+  // Load attendees of a specific event
   const loadAttendees = async (eventId) => {
     try {
       setDetailsLoading(true);
@@ -132,6 +137,7 @@ export default function EventsPage() {
     }
   };
 
+  // This function shows or hides the attendee list for a event.
   const toggleAttendees = async (eventId) => {
     if (openDetailsId === eventId) {
       setOpenDetailsId(null);
@@ -144,6 +150,7 @@ export default function EventsPage() {
     await loadAttendees(eventId);
   };
 
+  // handleJoin function allows the user to join an event and updates the event state.
   const handleJoin = async (ev) => {
     const user = firebase?.auth?.currentUser;
 
@@ -184,6 +191,7 @@ export default function EventsPage() {
     }
   };
 
+  // handleLeave function allows the user to leave an event and updates the event state
   const handleLeave = async (ev) => {
     const user = firebase?.auth?.currentUser;
 
@@ -224,6 +232,7 @@ export default function EventsPage() {
     }
   };
 
+  // Load user's recent search history from the backend
   const loadRecentSearches = async () => {
     try {
       const headers = await getAuthHeaders(false);
@@ -237,6 +246,7 @@ export default function EventsPage() {
     }
   };
 
+  // Save a new search term into the user's search history
   const saveSearchHistory = async (term) => {
     try {
       const headers = await getAuthHeaders(true);
@@ -251,6 +261,7 @@ export default function EventsPage() {
     }
   };
 
+  // Delete a specific search item from user's search history
   const deleteSearchHistory = async (term) => {
     try {
       const headers = await getAuthHeaders(true);
@@ -276,6 +287,7 @@ export default function EventsPage() {
     }
   };
 
+  // Load search suggestions based on the keyword input
   const loadSuggestions = async (keyword, tab = activeTab) => {
     try {
       const headers = await getAuthHeaders(false);
@@ -298,39 +310,35 @@ export default function EventsPage() {
     }
   };
 
-  const applySortToList = (list, customSort = sortBy) => {
-    const copied = [...list];
+  const getStartDateTime = (ev) => new Date(`${ev.event_date}T${ev.event_time}`);
+  const getPublishedDateTime = (ev) => new Date(`${ev.published_time}`);
 
-    if (customSort === "mostLiked") {
-      copied.sort((a, b) => {
-        const likeDiff = Number(b.likes || 0) - Number(a.likes || 0);
-        if (likeDiff !== 0) return likeDiff;
+  // Sort a list of events based on the selected sorting option.
+  const applySortToList = useCallback(
+    (list, customSort = sortBy) => {
+      const copied = [...list];
 
-        const bTime = new Date(`${b.published_time}`);
-        const aTime = new Date(`${a.published_time}`);
-        return bTime - aTime;
-      });
+      if (customSort === "mostLiked") {
+        copied.sort((a, b) => {
+          const likeDiff = Number(b.likes || 0) - Number(a.likes || 0);
+          if (likeDiff !== 0) return likeDiff;
+          return getPublishedDateTime(b) - getPublishedDateTime(a);
+        });
+        return copied;
+      }
+
+      if (customSort === "mostRecentPublished") {
+        copied.sort((a, b) => getPublishedDateTime(b) - getPublishedDateTime(a));
+        return copied;
+      }
+
+      copied.sort((a, b) => getStartDateTime(a) - getStartDateTime(b));
       return copied;
-    }
+    },
+    [sortBy]
+  );
 
-    if (customSort === "mostRecentPublished") {
-      copied.sort((a, b) => {
-        const bTime = new Date(`${b.published_time}`);
-        const aTime = new Date(`${a.published_time}`);
-        return bTime - aTime;
-      });
-      return copied;
-    }
-
-    copied.sort((a, b) => {
-      const aTime = new Date(`${a.event_date}T${a.event_time}`);
-      const bTime = new Date(`${b.event_date}T${b.event_time}`);
-      return aTime - bTime;
-    });
-
-    return copied;
-  };
-
+  // The handleSearch function handles searching events based on the input keyword and updates results.
   const handleSearch = async (rawTerm, customSort = sortBy) => {
     const term = String(rawTerm || "").trim();
 
@@ -386,6 +394,7 @@ export default function EventsPage() {
     }
   };
 
+  // Update the sorting option and re-applies search if needed.
   const handleSortChange = async (e) => {
     const newSort = e.target.value;
     setSortBy(newSort);
@@ -396,6 +405,7 @@ export default function EventsPage() {
     }
   };
 
+  // Reload search results after updates of likes or joins
   const reloadSearchResultsIfNeeded = async () => {
     const currentTerm = searchTerm.trim();
     if (!currentTerm || !isSearching) return;
@@ -403,6 +413,7 @@ export default function EventsPage() {
     await handleSearch(currentTerm, sortBy);
   };
 
+  // Update event like data and refresh search results
   const handleLikeRefresh = async (eventId, newLikes, newHasLiked) => {
     updateEventStateEverywhere(eventId, {
       likes: newLikes,
@@ -414,6 +425,7 @@ export default function EventsPage() {
     }
   };
 
+  // This handler function handles input changes and loads suggestions or recent searches
   const handleSearchInputChange = async (e) => {
     const value = e.target.value;
     setSearchTerm(value);
@@ -431,6 +443,7 @@ export default function EventsPage() {
     setShowSearchDropdown(true);
   };
 
+  // When user click the search box, show recent searches or suggestions
   const handleSearchFocus = async () => {
     const cleanValue = searchTerm.trim();
 
@@ -444,6 +457,7 @@ export default function EventsPage() {
     setShowSearchDropdown(true);
   };
 
+  // Handle the search submission
   const handleSearchSubmit = async (e) => {
     e.preventDefault();
 
@@ -478,6 +492,7 @@ export default function EventsPage() {
     setShowSearchDropdown(false);
   };
 
+  // This function switches between tabs and reloads events for the selected section.
   const handleTabChange = async (tab) => {
     setActiveTab(tab);
     setSearchTerm("");
@@ -495,12 +510,10 @@ export default function EventsPage() {
   useEffect(() => {
     loadEvents(activeTab, showPastEvents);
     loadRecentSearches();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     loadEvents(activeTab, showPastEvents, true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showPastEvents]);
 
   useEffect(() => {
@@ -521,14 +534,14 @@ export default function EventsPage() {
 
   const sortedEvents = useMemo(() => {
     return applySortToList(events, sortBy);
-  }, [events, sortBy]);
+  }, [events, sortBy, applySortToList]);
 
   const upcoming = sortedEvents.filter((e) => Number(e.is_past) === 0);
   const past = sortedEvents.filter((e) => Number(e.is_past) === 1);
 
   const sortedSearchResults = useMemo(() => {
     return applySortToList(searchResults, sortBy);
-  }, [searchResults, sortBy]);
+  }, [searchResults, sortBy, applySortToList]);
 
   const upcomingSearchResults = sortedSearchResults.filter(
     (e) => Number(e.is_past) === 0
@@ -577,7 +590,7 @@ export default function EventsPage() {
       ? "Results are sorted from highest to lowest number of likes within this section."
       : sortBy === "mostRecentPublished"
       ? "Results are sorted from most recently published to least recently published within this section."
-      : "Results are sorted from earliest upcoming event to latest upcoming event within this section.";
+      : "Results are sorted from earliest start date and time to latest start date and time within this section.";
 
   const emptyUpcomingTitle =
     activeTab === "my-groups"
@@ -874,7 +887,7 @@ export default function EventsPage() {
                     ? `${sectionSubtitle} Results are currently sorted by likes.`
                     : sortBy === "mostRecentPublished"
                     ? `${sectionSubtitle} Results are currently sorted by publish time.`
-                    : `${sectionSubtitle} Results are currently sorted by upcoming event time.`}
+                    : `${sectionSubtitle} Results are currently sorted by start date and time.`}
                 </p>
               </div>
 

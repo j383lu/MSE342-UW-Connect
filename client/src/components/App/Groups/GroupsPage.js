@@ -166,7 +166,7 @@ export default function GroupsPage() {
   async function loadPosts() {
     try {
       setLoadingPosts(true);
-      const res = await apiRequest('/api/posts');
+      const res = await apiRequest('/api/posts?filter=mygroups');
       if (res.ok) {
         const data = await res.json();
         setPosts(Array.isArray(data) ? data : []);

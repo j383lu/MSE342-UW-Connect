@@ -63,30 +63,30 @@ function CommentThread({ comment, allComments, onReply }) {
                                 startIcon={<ReplyIcon />}
                                 onClick={() => setShowReplyBox(!showReplyBox)}
                                 sx={{ mt: 0.5 }}
-                            >
+                                >
                                 Reply
-                            </Button>
+                                </Button>
 
                             {showReplyBox && (
-                                <Stack spacing={1} sx={{ mt: 1 }}>
-                                    <TextField
-                                        fullWidth
-                                        size="small"
-                                        placeholder="Write a reply..."
-                                        value={replyContent}
-                                        onChange={(e) => setReplyContent(e.target.value)}
-                                        multiline
-                                        rows={2}
-                                    />
-                                    <Stack direction="row" spacing={1}>
-                                        <Button size="small" variant="contained" onClick={handleReplySubmit}>
-                                            Post Reply
-                                        </Button>
-                                        <Button size="small" onClick={() => setShowReplyBox(false)}>
-                                            Cancel
-                                        </Button>
-                                    </Stack>
+                            <Stack spacing={1} sx={{ mt: 1 }}>
+                                <TextField
+                                fullWidth
+                                size="small"
+                                placeholder="Write a reply..."
+                                value={replyContent}
+                                onChange={(e) => setReplyContent(e.target.value)}
+                                multiline
+                                rows={2}
+                                />
+                                <Stack direction="row" spacing={1}>
+                                <Button size="small" variant="contained" onClick={handleReplySubmit}>
+                                    Post Reply
+                                </Button>
+                                <Button size="small" onClick={() => setShowReplyBox(false)}>
+                                    Cancel
+                                </Button>
                                 </Stack>
+                            </Stack>
                             )}
                         </Box>
                     </Stack>
