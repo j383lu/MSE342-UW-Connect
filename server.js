@@ -5,6 +5,7 @@ import path from 'path';
 import 'dotenv/config';
 import { fileURLToPath } from 'url';
 import bodyParser from 'body-parser';
+import util from "util";
 import multer from 'multer'; // For file uploads
 import fs from 'fs'; // For file system operations
 import admin from 'firebase-admin';
@@ -490,6 +491,8 @@ db.connect((err) => {
   });
 });
 
+db.query = util.promisify(db.query).bind(db);
+
 app.use(express.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 app.use('/uploads', express.static('uploads'));
@@ -966,6 +969,142 @@ app.get("/api/profile/:userId/follow-status", checkAuth, (req, res) => {
       });
     });
   });
+});
+
+// Delete user
+app.delete('/api/profile', checkAuth, async (req, res) => {
+  const firebase_uid = req.user.uid;
+
+  console.log("--- DELETE ATTEMPT ---");
+  console.log("Firebase UID:", firebase_uid);
+
+  try {
+    // 🔥 STEP 1: Get user_id safely (driver-agnostic)
+    const credResult = await db.query(
+      'SELECT user_id FROM User_Credentials WHERE firebase_uid = ?',
+      [firebase_uid]
+    );
+
+    // Normalize result for BOTH mysql + mysql2
+    const rows = Array.isArray(credResult[0]) ? credResult[0] : credResult;
+
+    console.log("User lookup result:", rows);
+
+    if (!rows || rows.length === 0) {
+      console.log("❌ No match found for UID:", firebase_uid);
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    const userId = rows[0].user_id;
+
+    // 🔥 STEP 2: Get profile info
+    const profileResult = await db.query(
+      'SELECT profile_id, display_name, avatar_url FROM User_Profiles WHERE user_id = ?',
+      [userId]
+    );
+
+    const pRows = Array.isArray(profileResult[0]) ? profileResult[0] : profileResult;
+
+    const profileId = pRows[0]?.profile_id;
+    const displayName = pRows[0]?.display_name;
+    const avatarPath = pRows[0]?.avatar_url;
+
+    // 🔥 STEP 3: Begin transaction
+    await db.query('START TRANSACTION');
+
+    try {
+      // 🔥 STEP 4: Delete everything in correct order
+
+      await db.query('DELETE FROM Likes WHERE user_id = ?', [userId]);
+      await db.query('DELETE FROM Event_Likes WHERE user_id = ?', [userId]);
+      await db.query(
+        'DELETE FROM Notifications WHERE recipient_id = ? OR actor_id = ?',
+        [userId, userId]
+      );
+      await db.query('DELETE FROM Event_Search_History WHERE user_id = ?', [userId]);
+      await db.query(
+        'DELETE FROM User_Follows WHERE follower_user_id = ? OR followed_user_id = ?',
+        [userId, userId]
+      );
+
+      if (displayName) {
+        await db.query(
+          'DELETE FROM Event_Attendees WHERE attendee_name = ?',
+          [displayName]
+        );
+      }
+
+      await db.query(
+        'DELETE FROM post_tags WHERE post_id IN (SELECT post_id FROM Posts WHERE author_id = ?)',
+        [userId]
+      );
+
+      await db.query(
+        'DELETE FROM Event_Tags WHERE event_id IN (SELECT id FROM Events WHERE created_by = ?)',
+        [userId]
+      );
+
+      await db.query(
+        'DELETE FROM Event_Groups WHERE event_id IN (SELECT id FROM Events WHERE created_by = ?)',
+        [userId]
+      );
+
+      if (profileId) {
+        await db.query(
+          'DELETE FROM User_Profile_Courses WHERE profile_id = ?',
+          [profileId]
+        );
+      }
+
+      await db.query('DELETE FROM Group_Members WHERE user_id = ?', [userId]);
+      await db.query('DELETE FROM Group_Invites WHERE invited_by_user_id = ?', [userId]);
+      await db.query('DELETE FROM Group_Join_Requests WHERE user_id = ?', [userId]);
+
+      await db.query('DELETE FROM Comments WHERE user_id = ?', [userId]);
+      await db.query('DELETE FROM Posts WHERE author_id = ?', [userId]);
+      await db.query('DELETE FROM Events WHERE created_by = ?', [userId]);
+      await db.query('DELETE FROM Social_Group WHERE creator_id = ?', [userId]);
+
+      await db.query('DELETE FROM User_Profiles WHERE user_id = ?', [userId]);
+      await db.query('DELETE FROM User_Credentials WHERE user_id = ?', [userId]);
+
+      // 🔥 STEP 5: Commit
+      await db.query('COMMIT');
+      console.log("🔥 Account fully deleted");
+
+      // 🔥 STEP 6: Delete avatar file (if exists)
+      if (avatarPath) {
+        try {
+          const fs = require('fs');
+          const path = require('path');
+          const fullPath = path.join(__dirname, 'uploads', avatarPath);
+
+          if (fs.existsSync(fullPath)) {
+            fs.unlinkSync(fullPath);
+            console.log("🗑️ Avatar deleted:", avatarPath);
+          }
+        } catch (fileErr) {
+          console.warn("⚠️ Failed to delete avatar:", fileErr.message);
+        }
+      }
+
+      return res.status(200).json({
+        message: "Account deleted successfully.",
+      });
+
+    } catch (transactionError) {
+      // 🔥 Rollback on failure
+      await db.query('ROLLBACK');
+      console.error("❌ Transaction failed:", transactionError.message);
+      throw transactionError;
+    }
+
+  } catch (error) {
+    console.error("❌ Critical delete error:", error.message);
+    return res.status(500).json({
+      error: error.message || "Internal server error.",
+    });
+  }
 });
 
 app.post("/api/profile/:userId/follow", checkAuth, (req, res) => {
@@ -5192,6 +5331,28 @@ app.get('/api/notifications/unread-count', checkAuth, async (req, res) => {
     });
   } catch (err) {
     res.status(404).json({ error: "User not found" });
+  }
+});
+
+app.delete('/api/notifications/delete-all', checkAuth, async (req, res) => {
+  const firebase_uid = req.user.uid;
+
+  try {
+    // Identify the user so they only delete THEIR OWN notifications
+    const credResult = await db.query('SELECT user_id FROM User_Credentials WHERE firebase_uid = ?', [firebase_uid]);
+    const rows = Array.isArray(credResult[0]) ? credResult[0] : credResult;
+    
+    if (!rows || rows.length === 0) return res.status(404).json({ error: "User not found" });
+    const userId = rows[0].user_id;
+
+    // Delete only for this user
+    const query = 'DELETE FROM Notifications WHERE recipient_id = ?';
+    await db.query(query, [userId]);
+
+    res.status(200).json({ message: 'All notifications cleared successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to clear notifications' });
   }
 });
 
