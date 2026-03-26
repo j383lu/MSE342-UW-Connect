@@ -1,10 +1,4 @@
-import React, {
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import styles from "./eventStyles";
 import { FirebaseContext } from "../../Firebase";
 
@@ -67,19 +61,6 @@ export default function EventCard({
   const editLocationRef = useRef(null);
   const editCapacityRef = useRef(null);
 
-  const editFieldRefs = {
-    title: editTitleRef,
-    description: editDescriptionRef,
-    category: editCategoryRef,
-    selectedGroups: editGroupRef,
-    eventDate: editStartDateRef,
-    eventTime: editStartTimeRef,
-    endDate: editEndDateRef,
-    endTime: editEndTimeRef,
-    location: editLocationRef,
-    capacity: editCapacityRef,
-  };
-
   const current = Number(ev.current_count || 0);
   const max = Number(ev.capacity || 0);
   const isFull = max > 0 && current >= max;
@@ -118,6 +99,7 @@ export default function EventCard({
           ? Number(ev.attendee_count)
           : current
       : 0;
+
   const privateInviteAttendeeLabel =
     eventTypeRaw === "private"
       ? privateInviteAttendeeCount === 1
@@ -147,7 +129,21 @@ export default function EventCard({
 
   const disableJoin = backendStatus === "ended" || isFull;
 
+  const editFieldRefs = {
+    title: editTitleRef,
+    description: editDescriptionRef,
+    category: editCategoryRef,
+    selectedGroups: editGroupRef,
+    eventDate: editStartDateRef,
+    eventTime: editStartTimeRef,
+    endDate: editEndDateRef,
+    endTime: editEndTimeRef,
+    location: editLocationRef,
+    capacity: editCapacityRef,
+  };
+
   // This helper function scrolls to the first invalid input field in the edit form
+  // So that user can locate and fix the first error when validation fails
   const scrollToEditField = (fieldName) => {
     const targetRef = editFieldRefs[fieldName];
 
@@ -165,7 +161,8 @@ export default function EventCard({
     }
   };
 
-  // This helper function removes the error message of one specific edit field
+  // Remove the error message of one specific edit field
+  // Also update the error state so the field looks normal again after user edit it
   const clearEditFieldError = (fieldName) => {
     setFieldErrors((prev) => {
       const next = { ...prev };
@@ -174,7 +171,9 @@ export default function EventCard({
     });
   };
 
-  const buildSelectedGroupsFromEvent = () => {
+  // This function builds the selected group list from event
+  // It converts stored group IDs and names into objects for UI display
+  const buildSelectedGroupsFromEvent = useCallback(() => {
     const ids = String(ev.group_ids || "")
       .split(",")
       .map((item) => item.trim())
@@ -188,9 +187,11 @@ export default function EventCard({
       group_id: Number(id),
       name: names[index] || `Group ${id}`,
     }));
-  };
+  }, [ev.group_ids, ev.group_names]);
 
-  const resetEditForm = () => {
+  // This function resets all edit form fields to the original event values
+  // It is used when entering edit mode or cancelling editing
+  const resetEditForm = useCallback(() => {
     setTitle(ev.title || "");
     setDescription(ev.description || "");
     setEventDate(ev.event_date || "");
@@ -211,7 +212,20 @@ export default function EventCard({
     setEditMessage("");
     setGroupMessage("");
     setFieldErrors({});
-  };
+  }, [
+    ev.title,
+    ev.description,
+    ev.event_date,
+    ev.event_time,
+    ev.end_date,
+    ev.end_time,
+    ev.location,
+    ev.capacity,
+    ev.category,
+    eventTags,
+    eventTypeRaw,
+    buildSelectedGroupsFromEvent,
+  ]);
 
   useEffect(() => {
     setLikes(Number(ev.likes || 0));
@@ -220,8 +234,9 @@ export default function EventCard({
     if (!isEditing) {
       resetEditForm();
     }
-  }, [ev, isEditing]);
+  }, [ev.likes, ev.has_liked, isEditing, resetEditForm]);
 
+  // Get the firebase authentication token of the current user
   const getToken = async () => {
     const user = firebase?.auth?.currentUser;
     if (!user) {
@@ -231,6 +246,7 @@ export default function EventCard({
     return user.getIdToken();
   };
 
+  // Load event categories from the backend and update the category dropdown options in the edit form
   const loadCategories = async () => {
     try {
       const res = await fetch("/api/categories");
@@ -246,6 +262,8 @@ export default function EventCard({
     }
   };
 
+  // Load all groups that the current user has joined
+  // It is used when creating or editing group events
   const loadMyGroups = async () => {
     try {
       setGroupsLoading(true);
@@ -285,6 +303,7 @@ export default function EventCard({
     }
   };
 
+  // Start the edit mode for the event and initialize form data and load categories or groups when user re-edit an event
   const startEditing = async () => {
     if (!isOwner) return;
 
@@ -300,11 +319,14 @@ export default function EventCard({
     }
   };
 
+  // When user cancel re-editing, reset the form and back to view
   const cancelEditing = () => {
     resetEditForm();
     setIsEditing(false);
   };
 
+  // The handleEditEventTypeChange function handles switching between event types of public, group, private
+  // It also resets related fields and loads group data
   const handleEditEventTypeChange = async (type) => {
     setEventType(type);
     setEditError("");
@@ -327,6 +349,8 @@ export default function EventCard({
     }
   };
 
+  // Add a new tag to the event and prevent duplicate tags
+  // Clear the input textbox after adding a tag
   const handleAddTag = () => {
     const cleanTag = tagInput.trim();
 
@@ -345,10 +369,12 @@ export default function EventCard({
     setTagInput("");
   };
 
+  // Remove a tag from the event and update the tag list
   const handleRemoveTag = (tagToRemove) => {
     setTags((prev) => prev.filter((tag) => tag !== tagToRemove));
   };
 
+  // This function add a selected group to the event and ensure no duplicate groups are added
   const handleAddGroup = () => {
     if (!groupSelectValue) return;
 
@@ -372,12 +398,16 @@ export default function EventCard({
     clearEditFieldError("selectedGroups");
   };
 
+  // Remove a group and update group list
   const handleRemoveGroup = (groupIdToRemove) => {
     setSelectedGroups((prev) =>
       prev.filter((group) => String(group.group_id) !== String(groupIdToRemove))
     );
   };
 
+  // This function checks the start and end date/time validation
+  // It ensures end time is always after start time
+  // Check date first, then start time and end time
   const validateEventDateTime = () => {
     const errors = {};
 
@@ -426,7 +456,7 @@ export default function EventCard({
     return errors;
   };
 
-  // This function checks every edit field and returns field level error messages
+  // Validate all edit form fields and check required fields, capacity, and group selection
   const validateEditFields = () => {
     const errors = {};
 
@@ -484,6 +514,10 @@ export default function EventCard({
     return { ...errors, ...dateTimeErrors };
   };
 
+  // Below are the main functions of EventCard.js
+
+  // This function saves the updated event information
+  // It validates inputs first, then sends the updated data to the backend
   const handleSaveChanges = async () => {
     setEditError("");
     setEditMessage("");
@@ -529,6 +563,8 @@ export default function EventCard({
     }
   };
 
+  // This function handles deleting an event
+  // It asks for user confirmation before calling the delete API
   const handleDeleteClick = async () => {
     if (!isOwner) return;
 
@@ -541,7 +577,8 @@ export default function EventCard({
     await onDeleteEvent(ev);
   };
 
-  // This handler function allows the user to like or unlike an event and update the result
+  // This handler function handles the user to like or unlike an event
+  // Send a request to the backend and update the like state and like number
   const handleLikeToggle = async (e) => {
     e.preventDefault();
 

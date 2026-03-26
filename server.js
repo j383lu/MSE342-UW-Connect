@@ -67,6 +67,8 @@ const triggerNotification = (recipientId, actorId, entityId, entityType, actionT
   });
 };
 
+// Get the display name of a user with their user_id
+// Tf no display name, then it joins profile and credentials tables and use email
 const getUserDisplayNameById = (userId, callback) => {
   const sql = `
     SELECT COALESCE(up.display_name, uc.email) AS display_name
@@ -89,6 +91,8 @@ const getUserDisplayNameById = (userId, callback) => {
   });
 };
 
+// Get the basic information about an event and its owner with event title, creator id, 
+// and the owner's display name
 const getEventOwnerInfo = (eventId, callback) => {
   const sql = `
     SELECT
@@ -116,6 +120,9 @@ const getEventOwnerInfo = (eventId, callback) => {
   });
 };
 
+// Notify the event owner when someone joins or leaves their event.
+// Firstly check the event owner information, then get the actor's name and set up notification
+// The notification is only sent if the actor is not the owner
 const notifyEventOwnerAboutAttendance = (eventId, actorUserId, actionType, callback = () => {}) => {
   getEventOwnerInfo(eventId, (eventErr, eventInfo) => {
     if (eventErr) {
@@ -157,6 +164,8 @@ const notifyEventOwnerAboutAttendance = (eventId, actorUserId, actionType, callb
   });
 };
 
+// For sending group-related notifications, get all members of selected groups for notification
+// Get the user ids, group names, and display names using joins across multiple tables
 const getGroupMembersForNotification = (groupIds, callback) => {
   if (!Array.isArray(groupIds) || groupIds.length === 0) {
     return callback(null, []);
@@ -190,6 +199,9 @@ const getGroupMembersForNotification = (groupIds, callback) => {
   });
 };
 
+// Notify all group members when a new group event is created
+// Send a single message to each group member except the creator
+// so that all the group members in the group can receive notification about a new group event
 const notifyGroupMembersAboutNewGroupEvent = (
   eventId,
   creatorUserId,
@@ -242,6 +254,8 @@ const notifyGroupMembersAboutNewGroupEvent = (
   });
 };
 
+// Get all users who joined a specific event
+// Also, map attendee emails back to user_id and display names for later use in notifications
 const getEventAttendeeUsers = (eventId, callback) => {
   const sql = `
     SELECT DISTINCT
@@ -265,6 +279,8 @@ const getEventAttendeeUsers = (eventId, callback) => {
   });
 };
 
+// Notify all attendees when an event is deleted
+// Each attendee receives a message saying the event has been removed
 const notifyEventAttendeesAboutDelete = (
   eventId,
   actorUserId,
@@ -309,6 +325,8 @@ const notifyEventAttendeesAboutDelete = (
   });
 };
 
+// Format a date value into YYYY-MM-DD for comparison and display
+// This function can handle Date objects, plain date strings, and datetime strings
 const formatDateLocal = (value) => {
   if (!value) return "";
 
@@ -341,6 +359,7 @@ const formatDateLocal = (value) => {
   return text;
 };
 
+// Get the only hour and minute part from a time value for comparison
 const formatTimeOnly = (value) => {
   if (!value) return "";
 
@@ -354,6 +373,9 @@ const formatTimeOnly = (value) => {
   return text;
 };
 
+// Build a notification message that shows which event fields were updated
+// It compares the old event data and new event data, then records only the changed fields
+// If nothing changed, it returns a simple update message without the field list
 const buildEventUpdateMessage = (actorName, oldEvent, newEvent) => {
   const changedLines = [];
 
@@ -1067,9 +1089,10 @@ const SQL_EXCLUDE_CALENDAR_PERSONAL_EVENT = `
       )`;
 
 // GET /api/events
-// This API is used to get a list of events from the database.
-// If includePast=true is passed in the query, it will return all events including past ones.
-// It also checks the current user to see if they have joined or liked each event.
+// This API is used to return a list of events from the database
+// If includePast=true is passed in the query, it returns all events including past ones
+// It joins multiple tables to find likes count, attendees count, and user-specific flags like has_joined and has_liked.
+// It also filters out private events and sorts results by event time.
 app.get("/api/events", checkAuth, (req, res) => {
   const includePast = String(req.query.includePast).toLowerCase() === "true";
   const pastFilter = includePast
@@ -1139,9 +1162,10 @@ app.get("/api/events", checkAuth, (req, res) => {
   });
 });
 
-// POST /api/events (create event)
 // POST /api/events
-// This API creates a new event using the information provided by the user and saves it to the database.
+// This API creates a new event and saves it into the database with validation checks
+// The validation verifies input fields, time logic, and ensures group permissions if it's a group event
+// After inserting the event, it also inserts tags, group mappings, and triggers notifications
 app.post("/api/events", checkAuth, (req, res) => {
   const {
     title,
@@ -1453,7 +1477,10 @@ app.get("/api/calendar/contacts", checkAuth, (req, res) => {
   });
 });
 
-// GET /api/calendar/events?userIds=1,2,3 — events created by or joined by any of those users
+// GET /api/calendar/events
+// This API fetches events for calendar view based on selected users
+// It returns events created by or joined by those users, while handling visibility rules
+// Also, it checks the attendee count and event status like past or ongoing
 app.get("/api/calendar/events", checkAuth, (req, res) => {
   const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
 
@@ -1647,7 +1674,10 @@ app.get("/api/calendar/events/:id", checkAuth, (req, res) => {
   });
 });
 
-// POST /api/calendar/todos — quick create with explicit end date/time; maps to Events + optional tags/attendees
+// POST /api/calendar/todos
+// This API creates an event in calendar style
+// It validates time inputs, sets default values, and stores extra data using tags.
+// It can also add participants as attendees
 app.post("/api/calendar/todos", checkAuth, (req, res) => {
   const {
     title,
@@ -5185,28 +5215,27 @@ app.delete('/api/notifications/:id', (req, res) => {
 });
 
 // PUT /api/events/:id
-// This API allows the event creator to update or re-edit an existing event’s information,
-// including details like title, time, location, capacity, tags, event type, and group settings
+// This API updates an existing event created by the user
+// It validates inputs, checks ownership, updates related tables (tags and groups),
+// and manages attendee visibility and notifications based on event changes
 app.put("/api/events/:id", checkAuth, (req, res) => {
-  const eventId = Number(req.params.id);
 
+  // Extract event id and all fields from request body and validate them
+  const eventId = Number(req.params.id);
   if (!eventId) {
     return res.status(400).json({ error: "Invalid event id." });
   }
 
   const { title, description, event_date, event_time, end_date, end_time, location, capacity, category, tags, event_type, group_ids } = req.body;
-
   if (!title || !description || !event_date || !event_time || !end_date || !end_time || !location || capacity === undefined || !category) {
     return res.status(400).json({ error: "Missing required fields." });
   }
 
+  // Validate start end dates, full datetime including time
   const startDateOnly = new Date(`${event_date}T00:00`);
   const endDateOnly = new Date(`${end_date}T00:00`);
 
-  if (
-    Number.isNaN(startDateOnly.getTime()) ||
-    Number.isNaN(endDateOnly.getTime())
-  ) {
+  if (Number.isNaN(startDateOnly.getTime()) || Number.isNaN(endDateOnly.getTime())) {
     return res.status(400).json({ error: "Invalid start date or end date." });
   }
 
@@ -5238,6 +5267,7 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
     });
   }
 
+  // Validate capacity value
   const capNum = Number(capacity);
   if (!Number.isInteger(capNum) || capNum < 2) {
     return res.status(400).json({
@@ -5245,12 +5275,13 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
     });
   }
 
+  // Normalize event type to safe values and only allow public, group, or private
   const rawPutEvtType = String(event_type || "public").trim().toLowerCase();
   const safeEventType =
     rawPutEvtType === "group" ? "group" : rawPutEvtType === "private" ? "private" : "public";
 
+  // // Clean tags and group ids to remove duplicates and invalid values
   const safeTags = Array.isArray(tags) ? tags : [];
-
   const safeGroupIds = Array.isArray(group_ids)
     ? [
         ...new Set(
@@ -5261,18 +5292,20 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
       ]
     : [];
 
+  // For group events, make sure at least one group is selected
   if (safeEventType === "group" && safeGroupIds.length === 0) {
     return res.status(400).json({
       error: "Please select at least one group for a group event.",
     });
   }
 
+  // Get current user's email from auth middleware
   const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
-
   if (!currentUserEmail) {
     return res.status(401).json({ error: "Authenticated user email not found." });
   }
-
+  
+  // Check if the current user is the creator of this event
   getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
     if (userErr) {
       return res.status(500).json({ error: "Failed to identify current user." });
@@ -5301,6 +5334,7 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
         });
       }
 
+      // Verify user belongs to selected groups, prevent users from having events to groups they are not part of
       const verifyGroups = (done) => {
         if (safeEventType !== "group") {
           return done(null);
@@ -5337,6 +5371,7 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
         );
       };
 
+      // Ensure new capacity is not smaller than current attendees
       const attendeeCountSql = `
         SELECT COUNT(*) AS current_count
         FROM Event_Attendees
@@ -5361,6 +5396,7 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
             return res.status(403).json({ error: verifyError.message });
           }
 
+          // Get original event data before updating for comparison later
           const oldEventSql = `
             SELECT
               title,
@@ -5392,6 +5428,7 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
             const oldType = String(oldEvent.event_type || "").trim().toLowerCase();
             const newType = safeEventType;
 
+            // Load all current attendees of the event for visibility updates and notifications
             getEventAttendeeUsers(eventId, (originalAttendeeErr, originalAttendeeRows) => {
               if (originalAttendeeErr) {
                 console.log("PUT /api/events/:id attendee lookup error:", originalAttendeeErr);
@@ -5405,6 +5442,8 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
                 removedRecipientIds: [],
               };
 
+              // Start database transaction
+              // Ensures all updates succeed together or rollback if any step fails
               db.beginTransaction((txErr) => {
                 if (txErr) {
                   return res.status(500).json({ error: "Failed to start update transaction." });
@@ -5419,6 +5458,7 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
                   });
                 };
 
+                // Update main event fields in Events table
                 const updateEventSql = `
                   UPDATE Events
                   SET
@@ -5537,6 +5577,8 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
                                   );
                                 }
 
+                                // Handle attendee visibility when event type or groups change
+                                // Decide who stays and who should be removed from the event
                                 const handleVisibilityChange = (done) => {
                                   if (newType !== "group") {
                                     if (oldType === "group" && newType === "public") {
@@ -5662,12 +5704,14 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
                                       const safeActorName =
                                         !nameErr && actorName ? actorName : "Someone";
 
+                                      // Build detailed message showing what fields changed for notifications
                                       const updateMessage = buildEventUpdateMessage(
                                         safeActorName,
                                         oldEvent,
                                         newEvent
                                       );
 
+                                      // Notify users about visibility changes based on type change (public/private)
                                       const sendVisibilityNotifications = () => {
                                         if (!visibilityPlan.type) {
                                           return res.json({
@@ -5685,6 +5729,7 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
 
                                             sentUserIds.add(recipientId);
 
+                                            // Send detailed message to remaining attendees
                                             createNotification(
                                               recipientId,
                                               currentUserId,
@@ -5826,6 +5871,7 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
                                         return sendVisibilityNotifications();
                                       }
 
+                                      // If no visibility change, notify all attendees about update
                                       getEventAttendeeUsers(eventId, (attendeeErr, attendeeRows) => {
                                         if (!attendeeErr && attendeeRows && attendeeRows.length > 0) {
                                           const sentUserIds = new Set();
