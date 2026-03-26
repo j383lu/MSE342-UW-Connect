@@ -1032,7 +1032,7 @@ app.post("/api/events", checkAuth, (req, res) => {
   });
 });
 
-// GET /api/calendar/contacts — other registered users (User_Credentials + profile name)
+// GET /api/calendar/contacts — users you follow (User_Follows + profile name)
 app.get("/api/calendar/contacts", checkAuth, (req, res) => {
   const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
 
@@ -1051,13 +1051,15 @@ app.get("/api/calendar/contacts", checkAuth, (req, res) => {
         uc.user_id,
         uc.email,
         COALESCE(up.display_name, uc.email) AS display_name
-      FROM User_Credentials uc
-      LEFT JOIN User_Profiles up ON up.user_id = uc.user_id
-      WHERE uc.user_id <> ?
+      FROM User_Follows uf
+      JOIN User_Credentials uc ON uc.user_id = uf.followed_user_id
+      LEFT JOIN User_Profiles up ON up.user_id = uf.followed_user_id
+      WHERE uf.follower_user_id = ?
+        AND uf.followed_user_id <> ?
       ORDER BY display_name ASC, uc.email ASC
     `;
 
-    db.query(sql, [currentUserId], (err, rows) => {
+    db.query(sql, [currentUserId, currentUserId], (err, rows) => {
       if (err) {
         console.log("GET /api/calendar/contacts error:", err);
         return res.status(500).json({ error: "Failed to load contacts." });

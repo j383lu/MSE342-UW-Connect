@@ -234,7 +234,7 @@ export default function CalendarPage() {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
-  const [emailInput, setEmailInput] = useState("");
+  const [nameInput, setNameInput] = useState("");
   const [visibleContactIds, setVisibleContactIds] = useState(() => loadIdSet(LS_CONTACTS));
   const [categoryOn, setCategoryOn] = useState({});
   const [overdueOpen, setOverdueOpen] = useState(true);
@@ -272,6 +272,12 @@ export default function CalendarPage() {
     const data = await res.json().catch(() => []);
     const list = res.ok && Array.isArray(data) ? data : [];
     setContacts(list);
+    // Keep the calendar overlay consistent with the returned contact list.
+    // (We persist checked contacts in localStorage, which may include stale IDs.)
+    setVisibleContactIds((prev) => {
+      const allowed = new Set(list.map((c) => c.user_id));
+      return new Set([...prev].filter((id) => allowed.has(id)));
+    });
     return list;
   }, []);
 
@@ -397,13 +403,19 @@ export default function CalendarPage() {
     });
   };
 
-  const addContactByEmail = () => {
-    const q = emailInput.trim().toLowerCase();
+  const searchContactByName = () => {
+    const q = nameInput.trim().toLowerCase();
     if (!q) return;
-    const found = contacts.find((c) => String(c.email).toLowerCase() === q);
-    if (found) {
-      setVisibleContactIds((prev) => new Set(prev).add(found.user_id));
-      setEmailInput("");
+
+    // Prefer exact display_name match; fall back to a case-insensitive "contains" match.
+    const foundExact = contacts.find((c) => String(c.display_name || "").toLowerCase() === q);
+    const foundPartial =
+      foundExact ||
+      contacts.find((c) => String(c.display_name || "").toLowerCase().includes(q));
+
+    if (foundPartial) {
+      setVisibleContactIds((prev) => new Set(prev).add(foundPartial.user_id));
+      setNameInput("");
     }
   };
 
@@ -1405,22 +1417,22 @@ export default function CalendarPage() {
                   <TextField
                     size="small"
                     fullWidth
-                    placeholder="Add contact email…"
-                    value={emailInput}
-                    onChange={(e) => setEmailInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && addContactByEmail()}
+                    placeholder="Search contact name…"
+                    value={nameInput}
+                    onChange={(e) => setNameInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && searchContactByName()}
                   />
                   <Button
                     variant="contained"
                     size="small"
-                    onClick={addContactByEmail}
+                    onClick={searchContactByName}
                     sx={{ textTransform: "none", flexShrink: 0, bgcolor: "primary.main", color: "primary.contrastText" }}
                   >
-                    Add
+                    Search
                   </Button>
                 </Box>
                 <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
-                  Check people to overlay their schedules (from User Credentials).
+                  Check people to overlay their schedules (from your Following list).
                 </Typography>
                 <Box sx={{ maxHeight: 220, overflow: "auto" }}>
                   {contacts.map((c) => {
