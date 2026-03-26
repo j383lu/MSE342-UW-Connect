@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { 
-  Typography, Box, CircularProgress, Tabs, Tab
+  Typography, Box, CircularProgress, Stack
 } from '@mui/material';
 import { useEffect, useState, useCallback } from 'react';
 import { useUser } from '../../../contexts/UserContext';
@@ -66,19 +66,36 @@ const Notifications = () => {
   };
 
   const deleteNotification = async (id) => {
-  try {
-    const res = await apiRequest(`/api/notifications/${id}`, {
-      method: 'DELETE'
-    });
-    
-    if (res.ok) {
-      // Remove from local state immediately
-      setNotifications(prev => prev.filter(n => n.id !== id));
+    try {
+      const res = await apiRequest(`/api/notifications/${id}`, {
+        method: 'DELETE'
+      });
+      
+      if (res.ok) {
+        // Remove from local state immediately
+        setNotifications(prev => prev.filter(n => n.id !== id));
+      }
+    } catch (err) {
+      console.error("Error deleting notification:", err);
     }
-  } catch (err) {
-    console.error("Error deleting notification:", err);
-  }
-};
+  };
+
+  const deleteAllNotifications = async () => {
+    if (!window.confirm("Are you sure you want to clear all notifications? This cannot be undone.")) return;
+
+    try {
+      const res = await apiRequest('/api/notifications/delete-all', {
+        method: 'DELETE'
+      });
+      
+      if (res.ok) {
+        // Optimistically clear the local state
+        setNotifications([]);
+      }
+    } catch (err) {
+      console.error("Error deleting all notifications:", err);
+    }
+  };
 
   if (loading) {
     return (
@@ -103,23 +120,36 @@ const Notifications = () => {
               <h1 style={s.heroTitle}>Notifications</h1>
               <p style={s.heroSubtitle}>Stay updated on your group activities</p>
             </div>
-            {notifications.some(n => !n.is_read) && (
-              <button 
-                style={s.heroActionBtn} 
-                onClick={markAllRead}
-                onMouseEnter={(e) => {
-                  e.target.style.background = "rgba(255, 255, 255, 0.2)";
-                  e.target.style.transform = "translateY(-1px)";
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.background = "rgba(255, 255, 255, 0.12)";
-                  e.target.style.transform = "translateY(0)";
-                }}
-              >
-                <DoneAllIcon sx={{ fontSize: 18 }} />
-                Mark All as Read
-              </button>
-            )}
+            <Stack direction="row" spacing={2}>
+              {notifications.some(n => !n.is_read) && (
+                <button 
+                  style={s.heroActionBtn} 
+                  onClick={markAllRead}
+                  onMouseEnter={(e) => {
+                    e.target.style.background = "rgba(255, 255, 255, 0.2)";
+                    e.target.style.transform = "translateY(-1px)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.background = "rgba(255, 255, 255, 0.12)";
+                    e.target.style.transform = "translateY(0)";
+                  }}
+                >
+                  <DoneAllIcon sx={{ fontSize: 18 }} />
+                  Mark All as Read
+                </button>
+              )}
+              {notifications.length > 0 && (
+                <button 
+                  style={{...s.heroActionBtn, background: "rgba(198, 40, 40, 0.2)"}} 
+                  onClick={deleteAllNotifications}
+                  onMouseEnter={(e) => e.target.style.background = "rgba(198, 40, 40, 0.3)"}
+                  onMouseLeave={(e) => e.target.style.background = "rgba(198, 40, 40, 0.2)"}
+                >
+                  <DeleteIcon sx={{ fontSize: 18 }} />
+                  Clear All
+                </button>
+              )}
+            </Stack>
           </div>
         </div>
 
