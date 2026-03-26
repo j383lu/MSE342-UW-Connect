@@ -67,6 +67,395 @@ const triggerNotification = (recipientId, actorId, entityId, entityType, actionT
   });
 };
 
+// Get the display name of a user with their user_id
+// Tf no display name, then it joins profile and credentials tables and use email
+const getUserDisplayNameById = (userId, callback) => {
+  const sql = `
+    SELECT COALESCE(up.display_name, uc.email) AS display_name
+    FROM User_Credentials uc
+    LEFT JOIN User_Profiles up ON up.user_id = uc.user_id
+    WHERE uc.user_id = ?
+    LIMIT 1
+  `;
+
+  db.query(sql, [userId], (err, rows) => {
+    if (err) {
+      return callback(err, null);
+    }
+
+    if (!rows || rows.length === 0) {
+      return callback(new Error("User display name not found."), null);
+    }
+
+    return callback(null, rows[0].display_name);
+  });
+};
+
+// Get the basic information about an event and its owner with event title, creator id, 
+// and the owner's display name
+const getEventOwnerInfo = (eventId, callback) => {
+  const sql = `
+    SELECT
+      e.id,
+      e.title,
+      e.created_by,
+      COALESCE(up.display_name, uc.email) AS owner_name
+    FROM Events e
+    LEFT JOIN User_Credentials uc ON uc.user_id = e.created_by
+    LEFT JOIN User_Profiles up ON up.user_id = e.created_by
+    WHERE e.id = ?
+    LIMIT 1
+  `;
+
+  db.query(sql, [eventId], (err, rows) => {
+    if (err) {
+      return callback(err, null);
+    }
+
+    if (!rows || rows.length === 0) {
+      return callback(new Error("Event not found."), null);
+    }
+
+    return callback(null, rows[0]);
+  });
+};
+
+// Notify the event owner when someone joins or leaves their event.
+// Firstly check the event owner information, then get the actor's name and set up notification
+// The notification is only sent if the actor is not the owner
+const notifyEventOwnerAboutAttendance = (eventId, actorUserId, actionType, callback = () => {}) => {
+  getEventOwnerInfo(eventId, (eventErr, eventInfo) => {
+    if (eventErr) {
+      console.error("Failed to load event owner info:", eventErr);
+      return callback(eventErr);
+    }
+
+    if (Number(eventInfo.created_by) === Number(actorUserId)) {
+      return callback(null);
+    }
+
+    getUserDisplayNameById(actorUserId, (actorErr, actorName) => {
+      if (actorErr) {
+        console.error("Failed to load actor display name:", actorErr);
+        return callback(actorErr);
+      }
+
+      let message = "";
+
+      if (actionType === "JOIN") {
+        message = `${actorName} joined your event '${eventInfo.title}'`;
+      } else if (actionType === "LEAVE") {
+        message = `${actorName} left your event '${eventInfo.title}'`;
+      } else {
+        return callback(null);
+      }
+
+      createNotification(
+        eventInfo.created_by,
+        actorUserId,
+        eventId,
+        "EVENT",
+        actionType,
+        message
+      );
+
+      return callback(null);
+    });
+  });
+};
+
+// For sending group-related notifications, get all members of selected groups for notification
+// Get the user ids, group names, and display names using joins across multiple tables
+const getGroupMembersForNotification = (groupIds, callback) => {
+  if (!Array.isArray(groupIds) || groupIds.length === 0) {
+    return callback(null, []);
+  }
+
+  const placeholders = groupIds.map(() => "?").join(", ");
+
+  const sql = `
+    SELECT DISTINCT
+      gm.user_id,
+      gm.group_id,
+      sg.name AS group_name,
+      COALESCE(up.display_name, uc.email) AS member_name
+    FROM Group_Members gm
+    INNER JOIN Social_Group sg
+      ON sg.group_id = gm.group_id
+    INNER JOIN User_Credentials uc
+      ON uc.user_id = gm.user_id
+    LEFT JOIN User_Profiles up
+      ON up.user_id = gm.user_id
+    WHERE gm.group_id IN (${placeholders})
+    ORDER BY gm.group_id ASC, gm.user_id ASC
+  `;
+
+  db.query(sql, groupIds, (err, rows) => {
+    if (err) {
+      return callback(err, []);
+    }
+
+    return callback(null, rows || []);
+  });
+};
+
+// Notify all group members when a new group event is created
+// Send a single message to each group member except the creator
+// so that all the group members in the group can receive notification about a new group event
+const notifyGroupMembersAboutNewGroupEvent = (
+  eventId,
+  creatorUserId,
+  eventTitle,
+  groupIds,
+  callback = () => {}
+) => {
+  getUserDisplayNameById(creatorUserId, (creatorErr, creatorName) => {
+    if (creatorErr) {
+      console.error("Failed to load creator display name:", creatorErr);
+      return callback(creatorErr);
+    }
+
+    getGroupMembersForNotification(groupIds, (groupErr, memberRows) => {
+      if (groupErr) {
+        console.error("Failed to load group members for notification:", groupErr);
+        return callback(groupErr);
+      }
+
+      const sentUserIds = new Set();
+
+      memberRows.forEach((row) => {
+        const recipientId = Number(row.user_id);
+        const groupName = row.group_name;
+
+        if (recipientId === Number(creatorUserId)) {
+          return;
+        }
+
+        if (sentUserIds.has(recipientId)) {
+          return;
+        }
+
+        sentUserIds.add(recipientId);
+
+        const message = `${creatorName} created a group event '${eventTitle}' in your group '${groupName}'`;
+
+        createNotification(
+          recipientId,
+          creatorUserId,
+          eventId,
+          "EVENT",
+          "CREATE",
+          message
+        );
+      });
+
+      return callback(null);
+    });
+  });
+};
+
+// Get all users who joined a specific event
+// Also, map attendee emails back to user_id and display names for later use in notifications
+const getEventAttendeeUsers = (eventId, callback) => {
+  const sql = `
+    SELECT DISTINCT
+      uc.user_id,
+      COALESCE(up.display_name, uc.email) AS display_name
+    FROM Event_Attendees ea
+    INNER JOIN User_Credentials uc
+      ON LOWER(uc.email) = LOWER(ea.attendee_name)
+    LEFT JOIN User_Profiles up
+      ON up.user_id = uc.user_id
+    WHERE ea.event_id = ?
+    ORDER BY uc.user_id ASC
+  `;
+
+  db.query(sql, [eventId], (err, rows) => {
+    if (err) {
+      return callback(err, []);
+    }
+
+    return callback(null, rows || []);
+  });
+};
+
+// Notify all attendees when an event is deleted
+// Each attendee receives a message saying the event has been removed
+const notifyEventAttendeesAboutDelete = (
+  eventId,
+  actorUserId,
+  eventTitle,
+  attendeeRows,
+  callback = () => {}
+) => {
+  getUserDisplayNameById(actorUserId, (actorErr, actorName) => {
+    if (actorErr) {
+      console.error("Failed to load actor display name:", actorErr);
+      return callback(actorErr);
+    }
+
+    const sentUserIds = new Set();
+
+    attendeeRows.forEach((row) => {
+      const recipientId = Number(row.user_id);
+
+      if (recipientId === Number(actorUserId)) {
+        return;
+      }
+
+      if (sentUserIds.has(recipientId)) {
+        return;
+      }
+
+      sentUserIds.add(recipientId);
+
+      const message = `${actorName} deleted the event '${eventTitle}'`;
+
+      createNotification(
+        recipientId,
+        actorUserId,
+        eventId,
+        "EVENT",
+        "DELETE",
+        message
+      );
+    });
+
+    return callback(null);
+  });
+};
+
+// Format a date value into YYYY-MM-DD for comparison and display
+// This function can handle Date objects, plain date strings, and datetime strings
+const formatDateLocal = (value) => {
+  if (!value) return "";
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  const text = String(value).trim();
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return text;
+  }
+
+  const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (match) {
+    return match[1];
+  }
+
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) {
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, "0");
+    const day = String(parsed.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  return text;
+};
+
+// Get the only hour and minute part from a time value for comparison
+const formatTimeOnly = (value) => {
+  if (!value) return "";
+
+  const text = String(value).trim();
+  const match = text.match(/^(\d{2}):(\d{2})/);
+
+  if (match) {
+    return `${match[1]}:${match[2]}`;
+  }
+
+  return text;
+};
+
+// Build a notification message that shows which event fields were updated
+// It compares the old event data and new event data, then records only the changed fields
+// If nothing changed, it returns a simple update message without the field list
+const buildEventUpdateMessage = (actorName, oldEvent, newEvent) => {
+  const changedLines = [];
+
+  const oldTitle = String(oldEvent.title || "").trim();
+  const newTitle = String(newEvent.title || "").trim();
+
+  const oldDescription = String(oldEvent.description || "").trim();
+  const newDescription = String(newEvent.description || "").trim();
+
+  const oldEventDate = formatDateLocal(oldEvent.event_date);
+  const newEventDate = formatDateLocal(newEvent.event_date);
+
+  const oldEventTime = formatTimeOnly(oldEvent.event_time);
+  const newEventTime = formatTimeOnly(newEvent.event_time);
+
+  const oldEndDate = formatDateLocal(oldEvent.end_date);
+  const newEndDate = formatDateLocal(newEvent.end_date);
+
+  const oldEndTime = formatTimeOnly(oldEvent.end_time);
+  const newEndTime = formatTimeOnly(newEvent.end_time);
+
+  const oldLocation = String(oldEvent.location || "").trim();
+  const newLocation = String(newEvent.location || "").trim();
+
+  const oldCapacity = Number(oldEvent.capacity || 0);
+  const newCapacity = Number(newEvent.capacity || 0);
+
+  const oldCategory = String(oldEvent.category || "").trim();
+  const newCategory = String(newEvent.category || "").trim();
+
+  const oldEventType = String(oldEvent.event_type || "").trim();
+  const newEventType = String(newEvent.event_type || "").trim();
+
+  if (oldTitle !== newTitle) {
+    changedLines.push(`Title: ${oldTitle || "N/A"} -> ${newTitle || "N/A"}`);
+  }
+
+  if (oldDescription !== newDescription) {
+    changedLines.push(`Description: ${oldDescription || "N/A"} -> ${newDescription || "N/A"}`);
+  }
+
+  if (oldEventDate !== newEventDate) {
+    changedLines.push(`Start date: ${oldEventDate || "N/A"} -> ${newEventDate || "N/A"}`);
+  }
+
+  if (oldEventTime !== newEventTime) {
+    changedLines.push(`Start time: ${oldEventTime || "N/A"} -> ${newEventTime || "N/A"}`);
+  }
+
+  if (oldEndDate !== newEndDate) {
+    changedLines.push(`End date: ${oldEndDate || "N/A"} -> ${newEndDate || "N/A"}`);
+  }
+
+  if (oldEndTime !== newEndTime) {
+    changedLines.push(`End time: ${oldEndTime || "N/A"} -> ${newEndTime || "N/A"}`);
+  }
+
+  if (oldLocation !== newLocation) {
+    changedLines.push(`Location: ${oldLocation || "N/A"} -> ${newLocation || "N/A"}`);
+  }
+
+  if (oldCapacity !== newCapacity) {
+    changedLines.push(`Capacity: ${oldCapacity} -> ${newCapacity}`);
+  }
+
+  if (oldCategory !== newCategory) {
+    changedLines.push(`Category: ${oldCategory || "N/A"} -> ${newCategory || "N/A"}`);
+  }
+
+  if (oldEventType !== newEventType) {
+    changedLines.push(`Event type: ${oldEventType || "N/A"} -> ${newEventType || "N/A"}`);
+  }
+
+  if (changedLines.length === 0) {
+    return `${actorName} updated the event "${newTitle || oldTitle}".`;
+  }
+
+  return `${actorName} updated the event "${newTitle || oldTitle}".\nChanged fields:\n${changedLines.join("\n")}`;
+};
+
 // Create database connection using your config (ONLY ONE DECLARATION)
 const db = mysql.createConnection({
   host: config.host,
@@ -700,9 +1089,10 @@ const SQL_EXCLUDE_CALENDAR_PERSONAL_EVENT = `
       )`;
 
 // GET /api/events
-// This API is used to get a list of events from the database.
-// If includePast=true is passed in the query, it will return all events including past ones.
-// It also checks the current user to see if they have joined or liked each event.
+// This API is used to return a list of events from the database
+// If includePast=true is passed in the query, it returns all events including past ones
+// It joins multiple tables to find likes count, attendees count, and user-specific flags like has_joined and has_liked.
+// It also filters out private events and sorts results by event time.
 app.get("/api/events", checkAuth, (req, res) => {
   const includePast = String(req.query.includePast).toLowerCase() === "true";
   const pastFilter = includePast
@@ -772,9 +1162,10 @@ app.get("/api/events", checkAuth, (req, res) => {
   });
 });
 
-// POST /api/events (create event)
 // POST /api/events
-// This API creates a new event using the information provided by the user and saves it to the database.
+// This API creates a new event and saves it into the database with validation checks
+// The validation verifies input fields, time logic, and ensures group permissions if it's a group event
+// After inserting the event, it also inserts tags, group mappings, and triggers notifications
 app.post("/api/events", checkAuth, (req, res) => {
   const {
     title,
@@ -984,12 +1375,28 @@ app.post("/api/events", checkAuth, (req, res) => {
                 return res.status(500).json({ error: tagInsertErr.message });
               }
 
-              return res.status(201).json({
-                id: eventId,
-                event_type: safeEventType,
-                group_ids: safeGroupIds,
-                message: "Event created successfully.",
-              });
+              const finishResponse = () => {
+                return res.status(201).json({
+                  id: eventId,
+                  event_type: safeEventType,
+                  group_ids: safeGroupIds,
+                  message: "Event created successfully.",
+                });
+              };
+
+              if (safeEventType !== "group" || safeGroupIds.length === 0) {
+                return finishResponse();
+              }
+
+              notifyGroupMembersAboutNewGroupEvent(
+                eventId,
+                currentUserId,
+                title,
+                safeGroupIds,
+                () => {
+                  return finishResponse();
+                }
+              );
             });
           });
         }
@@ -1070,7 +1477,10 @@ app.get("/api/calendar/contacts", checkAuth, (req, res) => {
   });
 });
 
-// GET /api/calendar/events?userIds=1,2,3 — events created by or joined by any of those users
+// GET /api/calendar/events
+// This API fetches events for calendar view based on selected users
+// It returns events created by or joined by those users, while handling visibility rules
+// Also, it checks the attendee count and event status like past or ongoing
 app.get("/api/calendar/events", checkAuth, (req, res) => {
   const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
 
@@ -1264,7 +1674,10 @@ app.get("/api/calendar/events/:id", checkAuth, (req, res) => {
   });
 });
 
-// POST /api/calendar/todos — quick create with explicit end date/time; maps to Events + optional tags/attendees
+// POST /api/calendar/todos
+// This API creates an event in calendar style
+// It validates time inputs, sets default values, and stores extra data using tags.
+// It can also add participants as attendees
 app.post("/api/calendar/todos", checkAuth, (req, res) => {
   const {
     title,
@@ -1921,6 +2334,8 @@ app.post("/api/events/:id/join", checkAuth, (req, res) => {
                   return res.status(500).json({ error: "Failed to join event." });
                 }
 
+                notifyEventOwnerAboutAttendance(eventId, currentUserId, "JOIN");
+
                 db.query(countSql, [eventId], (reloadErr, newCountRows) => {
                   if (reloadErr) {
                     return res.status(500).json({
@@ -1985,58 +2400,66 @@ app.delete("/api/events/:id/leave", checkAuth, (req, res) => {
     return res.status(400).json({ error: "Missing authenticated user email." });
   }
 
-  const eventSql = `
-    SELECT title
-    FROM Events
-    WHERE id = ?
-    LIMIT 1
-  `;
-
-  db.query(eventSql, [eventId], (eventErr, eventRows) => {
-    if (eventErr) {
-      console.log("Leave event title lookup error:", eventErr);
-      return res.status(500).json({ error: "Failed to load event." });
+  getCurrentUserIdByEmail(attendeeEmail, (userErr, currentUserId) => {
+    if (userErr) {
+      return res.status(500).json({ error: "Failed to identify current user." });
     }
 
-    if (eventRows.length === 0) {
-      return res.status(404).json({ error: "Event not found." });
-    }
-
-    const eventTitle = eventRows[0].title;
-
-    const deleteSql = `
-      DELETE FROM Event_Attendees
-      WHERE event_id = ? AND LOWER(attendee_name) = ?
+    const eventSql = `
+      SELECT title
+      FROM Events
+      WHERE id = ?
+      LIMIT 1
     `;
 
-    db.query(deleteSql, [eventId, attendeeEmail], (err, result) => {
-      if (err) {
-        console.log("leave event error:", err);
-        return res.status(500).json({ error: "Failed to leave event." });
+    db.query(eventSql, [eventId], (eventErr, eventRows) => {
+      if (eventErr) {
+        console.log("Leave event title lookup error:", eventErr);
+        return res.status(500).json({ error: "Failed to load event." });
       }
 
-      if (result.affectedRows === 0) {
-        return res.status(400).json({ error: "You have not joined this event yet." });
+      if (eventRows.length === 0) {
+        return res.status(404).json({ error: "Event not found." });
       }
 
-      const countSql = `
-        SELECT COUNT(*) AS current_count
-        FROM Event_Attendees
-        WHERE event_id = ?
+      const eventTitle = eventRows[0].title;
+
+      const deleteSql = `
+        DELETE FROM Event_Attendees
+        WHERE event_id = ? AND LOWER(attendee_name) = ?
       `;
 
-      db.query(countSql, [eventId], (countErr, countRows) => {
-        if (countErr) {
-          console.log("Leave event reload count error:", countErr);
-          return res.status(500).json({
-            error: "Left event, but failed to reload attendee count.",
-          });
+      db.query(deleteSql, [eventId, attendeeEmail], (err, result) => {
+        if (err) {
+          console.log("leave event error:", err);
+          return res.status(500).json({ error: "Failed to leave event." });
         }
 
-        return res.json({
-          current_count: Number(countRows[0].current_count || 0),
-          has_joined: 0,
-          message: `You have successfully left the "${eventTitle}" event.`,
+        if (result.affectedRows === 0) {
+          return res.status(400).json({ error: "You have not joined this event yet." });
+        }
+
+        notifyEventOwnerAboutAttendance(eventId, currentUserId, "LEAVE");
+
+        const countSql = `
+          SELECT COUNT(*) AS current_count
+          FROM Event_Attendees
+          WHERE event_id = ?
+        `;
+
+        db.query(countSql, [eventId], (countErr, countRows) => {
+          if (countErr) {
+            console.log("Leave event reload count error:", countErr);
+            return res.status(500).json({
+              error: "Left event, but failed to reload attendee count.",
+            });
+          }
+
+          return res.json({
+            current_count: Number(countRows[0].current_count || 0),
+            has_joined: 0,
+            message: `You have successfully left the "${eventTitle}" event.`,
+          });
         });
       });
     });
@@ -4792,35 +5215,33 @@ app.delete('/api/notifications/:id', (req, res) => {
 });
 
 // PUT /api/events/:id
-// This API allows the event creator to update or re-edit an existing event’s information,
-// including details like title, time, location, capacity, tags, event type, and group settings
+// This API updates an existing event created by the user
+// It validates inputs, checks ownership, updates related tables (tags and groups),
+// and manages attendee visibility and notifications based on event changes
 app.put("/api/events/:id", checkAuth, (req, res) => {
-  const eventId = Number(req.params.id);
 
+  // Extract event id and all fields from request body and validate them
+  const eventId = Number(req.params.id);
   if (!eventId) {
     return res.status(400).json({ error: "Invalid event id." });
   }
 
-  const { title, description, event_date, event_time, end_date, end_time, location, capacity, category, tags, event_type, group_ids } =
-    req.body;
-
+  const { title, description, event_date, event_time, end_date, end_time, location, capacity, category, tags, event_type, group_ids } = req.body;
   if (!title || !description || !event_date || !event_time || !end_date || !end_time || !location || capacity === undefined || !category) {
     return res.status(400).json({ error: "Missing required fields." });
   }
 
+  // Validate start end dates, full datetime including time
   const startDateOnly = new Date(`${event_date}T00:00`);
   const endDateOnly = new Date(`${end_date}T00:00`);
 
-  if (
-    Number.isNaN(startDateOnly.getTime()) ||
-    Number.isNaN(endDateOnly.getTime())
-  ) {
+  if (Number.isNaN(startDateOnly.getTime()) || Number.isNaN(endDateOnly.getTime())) {
     return res.status(400).json({ error: "Invalid start date or end date." });
   }
 
   if (endDateOnly < startDateOnly) {
     return res.status(400).json({
-      error: "End date must be later than or equal to start date.",
+      error: "End date must be after or equal to start date.",
     });
   }
 
@@ -4836,16 +5257,17 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
 
   if (event_date === end_date && endDateTime <= startDateTime) {
     return res.status(400).json({
-      error: "If end date is the same as start date, end time must be later than start time.",
+      error: "End time must be after start time.",
     });
   }
 
   if (endDateTime <= startDateTime) {
     return res.status(400).json({
-      error: "End date and end time must be later than start date and start time.",
+      error: "End date and end time must be after start date and start time.",
     });
   }
 
+  // Validate capacity value
   const capNum = Number(capacity);
   if (!Number.isInteger(capNum) || capNum < 2) {
     return res.status(400).json({
@@ -4853,12 +5275,13 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
     });
   }
 
+  // Normalize event type to safe values and only allow public, group, or private
   const rawPutEvtType = String(event_type || "public").trim().toLowerCase();
   const safeEventType =
     rawPutEvtType === "group" ? "group" : rawPutEvtType === "private" ? "private" : "public";
 
+  // // Clean tags and group ids to remove duplicates and invalid values
   const safeTags = Array.isArray(tags) ? tags : [];
-
   const safeGroupIds = Array.isArray(group_ids)
     ? [
         ...new Set(
@@ -4869,18 +5292,20 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
       ]
     : [];
 
+  // For group events, make sure at least one group is selected
   if (safeEventType === "group" && safeGroupIds.length === 0) {
     return res.status(400).json({
       error: "Please select at least one group for a group event.",
     });
   }
 
+  // Get current user's email from auth middleware
   const currentUserEmail = String(req.user.email || "").trim().toLowerCase();
-
   if (!currentUserEmail) {
     return res.status(401).json({ error: "Authenticated user email not found." });
   }
-
+  
+  // Check if the current user is the creator of this event
   getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
     if (userErr) {
       return res.status(500).json({ error: "Failed to identify current user." });
@@ -4909,6 +5334,7 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
         });
       }
 
+      // Verify user belongs to selected groups, prevent users from having events to groups they are not part of
       const verifyGroups = (done) => {
         if (safeEventType !== "group") {
           return done(null);
@@ -4945,6 +5371,7 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
         );
       };
 
+      // Ensure new capacity is not smaller than current attendees
       const attendeeCountSql = `
         SELECT COUNT(*) AS current_count
         FROM Event_Attendees
@@ -4969,205 +5396,527 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
             return res.status(403).json({ error: verifyError.message });
           }
 
-          db.beginTransaction((txErr) => {
-            if (txErr) {
-              return res.status(500).json({ error: "Failed to start update transaction." });
+          // Get original event data before updating for comparison later
+          const oldEventSql = `
+            SELECT
+              title,
+              description,
+              event_date,
+              event_time,
+              end_date,
+              end_time,
+              location,
+              capacity,
+              category,
+              event_type
+            FROM Events
+            WHERE id = ?
+            LIMIT 1
+          `;
+
+          db.query(oldEventSql, [eventId], (oldErr, oldRows) => {
+            if (oldErr) {
+              console.log("PUT /api/events/:id original event lookup error:", oldErr);
+              return res.status(500).json({ error: "Failed to load original event." });
             }
 
-            const rollbackWithError = (message, errObj = null) => {
-              return db.rollback(() => {
-                if (errObj) {
-                  console.log(message, errObj);
-                }
-                return res.status(500).json({ error: message });
-              });
-            };
+            if (!oldRows || oldRows.length === 0) {
+              return res.status(404).json({ error: "Event not found." });
+            }
 
-            const updateEventSql = `
-              UPDATE Events
-              SET
-                title = ?,
-                description = ?,
-                event_date = ?,
-                event_time = ?,
-                end_date = ?,
-                end_time = ?,
-                location = ?,
-                capacity = ?,
-                category = ?,
-                event_type = ?
-              WHERE id = ?
-            `;
+            const oldEvent = oldRows[0];
+            const oldType = String(oldEvent.event_type || "").trim().toLowerCase();
+            const newType = safeEventType;
 
-            db.query(
-              updateEventSql,
-              [
-                title,
-                description,
-                event_date,
-                event_time,
-                end_date,
-                end_time,
-                location,
-                capNum,
-                category,
-                safeEventType,
-                eventId,
-              ],
-              (updateErr) => {
-                if (updateErr) {
-                  return rollbackWithError("Failed to update event.", updateErr);
+            // Load all current attendees of the event for visibility updates and notifications
+            getEventAttendeeUsers(eventId, (originalAttendeeErr, originalAttendeeRows) => {
+              if (originalAttendeeErr) {
+                console.log("PUT /api/events/:id attendee lookup error:", originalAttendeeErr);
+                return res.status(500).json({ error: "Failed to load current attendees." });
+              }
+
+              const originalAttendees = originalAttendeeRows || [];
+              let visibilityPlan = {
+                type: null,
+                keptRecipientIds: [],
+                removedRecipientIds: [],
+              };
+
+              // Start database transaction
+              // Ensures all updates succeed together or rollback if any step fails
+              db.beginTransaction((txErr) => {
+                if (txErr) {
+                  return res.status(500).json({ error: "Failed to start update transaction." });
                 }
+
+                const rollbackWithError = (message, errObj = null) => {
+                  return db.rollback(() => {
+                    if (errObj) {
+                      console.log(message, errObj);
+                    }
+                    return res.status(500).json({ error: message });
+                  });
+                };
+
+                // Update main event fields in Events table
+                const updateEventSql = `
+                  UPDATE Events
+                  SET
+                    title = ?,
+                    description = ?,
+                    event_date = ?,
+                    event_time = ?,
+                    end_date = ?,
+                    end_time = ?,
+                    location = ?,
+                    capacity = ?,
+                    category = ?,
+                    event_type = ?
+                  WHERE id = ?
+                `;
 
                 db.query(
-                  `DELETE FROM Event_Tags WHERE event_id = ?`,
-                  [eventId],
-                  (deleteTagsErr) => {
-                    if (deleteTagsErr) {
-                      return rollbackWithError("Failed to update tags.", deleteTagsErr);
+                  updateEventSql,
+                  [
+                    title,
+                    description,
+                    event_date,
+                    event_time,
+                    end_date,
+                    end_time,
+                    location,
+                    capNum,
+                    category,
+                    safeEventType,
+                    eventId,
+                  ],
+                  (updateErr) => {
+                    if (updateErr) {
+                      return rollbackWithError("Failed to update event.", updateErr);
                     }
 
-                    const uniqueTags = [
-                      ...new Set(
-                        safeTags.map((tag) => String(tag).trim()).filter(Boolean)
-                      ),
-                    ];
-
-                    const insertTags = (done) => {
-                      if (uniqueTags.length === 0) {
-                        return done(null);
-                      }
-
-                      const tagValues = uniqueTags.map((tag) => [eventId, tag]);
-                      const insertTagsSql = `
-                        INSERT INTO Event_Tags (event_id, tag_name)
-                        VALUES ?
-                      `;
-
-                      db.query(insertTagsSql, [tagValues], (tagErr) => {
-                        if (tagErr) {
-                          return done(tagErr);
+                    db.query(
+                      `DELETE FROM Event_Tags WHERE event_id = ?`,
+                      [eventId],
+                      (deleteTagsErr) => {
+                        if (deleteTagsErr) {
+                          return rollbackWithError("Failed to update tags.", deleteTagsErr);
                         }
 
-                        return done(null);
-                      });
-                    };
+                        const uniqueTags = [
+                          ...new Set(
+                            safeTags.map((tag) => String(tag).trim()).filter(Boolean)
+                          ),
+                        ];
 
-                    insertTags((insertTagsErr) => {
-                      if (insertTagsErr) {
-                        return rollbackWithError("Failed to update tags.", insertTagsErr);
-                      }
-
-                      db.query(
-                        `DELETE FROM Event_Groups WHERE event_id = ?`,
-                        [eventId],
-                        (deleteGroupsErr) => {
-                          if (deleteGroupsErr) {
-                            return rollbackWithError(
-                              "Failed to update selected groups.",
-                              deleteGroupsErr
-                            );
+                        const insertTags = (done) => {
+                          if (uniqueTags.length === 0) {
+                            return done(null);
                           }
 
-                          const insertGroups = (done) => {
-                            if (safeEventType !== "group" || safeGroupIds.length === 0) {
-                              return done(null);
+                          const tagValues = uniqueTags.map((tag) => [eventId, tag]);
+                          const insertTagsSql = `
+                            INSERT INTO Event_Tags (event_id, tag_name)
+                            VALUES ?
+                          `;
+
+                          db.query(insertTagsSql, [tagValues], (tagErr) => {
+                            if (tagErr) {
+                              return done(tagErr);
                             }
 
-                            const groupValues = safeGroupIds.map((groupId) => [
-                              eventId,
-                              groupId,
-                            ]);
+                            return done(null);
+                          });
+                        };
 
-                            const insertGroupsSql = `
-                              INSERT INTO Event_Groups (event_id, group_id)
-                              VALUES ?
-                            `;
+                        insertTags((insertTagsErr) => {
+                          if (insertTagsErr) {
+                            return rollbackWithError("Failed to update tags.", insertTagsErr);
+                          }
 
-                            db.query(insertGroupsSql, [groupValues], (groupErr) => {
-                              if (groupErr) {
-                                return done(groupErr);
+                          db.query(
+                            `DELETE FROM Event_Groups WHERE event_id = ?`,
+                            [eventId],
+                            (deleteGroupsErr) => {
+                              if (deleteGroupsErr) {
+                                return rollbackWithError(
+                                  "Failed to update selected groups.",
+                                  deleteGroupsErr
+                                );
                               }
 
-                              return done(null);
-                            });
-                          };
+                              const insertGroups = (done) => {
+                                if (safeEventType !== "group" || safeGroupIds.length === 0) {
+                                  return done(null);
+                                }
 
-                          insertGroups((insertGroupsErr) => {
-                            if (insertGroupsErr) {
-                              return rollbackWithError(
-                                "Failed to update selected groups.",
-                                insertGroupsErr
-                              );
-                            }
+                                const groupValues = safeGroupIds.map((groupId) => [
+                                  eventId,
+                                  groupId,
+                                ]);
 
-                            const updateAttendeesForPrivateEvent = (done) => {
-                              if (safeEventType !== "group" || safeGroupIds.length === 0) {
-                                return done(null);
-                              }
+                                const insertGroupsSql = `
+                                  INSERT INTO Event_Groups (event_id, group_id)
+                                  VALUES ?
+                                `;
 
-                              const placeholders = safeGroupIds.map(() => "?").join(", ");
+                                db.query(insertGroupsSql, [groupValues], (groupErr) => {
+                                  if (groupErr) {
+                                    return done(groupErr);
+                                  }
 
-                              const deleteNonMemberAttendeesSql = `
-                                DELETE ea
-                                FROM Event_Attendees ea
-                                INNER JOIN Events e
-                                  ON e.id = ea.event_id
-                                LEFT JOIN User_Credentials uc_creator
-                                  ON uc_creator.user_id = e.created_by
-                                WHERE ea.event_id = ?
-                                  AND LOWER(ea.attendee_name) <> LOWER(uc_creator.email)
-                                  AND LOWER(ea.attendee_name) NOT IN (
-                                    SELECT LOWER(uc.email)
+                                  return done(null);
+                                });
+                              };
+
+                              insertGroups((insertGroupsErr) => {
+                                if (insertGroupsErr) {
+                                  return rollbackWithError(
+                                    "Failed to update selected groups.",
+                                    insertGroupsErr
+                                  );
+                                }
+
+                                // Handle attendee visibility when event type or groups change
+                                // Decide who stays and who should be removed from the event
+                                const handleVisibilityChange = (done) => {
+                                  if (newType !== "group") {
+                                    if (oldType === "group" && newType === "public") {
+                                      visibilityPlan = {
+                                        type: "group_to_public",
+                                        keptRecipientIds: originalAttendees
+                                          .map((row) => Number(row.user_id))
+                                          .filter((uid) => uid && uid !== Number(currentUserId)),
+                                        removedRecipientIds: [],
+                                      };
+                                    }
+
+                                    return done(null);
+                                  }
+
+                                  const placeholders = safeGroupIds.map(() => "?").join(", ");
+
+                                  const groupMembersSql = `
+                                    SELECT DISTINCT uc.user_id
                                     FROM Group_Members gm
                                     INNER JOIN User_Credentials uc
                                       ON uc.user_id = gm.user_id
                                     WHERE gm.group_id IN (${placeholders})
-                                  )
-                              `;
+                                  `;
 
-                              db.query(
-                                deleteNonMemberAttendeesSql,
-                                [eventId, ...safeGroupIds],
-                                (attendeeDeleteErr) => {
-                                  if (attendeeDeleteErr) {
-                                    return done(attendeeDeleteErr);
+                                  db.query(groupMembersSql, safeGroupIds, (groupMemberErr, groupMemberRows) => {
+                                    if (groupMemberErr) {
+                                      return done(groupMemberErr);
+                                    }
+
+                                    const allowedUserIds = new Set(
+                                      (groupMemberRows || []).map((row) => Number(row.user_id))
+                                    );
+
+                                    const keptRecipientIds = [];
+                                    const removedRecipientIds = [];
+
+                                    originalAttendees.forEach((row) => {
+                                      const uid = Number(row.user_id);
+
+                                      if (!uid || uid === Number(currentUserId)) {
+                                        return;
+                                      }
+
+                                      if (allowedUserIds.has(uid)) {
+                                        keptRecipientIds.push(uid);
+                                      } else {
+                                        removedRecipientIds.push(uid);
+                                      }
+                                    });
+
+                                    if (oldType === "public" && newType === "group") {
+                                      visibilityPlan = {
+                                        type: "public_to_group",
+                                        keptRecipientIds,
+                                        removedRecipientIds,
+                                      };
+                                    } else if (oldType === "group" && newType === "group") {
+                                      visibilityPlan = {
+                                        type: "group_to_group",
+                                        keptRecipientIds,
+                                        removedRecipientIds,
+                                      };
+                                    }
+
+                                    if (removedRecipientIds.length === 0) {
+                                      return done(null);
+                                    }
+
+                                    const deleteRemovedSql = `
+                                      DELETE ea
+                                      FROM Event_Attendees ea
+                                      INNER JOIN User_Credentials uc
+                                        ON LOWER(uc.email) = LOWER(ea.attendee_name)
+                                      WHERE ea.event_id = ?
+                                        AND uc.user_id IN (${removedRecipientIds.map(() => "?").join(", ")})
+                                    `;
+
+                                    db.query(
+                                      deleteRemovedSql,
+                                      [eventId, ...removedRecipientIds],
+                                      (deleteRemovedErr) => {
+                                        if (deleteRemovedErr) {
+                                          return done(deleteRemovedErr);
+                                        }
+
+                                        return done(null);
+                                      }
+                                    );
+                                  });
+                                };
+
+                                handleVisibilityChange((visibilityErr) => {
+                                  if (visibilityErr) {
+                                    return rollbackWithError(
+                                      "Failed to update attendees for the private event.",
+                                      visibilityErr
+                                    );
                                   }
 
-                                  return done(null);
-                                }
-                              );
-                            };
+                                  db.commit((commitErr) => {
+                                    if (commitErr) {
+                                      return rollbackWithError(
+                                        "Failed to save event changes.",
+                                        commitErr
+                                      );
+                                    }
 
-                            updateAttendeesForPrivateEvent((attendeeDeleteErr) => {
-                              if (attendeeDeleteErr) {
-                                return rollbackWithError(
-                                  "Failed to update attendees for the private event.",
-                                  attendeeDeleteErr
-                                );
-                              }
+                                    const newEvent = {
+                                      title,
+                                      description,
+                                      event_date,
+                                      event_time,
+                                      end_date,
+                                      end_time,
+                                      location,
+                                      capacity: capNum,
+                                      category,
+                                      event_type: safeEventType,
+                                    };
 
-                              db.commit((commitErr) => {
-                                if (commitErr) {
-                                  return rollbackWithError(
-                                    "Failed to save event changes.",
-                                    commitErr
-                                  );
-                                }
+                                    getUserDisplayNameById(currentUserId, (nameErr, actorName) => {
+                                      const safeActorName =
+                                        !nameErr && actorName ? actorName : "Someone";
 
-                                return res.json({
-                                  message: "Event updated successfully.",
+                                      // Build detailed message showing what fields changed for notifications
+                                      const updateMessage = buildEventUpdateMessage(
+                                        safeActorName,
+                                        oldEvent,
+                                        newEvent
+                                      );
+
+                                      // Notify users about visibility changes based on type change (public/private)
+                                      const sendVisibilityNotifications = () => {
+                                        if (!visibilityPlan.type) {
+                                          return res.json({
+                                            message: "Event updated successfully.",
+                                          });
+                                        }
+
+                                        const sentUserIds = new Set();
+
+                                        if (visibilityPlan.type === "public_to_group") {
+                                          visibilityPlan.keptRecipientIds.forEach((recipientId) => {
+                                            if (sentUserIds.has(recipientId)) {
+                                              return;
+                                            }
+
+                                            sentUserIds.add(recipientId);
+
+                                            // Send detailed message to remaining attendees
+                                            createNotification(
+                                              recipientId,
+                                              currentUserId,
+                                              eventId,
+                                              "EVENT",
+                                              "UPDATE",
+                                              `${safeActorName} changed the event "${title}" to private.\nYou are still attending because you are in the selected group.`
+                                            );
+                                          });
+
+                                          visibilityPlan.removedRecipientIds.forEach((recipientId) => {
+                                            if (sentUserIds.has(recipientId)) {
+                                              return;
+                                            }
+
+                                            sentUserIds.add(recipientId);
+
+                                            createNotification(
+                                              recipientId,
+                                              currentUserId,
+                                              eventId,
+                                              "EVENT",
+                                              "UPDATE",
+                                              `${safeActorName} changed the event "${title}" to private.\nYou were removed because you are not in the selected group.`
+                                            );
+                                          });
+
+                                          return res.json({
+                                            message: "Event updated successfully.",
+                                          });
+                                        }
+
+                                        if (visibilityPlan.type === "group_to_public") {
+                                          visibilityPlan.keptRecipientIds.forEach((recipientId) => {
+                                            if (sentUserIds.has(recipientId)) {
+                                              return;
+                                            }
+
+                                            sentUserIds.add(recipientId);
+
+                                            createNotification(
+                                              recipientId,
+                                              currentUserId,
+                                              eventId,
+                                              "EVENT",
+                                              "UPDATE",
+                                              `${safeActorName} changed the event "${title}" to public.\nYou are still attending.`
+                                            );
+                                          });
+
+                                          return res.json({
+                                            message: "Event updated successfully.",
+                                          });
+                                        }
+
+                                        if (visibilityPlan.type === "group_to_group") {
+                                          visibilityPlan.keptRecipientIds.forEach((recipientId) => {
+                                            if (sentUserIds.has(recipientId)) {
+                                              return;
+                                            }
+
+                                            sentUserIds.add(recipientId);
+
+                                            createNotification(
+                                              recipientId,
+                                              currentUserId,
+                                              eventId,
+                                              "EVENT",
+                                              "UPDATE",
+                                              `${safeActorName} updated the selected group access for the private event "${title}".\nYou are still attending because you are in the selected group.`
+                                            );
+                                          });
+
+                                          visibilityPlan.removedRecipientIds.forEach((recipientId) => {
+                                            if (sentUserIds.has(recipientId)) {
+                                              return;
+                                            }
+
+                                            sentUserIds.add(recipientId);
+
+                                            createNotification(
+                                              recipientId,
+                                              currentUserId,
+                                              eventId,
+                                              "EVENT",
+                                              "UPDATE",
+                                              `${safeActorName} updated the selected group access for the private event "${title}".\nYou were removed because you are not in the selected group.`
+                                            );
+                                          });
+
+                                          return res.json({
+                                            message: "Event updated successfully.",
+                                          });
+                                        }
+
+                                        return res.json({
+                                          message: "Event updated successfully.",
+                                        });
+                                      };
+
+                                      if (visibilityPlan.type) {
+                                        const sentUpdateUserIds = new Set();
+
+                                        const sendDetailedUpdateToKeptUsers = (recipientIds) => {
+                                          recipientIds.forEach((recipientId) => {
+                                            if (recipientId === Number(currentUserId)) {
+                                              return;
+                                            }
+
+                                            if (sentUpdateUserIds.has(recipientId)) {
+                                              return;
+                                            }
+
+                                            sentUpdateUserIds.add(recipientId);
+
+                                            createNotification(
+                                              recipientId,
+                                              currentUserId,
+                                              eventId,
+                                              "EVENT",
+                                              "UPDATE",
+                                              updateMessage
+                                            );
+                                          });
+                                        };
+
+                                        if (visibilityPlan.type === "public_to_group") {
+                                          sendDetailedUpdateToKeptUsers(visibilityPlan.keptRecipientIds);
+                                        }
+
+                                        if (visibilityPlan.type === "group_to_public") {
+                                          sendDetailedUpdateToKeptUsers(visibilityPlan.keptRecipientIds);
+                                        }
+
+                                        if (visibilityPlan.type === "group_to_group") {
+                                          sendDetailedUpdateToKeptUsers(visibilityPlan.keptRecipientIds);
+                                        }
+
+                                        return sendVisibilityNotifications();
+                                      }
+
+                                      // If no visibility change, notify all attendees about update
+                                      getEventAttendeeUsers(eventId, (attendeeErr, attendeeRows) => {
+                                        if (!attendeeErr && attendeeRows && attendeeRows.length > 0) {
+                                          const sentUserIds = new Set();
+
+                                          attendeeRows.forEach((row) => {
+                                            const recipientId = Number(row.user_id);
+
+                                            if (recipientId === Number(currentUserId)) {
+                                              return;
+                                            }
+
+                                            if (sentUserIds.has(recipientId)) {
+                                              return;
+                                            }
+
+                                            sentUserIds.add(recipientId);
+
+                                            createNotification(
+                                              recipientId,
+                                              currentUserId,
+                                              eventId,
+                                              "EVENT",
+                                              "UPDATE",
+                                              updateMessage
+                                            );
+                                          });
+                                        }
+
+                                        return res.json({
+                                          message: "Event updated successfully.",
+                                        });
+                                      });
+                                    });
+                                  });
                                 });
                               });
                             });
-                          });
-                        }
-                      );
-                    });
-                  }
-                );
-              }
-            );
+                          }
+                        );
+                      });
+                    }
+                  );
+                }
+              );
+            });
           });
         });
       });
@@ -5192,6 +5941,7 @@ app.delete("/api/events/:id", checkAuth, (req, res) => {
 
   getCurrentUserIdByEmail(currentUserEmail, (userErr, currentUserId) => {
     if (userErr) {
+      console.log("DELETE /api/events/:id user lookup error:", userErr);
       return res.status(500).json({ error: "Failed to identify current user." });
     }
 
@@ -5204,7 +5954,7 @@ app.delete("/api/events/:id", checkAuth, (req, res) => {
 
     db.query(eventSql, [eventId], (eventErr, eventRows) => {
       if (eventErr) {
-        console.log("DELETE /api/events/:id lookup error:", eventErr);
+        console.log("DELETE /api/events/:id event lookup error:", eventErr);
         return res.status(500).json({ error: "Failed to load event." });
       }
 
@@ -5215,96 +5965,71 @@ app.delete("/api/events/:id", checkAuth, (req, res) => {
       const event = eventRows[0];
 
       if (Number(event.created_by) !== Number(currentUserId)) {
-        return res.status(403).json({
-          error: "Only the user who created this event can delete it.",
-        });
+        return res.status(403).json({ error: "Only the event owner can delete this event." });
       }
 
-      db.beginTransaction((txErr) => {
-        if (txErr) {
-          return res.status(500).json({ error: "Failed to start delete transaction." });
+      getEventAttendeeUsers(eventId, (attendeeErr, attendeeRows) => {
+        if (attendeeErr) {
+          console.log("DELETE /api/events/:id attendee lookup error:", attendeeErr);
+          return res.status(500).json({ error: "Failed to load event attendees." });
         }
 
-        const rollbackWithError = (message, errObj = null) => {
-          return db.rollback(() => {
-            if (errObj) {
-              console.log(message, errObj);
-            }
-            return res.status(500).json({ error: message });
-          });
-        };
+        const delLikes = "DELETE FROM Event_Likes WHERE event_id = ?";
+        const delTags = "DELETE FROM Event_Tags WHERE event_id = ?";
+        const delAttendees = "DELETE FROM Event_Attendees WHERE event_id = ?";
+        const delEventGroups = "DELETE FROM Event_Groups WHERE event_id = ?";
+        const delSearchHistory = "DELETE FROM Event_Search_History WHERE event_id = ?";
+        const delEvent = "DELETE FROM Events WHERE id = ?";
 
-        db.query(
-          `DELETE FROM Event_Attendees WHERE event_id = ?`,
-          [eventId],
-          (attendeeErr) => {
-            if (attendeeErr) {
-              return rollbackWithError("Failed to delete event attendees.", attendeeErr);
+        db.query(delLikes, [eventId], (likesErr) => {
+          if (likesErr) {
+            console.log("DELETE /api/events/:id likes delete error:", likesErr);
+            return res.status(500).json({ error: "Failed to delete event." });
+          }
+
+          db.query(delTags, [eventId], (tagsErr) => {
+            if (tagsErr) {
+              console.log("DELETE /api/events/:id tags delete error:", tagsErr);
+              return res.status(500).json({ error: "Failed to delete event." });
             }
 
-            db.query(
-              `DELETE FROM Event_Tags WHERE event_id = ?`,
-              [eventId],
-              (tagErr) => {
-                if (tagErr) {
-                  return rollbackWithError("Failed to delete event tags.", tagErr);
+            db.query(delAttendees, [eventId], (attendeesErr) => {
+              if (attendeesErr) {
+                console.log("DELETE /api/events/:id attendees delete error:", attendeesErr);
+                return res.status(500).json({ error: "Failed to delete event." });
+              }
+
+              db.query(delEventGroups, [eventId], (groupsErr) => {
+                if (groupsErr) {
+                  console.log("DELETE /api/events/:id event groups delete error:", groupsErr);
+                  return res.status(500).json({ error: "Failed to delete event." });
                 }
 
-                db.query(
-                  `DELETE FROM Event_Likes WHERE event_id = ?`,
-                  [eventId],
-                  (likeErr) => {
-                    if (likeErr) {
-                      return rollbackWithError("Failed to delete event likes.", likeErr);
+                db.query(delSearchHistory, [eventId], () => {
+                  db.query(delEvent, [eventId], (delErr) => {
+                    if (delErr) {
+                      console.log("DELETE /api/events/:id event delete error:", delErr);
+                      return res.status(500).json({ error: "Failed to delete event." });
                     }
 
-                    db.query(
-                      `DELETE FROM Event_Groups WHERE event_id = ?`,
-                      [eventId],
-                      (groupErr) => {
-                        if (groupErr) {
-                          return rollbackWithError(
-                            "Failed to delete event groups.",
-                            groupErr
-                          );
-                        }
-
-                        db.query(
-                          `DELETE FROM Events WHERE id = ?`,
-                          [eventId],
-                          (deleteEventErr) => {
-                            if (deleteEventErr) {
-                              return rollbackWithError(
-                                "Failed to delete event.",
-                                deleteEventErr
-                              );
-                            }
-
-                            db.commit((commitErr) => {
-                              if (commitErr) {
-                                return rollbackWithError(
-                                  "Failed to finish deleting the event.",
-                                  commitErr
-                                );
-                              }
-
-                              return res.json({
-                                message: `The event "${event.title}" was deleted successfully.`,
-                              });
-                            });
-                          }
-                        );
-                      }
+                    notifyEventAttendeesAboutDelete(
+                      eventId,
+                      currentUserId,
+                      event.title,
+                      attendeeRows
                     );
-                  }
-                );
-              }
-            );
-          }
-        );
+
+                    return res.json({ message: "Event deleted successfully." });
+                  });
+                });
+              });
+            });
+          });
+        });
       });
     });
   });
 });
+
 
 app.listen(port, () => console.log(`Listening on port ${port}`)); 
