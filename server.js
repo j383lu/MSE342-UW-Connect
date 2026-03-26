@@ -14,7 +14,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-console.log(process.env.PORT);
 const port = process.env.PORT || 5000;
 
 admin.initializeApp({
