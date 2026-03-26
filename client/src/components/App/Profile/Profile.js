@@ -13,6 +13,10 @@ import {
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import { FirebaseContext } from "../../Firebase";
+import ProfilePageStyle, {
+  profileActionButtonSx,
+  profileCardSx,
+} from "./ProfilePageStyle";
 
 function Profile() {
   const navigate = useNavigate();
@@ -109,61 +113,92 @@ function Profile() {
     return birthday;
   };
 
+  const pageTitle = "My Profile";
+  const pageSubtitle =
+    "Manage your personal details, academic info, and who you are connected with.";
+
   if (loading) {
     return (
-      <Box
-        sx={{
-          p: 3,
-          display: "flex",
-          justifyContent: "center",
-          bgcolor: "background.default",
-        }}
-      >
+      <ProfilePageStyle title={pageTitle} subtitle={pageSubtitle}>
         <Typography variant="body1" color="text.secondary">
           Loading...
         </Typography>
-      </Box>
+      </ProfilePageStyle>
     );
   }
 
   if (loadError) {
     return (
-      <Box
-        sx={{
-          p: 3,
-          display: "flex",
-          justifyContent: "center",
-          bgcolor: "background.default",
-        }}
-      >
-        <Card sx={{ width: 800 }}>
+      <ProfilePageStyle title={pageTitle} subtitle={pageSubtitle}>
+        <Card sx={{ ...profileCardSx, width: "100%", maxWidth: 880, mx: "auto" }}>
           <CardContent>
             <Alert severity="error" variant="outlined">
               {loadError}
             </Alert>
           </CardContent>
         </Card>
-      </Box>
+      </ProfilePageStyle>
     );
   }
 
   if (!profile) return null;
 
   return (
-    <Box
-      sx={{
-        p: 3,
-        display: "flex",
-        justifyContent: "center",
-        bgcolor: "background.default",
-      }}
+    <ProfilePageStyle
+      title={pageTitle}
+      subtitle={pageSubtitle}
+      actions={[
+        <Button
+          key="following"
+          variant="outlined"
+          onClick={() => navigate("/profile/following")}
+          data-testid="following-list-btn"
+          sx={{
+            ...profileActionButtonSx,
+            color: "#FDFDF6",
+            borderColor: "rgba(255,255,255,0.24)",
+            backgroundColor: "rgba(255,255,255,0.08)",
+          }}
+        >
+          Following ({following.length})
+        </Button>,
+        <Button
+          key="search"
+          variant="outlined"
+          onClick={() => navigate("/profile-search")}
+          sx={{
+            ...profileActionButtonSx,
+            color: "#FDFDF6",
+            borderColor: "rgba(255,255,255,0.24)",
+            backgroundColor: "rgba(255,255,255,0.08)",
+          }}
+        >
+          Profile Search
+        </Button>,
+        <Button
+          key="edit"
+          variant="contained"
+          onClick={() => navigate("/edit-profile")}
+          data-testid="edit-profile-btn"
+          sx={{
+            ...profileActionButtonSx,
+            backgroundColor: "#FDFDF6",
+            color: "#17292B",
+            "&:hover": {
+              backgroundColor: "#f3f3ec",
+            },
+          }}
+        >
+          Edit Profile
+        </Button>,
+      ]}
     >
-      <Card sx={{ width: 800 }}>
-        <CardContent>
+      <Card sx={{ ...profileCardSx, width: "100%", maxWidth: 880, mx: "auto" }}>
+        <CardContent sx={{ p: { xs: 2.5, md: 3 } }}>
           <Stack
-            direction="row"
+            direction={{ xs: "column", md: "row" }}
             justifyContent="space-between"
-            alignItems="flex-start"
+            alignItems={{ xs: "flex-start", md: "flex-start" }}
             spacing={2}
           >
             <Stack
@@ -176,8 +211,8 @@ function Profile() {
                 src={profile.avatar_url ? `/uploads/${profile.avatar_url}` : undefined}
                 alt={profile.name}
                 sx={{
-                  width: 80,
-                  height: 80,
+                  width: 88,
+                  height: 88,
                   flexShrink: 0,
                   bgcolor: "primary.main",
                   fontSize: "2rem",
@@ -198,7 +233,7 @@ function Profile() {
                     variant="h1"
                     sx={{
                       mb: 0,
-                      lineHeight: 1.2,
+                      lineHeight: 1.15,
                       wordBreak: "break-word",
                     }}
                   >
@@ -220,31 +255,6 @@ function Profile() {
                 )}
               </Stack>
             </Stack>
-
-            <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
-              <Button
-                variant="outlined"
-                onClick={() => navigate("/profile/following")}
-                data-testid="following-list-btn"
-              >
-                Following ({following.length})
-              </Button>
-
-              <Button
-                variant="outlined"
-                onClick={() => navigate("/profile-search")}
-              >
-                Profile Search
-              </Button>
-
-              <Button
-                variant="contained"
-                onClick={() => navigate("/edit-profile")}
-                data-testid="edit-profile-btn"
-              >
-                Edit Profile
-              </Button>
-            </Stack>
           </Stack>
 
           <Divider sx={{ my: 2.5 }} />
@@ -262,7 +272,7 @@ function Profile() {
               variant="body1"
               sx={{ mt: 1, color: "text.secondary", fontWeight: 600 }}
             >
-              Email: {profile.email || "—"}
+              Email: {profile.email || "Not added"}
             </Typography>
 
             {profile.phone_number && (
@@ -289,7 +299,7 @@ function Profile() {
               sx={{
                 mt: 3,
                 p: 2,
-                borderRadius: 1,
+                borderRadius: 2,
                 bgcolor: "action.hover",
                 border: 1,
                 borderColor: "divider",
@@ -355,7 +365,7 @@ function Profile() {
           </Box>
         </CardContent>
       </Card>
-    </Box>
+    </ProfilePageStyle>
   );
 }
 

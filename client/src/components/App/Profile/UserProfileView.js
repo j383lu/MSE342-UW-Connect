@@ -14,12 +14,16 @@ import {
 import { useNavigate, useParams } from "react-router-dom";
 import { FirebaseContext } from "../../Firebase";
 import { useUser } from "../../../contexts/UserContext";
+import ProfilePageStyle, {
+  profileActionButtonSx,
+  profileCardSx,
+} from "./ProfilePageStyle";
 
 function UserProfileView() {
   const navigate = useNavigate();
   const { userId } = useParams();
   const firebase = useContext(FirebaseContext);
-  const { dbUser } = useUser();
+  const { dbUser } = useUser() || {};
 
   const [profile, setProfile] = useState(null);
   const [loadError, setLoadError] = useState("");
@@ -167,30 +171,31 @@ function UserProfileView() {
     return birthday;
   };
 
+  const pageTitle = profile?.name || "User Profile";
+  const pageSubtitle = isSelfProfile
+    ? "This is your public-facing profile in UW Connect."
+    : "View shared profile details and follow this user.";
+
   if (loading) {
     return (
-      <Box sx={{ p: 3, display: "flex", justifyContent: "center", bgcolor: "background.default" }}>
+      <ProfilePageStyle title="User Profile" subtitle="Loading profile details.">
         <Typography variant="body1" color="text.secondary">
           Loading...
         </Typography>
-      </Box>
+      </ProfilePageStyle>
     );
   }
 
   if (loadError) {
     return (
-      <Box sx={{ p: 3, display: "flex", justifyContent: "center", bgcolor: "background.default" }}>
-        <Card sx={{ width: 800 }}>
-          <CardContent>
-            <Alert severity="error" variant="outlined">
-              {loadError}
-            </Alert>
-            <Button variant="contained" sx={{ mt: 2 }} onClick={() => navigate("/profile-search")}>
-              Back to Profile Search
-            </Button>
-          </CardContent>
-        </Card>
-      </Box>
+      <ProfilePageStyle title="User Profile" subtitle="We could not load this profile.">
+        <Alert severity="error" variant="outlined" sx={{ mb: 2 }}>
+          {loadError}
+        </Alert>
+        <Button variant="contained" onClick={() => navigate("/profile-search")} sx={profileActionButtonSx}>
+          Back to Profile Search
+        </Button>
+      </ProfilePageStyle>
     );
   }
 
@@ -199,13 +204,72 @@ function UserProfileView() {
   const courses = profile.courses || [];
 
   return (
-    <Box sx={{ p: 3, display: "flex", justifyContent: "center", bgcolor: "background.default" }}>
-      <Card sx={{ width: 800 }}>
-        <CardContent>
+    <ProfilePageStyle
+      title={pageTitle}
+      subtitle={pageSubtitle}
+      actions={[
+        !isSelfProfile && (
+          isFollowing ? (
+            <Chip
+              key="follow-state"
+              label={followLoading ? "Working..." : "Following"}
+              color="success"
+              clickable
+              onClick={handleUnfollow}
+              disabled={followLoading}
+              sx={{ fontWeight: 700, cursor: "pointer", minHeight: 42 }}
+            />
+          ) : (
+            <Button
+              key="follow"
+              variant="contained"
+              onClick={handleFollow}
+              disabled={followLoading}
+              sx={{
+                ...profileActionButtonSx,
+                backgroundColor: "#FDFDF6",
+                color: "#17292B",
+                "&:hover": { backgroundColor: "#f3f3ec" },
+              }}
+            >
+              {followLoading ? "Following..." : "Follow"}
+            </Button>
+          )
+        ),
+        <Button
+          key="search"
+          variant="outlined"
+          onClick={() => navigate("/profile-search")}
+          sx={{
+            ...profileActionButtonSx,
+            color: "#FDFDF6",
+            borderColor: "rgba(255,255,255,0.24)",
+            backgroundColor: "rgba(255,255,255,0.08)",
+          }}
+        >
+          Profile Search
+        </Button>,
+        <Button
+          key="mine"
+          variant="contained"
+          onClick={() => navigate("/profile")}
+          sx={{
+            ...profileActionButtonSx,
+            backgroundColor: "#FDFDF6",
+            color: "#17292B",
+            "&:hover": { backgroundColor: "#f3f3ec" },
+          }}
+        >
+          My Profile
+        </Button>,
+      ].filter(Boolean)}
+    >
+      <Card sx={{ ...profileCardSx, width: "100%", maxWidth: 880, mx: "auto" }}>
+        <CardContent sx={{ p: { xs: 2.5, md: 3 } }}>
           <Stack
-            direction="row"
+            direction={{ xs: "column", md: "row" }}
             justifyContent="space-between"
-            alignItems="flex-start"
+            alignItems={{ xs: "flex-start", md: "flex-start" }}
             spacing={2}
           >
             <Stack
@@ -218,8 +282,8 @@ function UserProfileView() {
                 src={profile.avatar_url ? `/uploads/${profile.avatar_url}` : undefined}
                 alt={profile.name}
                 sx={{
-                  width: 80,
-                  height: 80,
+                  width: 88,
+                  height: 88,
                   flexShrink: 0,
                   bgcolor: "primary.main",
                   fontSize: "2rem",
@@ -262,35 +326,6 @@ function UserProfileView() {
                 )}
               </Stack>
             </Stack>
-
-            <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
-              {!isSelfProfile && (
-                isFollowing ? (
-                  <Chip
-                    label="Following"
-                    color="success"
-                    clickable
-                    onClick={handleUnfollow}
-                    disabled={followLoading}
-                    sx={{ fontWeight: 600, cursor: "pointer" }}
-                  />
-                ) : (
-                  <Button
-                    variant="contained"
-                    onClick={handleFollow}
-                    disabled={followLoading}
-                  >
-                    {followLoading ? "Following..." : "Follow"}
-                  </Button>
-                )
-              )}
-              <Button variant="outlined" onClick={() => navigate("/profile-search")}>
-                Profile Search
-              </Button>
-              <Button variant="contained" onClick={() => navigate("/profile")}>
-                My Profile
-              </Button>
-            </Stack>
           </Stack>
 
           <Divider sx={{ my: 2.5 }} />
@@ -309,7 +344,7 @@ function UserProfileView() {
               {profile.bio || "No bio added yet."}
             </Typography>
             <Typography variant="body1" sx={{ mt: 1, color: "text.secondary", fontWeight: 600 }}>
-              Email: {profile.email || "—"}
+              Email: {profile.email || "Not added"}
             </Typography>
             {profile.phone_number && (
               <Typography variant="body1" sx={{ mt: 1, color: "text.secondary", fontWeight: 600 }}>
@@ -328,7 +363,7 @@ function UserProfileView() {
               sx={{
                 mt: 3,
                 p: 2,
-                borderRadius: 1,
+                borderRadius: 2,
                 bgcolor: "action.hover",
                 border: 1,
                 borderColor: "divider",
@@ -374,7 +409,7 @@ function UserProfileView() {
               <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: "wrap", gap: 1 }}>
                 {courses.map((course) => (
                   <Chip
-                    key={course.course_id}
+                    key={course.course_id || course}
                     label={course.course_code || course}
                     color="primary"
                     sx={{ fontWeight: 600 }}
@@ -389,7 +424,7 @@ function UserProfileView() {
           </Box>
         </CardContent>
       </Card>
-    </Box>
+    </ProfilePageStyle>
   );
 }
 

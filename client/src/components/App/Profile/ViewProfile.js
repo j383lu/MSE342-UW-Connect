@@ -10,6 +10,10 @@ import {
   Alert,
 } from "@mui/material";
 import { useNavigate, useParams } from "react-router-dom";
+import ProfilePageStyle, {
+  profileActionButtonSx,
+  profileCardSx,
+} from "./ProfilePageStyle";
 
 function ViewProfile() {
   const navigate = useNavigate();
@@ -63,44 +67,24 @@ function ViewProfile() {
 
   if (loading) {
     return (
-      <Box
-        sx={{
-          p: 3,
-          display: "flex",
-          justifyContent: "center",
-          bgcolor: "background.default",
-        }}
-      >
+      <ProfilePageStyle title="User Profile" subtitle="Loading profile details.">
         <Typography variant="body1" color="text.secondary">
           Loading...
         </Typography>
-      </Box>
+      </ProfilePageStyle>
     );
   }
 
   if (loadError) {
     return (
-      <Box
-        sx={{
-          p: 3,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 2,
-          bgcolor: "background.default",
-        }}
-      >
-        <Card sx={{ width: 800 }}>
-          <CardContent>
-            <Alert severity="error" variant="outlined">
-              {loadError}
-            </Alert>
-          </CardContent>
-        </Card>
-        <Button variant="outlined" onClick={() => navigate(-1)}>
+      <ProfilePageStyle title="User Profile" subtitle="We could not load this profile.">
+        <Alert severity="error" variant="outlined" sx={{ mb: 2 }}>
+          {loadError}
+        </Alert>
+        <Button variant="outlined" onClick={() => navigate(-1)} sx={profileActionButtonSx}>
           Go Back
         </Button>
-      </Box>
+      </ProfilePageStyle>
     );
   }
 
@@ -114,47 +98,46 @@ function ViewProfile() {
     : [];
 
   return (
-    <Box
-      sx={{
-        p: 3,
-        display: "flex",
-        justifyContent: "center",
-        bgcolor: "background.default",
-      }}
+    <ProfilePageStyle
+      title={profile.name || "Unnamed User"}
+      subtitle="View shared profile details."
+      actions={[
+        <Button
+          key="back"
+          variant="contained"
+          onClick={() => navigate(-1)}
+          sx={{
+            ...profileActionButtonSx,
+            backgroundColor: "#FDFDF6",
+            color: "#17292B",
+            "&:hover": { backgroundColor: "#f3f3ec" },
+          }}
+        >
+          Go Back
+        </Button>,
+      ]}
     >
-      <Card sx={{ width: 800 }}>
+      <Card sx={{ ...profileCardSx, width: "100%", maxWidth: 880, mx: "auto" }}>
         <CardContent>
-          <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-            <Box>
-              <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
-                <Typography variant="h1" sx={{ mb: 1 }}>
-                  {profile.name || "Unnamed User"}
-                </Typography>
-              </Stack>
+          <Box>
+            {profile.gender && profile.gender !== "Prefer not to say" && (
+              <Typography
+                variant="body1"
+                sx={{ color: "text.secondary", fontWeight: 600 }}
+              >
+                {profile.gender}
+              </Typography>
+            )}
 
-              {profile.gender && profile.gender !== "Prefer not to say" && (
-                <Typography
-                  variant="body1"
-                  sx={{ color: "text.secondary", fontWeight: 600 }}
-                >
-                  {profile.gender}
-                </Typography>
-              )}
-
-              {profile.role === "Staff" && (
-                <Typography
-                  variant="body1"
-                  sx={{ color: "text.secondary", fontWeight: 600, mt: 1 }}
-                >
-                  Staff
-                </Typography>
-              )}
-            </Box>
-
-            <Button variant="outlined" onClick={() => navigate(-1)}>
-              Go Back
-            </Button>
-          </Stack>
+            {profile.role === "Staff" && (
+              <Typography
+                variant="body1"
+                sx={{ color: "text.secondary", fontWeight: 600, mt: 1 }}
+              >
+                Staff
+              </Typography>
+            )}
+          </Box>
 
           <Box sx={{ mt: 2 }}>
             <Typography variant="h2" sx={{ mb: 1 }}>
@@ -261,7 +244,7 @@ function ViewProfile() {
           </Box>
         </CardContent>
       </Card>
-    </Box>
+    </ProfilePageStyle>
   );
 }
 
