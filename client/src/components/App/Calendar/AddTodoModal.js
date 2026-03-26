@@ -37,6 +37,7 @@ export default function AddTodoModal({ open, onClose, onCreated, contacts }) {
   const [participantIds, setParticipantIds] = useState(() => new Set());
   const [eventScope, setEventScope] = useState("personal");
   const [groupVisibility, setGroupVisibility] = useState("public");
+  const [maxAttendees, setMaxAttendees] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -51,6 +52,7 @@ export default function AddTodoModal({ open, onClose, onCreated, contacts }) {
     setEndTime("10:00");
     setEventScope("personal");
     setGroupVisibility("public");
+    setMaxAttendees("");
     setParticipantIds(new Set());
     setError("");
   }, [open]);
@@ -83,6 +85,7 @@ export default function AddTodoModal({ open, onClose, onCreated, contacts }) {
     setColorKey("blue");
     setEventScope("personal");
     setGroupVisibility("public");
+    setMaxAttendees("");
     setParticipantIds(new Set());
   };
 
@@ -123,23 +126,34 @@ export default function AddTodoModal({ open, onClose, onCreated, contacts }) {
       setError("End must be after start.");
       return;
     }
+    if (eventScope === "group" && groupVisibility === "public") {
+      const n = parseInt(String(maxAttendees).trim(), 10);
+      if (!Number.isFinite(n) || n < 1 || n > 99999) {
+        setError("Enter a maximum number of attendees (1–99999) for public group events.");
+        return;
+      }
+    }
     setSaving(true);
     try {
+      const payload = {
+        title: title.trim(),
+        description: description.trim(),
+        category,
+        event_date: eventDate,
+        event_time: eventTime.length === 5 ? eventTime : eventTime.slice(0, 5),
+        end_date: endDate,
+        end_time: endTime.length === 5 ? endTime : endTime.slice(0, 5),
+        participant_user_ids: eventScope === "group" ? [...participantIds] : [],
+        calendar_color: colorKey,
+        scope: eventScope,
+        visibility: eventScope === "group" ? groupVisibility : "private",
+      };
+      if (eventScope === "group" && groupVisibility === "public") {
+        payload.max_attendees = parseInt(String(maxAttendees).trim(), 10);
+      }
       const res = await apiRequest("/api/calendar/todos", {
         method: "POST",
-        body: JSON.stringify({
-          title: title.trim(),
-          description: description.trim(),
-          category,
-          event_date: eventDate,
-          event_time: eventTime.length === 5 ? eventTime : eventTime.slice(0, 5),
-          end_date: endDate,
-          end_time: endTime.length === 5 ? endTime : endTime.slice(0, 5),
-          participant_user_ids: eventScope === "group" ? [...participantIds] : [],
-          calendar_color: colorKey,
-          scope: eventScope,
-          visibility: eventScope === "group" ? groupVisibility : "private",
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -295,6 +309,18 @@ export default function AddTodoModal({ open, onClose, onCreated, contacts }) {
             <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
               Public appears for everyone; private appears only for selected attendees.
             </Typography>
+            {groupVisibility === "public" ? (
+              <TextField
+                label="Maximum attendees"
+                type="number"
+                fullWidth
+                margin="normal"
+                value={maxAttendees}
+                onChange={(e) => setMaxAttendees(e.target.value)}
+                inputProps={{ min: 1, max: 99999 }}
+                helperText="How many people can join this public event (including people who discover it outside your invite list)."
+              />
+            ) : null}
           </>
         ) : null}
         <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>

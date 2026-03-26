@@ -562,7 +562,7 @@ export default function GroupDetailsPage() {
               <div style={groupMeta}>
                 <span style={metaItem}>📅 Created {createdDate}</span>
                 <span style={metaItem}>
-                  👤 Created by {isOwner ? "You" : `User ${group.creator_id}`}
+                  👤 Created by {group.creator_name || `User ${group.creator_id}`}
                 </span>
                 {group.max_members && (
                   <span style={metaItem}>

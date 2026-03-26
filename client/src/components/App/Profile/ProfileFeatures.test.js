@@ -21,6 +21,14 @@ const mockFirebaseForSearch = {
   },
 };
 
+const renderWithFirebase = (ui, options = {}) =>
+  render(
+    <FirebaseContext.Provider value={mockFirebaseForSearch}>
+      {ui}
+    </FirebaseContext.Provider>,
+    options
+  );
+
 describe("Profile feature tests", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -190,9 +198,11 @@ describe("Profile feature tests", () => {
     });
 
     render(
-      <MemoryRouter>
-        <Profile />
-      </MemoryRouter>
+      <FirebaseContext.Provider value={mockFirebaseForSearch}>
+        <MemoryRouter>
+          <Profile />
+        </MemoryRouter>
+      </FirebaseContext.Provider>
     );
 
     expect(await screen.findByText("Profile failed to load.")).toBeInTheDocument();
@@ -200,9 +210,11 @@ describe("Profile feature tests", () => {
 
   test("2. Profile displays gender when gender is not 'Prefer not to say'", async () => {
     render(
-      <MemoryRouter>
-        <Profile />
-      </MemoryRouter>
+      <FirebaseContext.Provider value={mockFirebaseForSearch}>
+        <MemoryRouter>
+          <Profile />
+        </MemoryRouter>
+      </FirebaseContext.Provider>
     );
 
     expect(await screen.findByText("Woman")).toBeInTheDocument();
@@ -241,9 +253,11 @@ describe("Profile feature tests", () => {
     });
 
     render(
-      <MemoryRouter>
-        <Profile />
-      </MemoryRouter>
+      <FirebaseContext.Provider value={mockFirebaseForSearch}>
+        <MemoryRouter>
+          <Profile />
+        </MemoryRouter>
+      </FirebaseContext.Provider>
     );
 
     await screen.findByText("Alex Chen");
@@ -252,9 +266,11 @@ describe("Profile feature tests", () => {
 
   test("4. Profile displays email, phone number, and birthday under Bio", async () => {
     render(
-      <MemoryRouter>
-        <Profile />
-      </MemoryRouter>
+      <FirebaseContext.Provider value={mockFirebaseForSearch}>
+        <MemoryRouter>
+          <Profile />
+        </MemoryRouter>
+      </FirebaseContext.Provider>
     );
 
     expect(await screen.findByText("Email: alex@uwaterloo.ca")).toBeInTheDocument();
@@ -293,9 +309,11 @@ describe("Profile feature tests", () => {
     });
 
     render(
-      <MemoryRouter>
-        <Profile />
-      </MemoryRouter>
+      <FirebaseContext.Provider value={mockFirebaseForSearch}>
+        <MemoryRouter>
+          <Profile />
+        </MemoryRouter>
+      </FirebaseContext.Provider>
     );
 
     expect(await screen.findByText("Staff")).toBeInTheDocument();
@@ -304,7 +322,7 @@ describe("Profile feature tests", () => {
   });
 
   test("6. Clicking program chip routes to the program students page", async () => {
-    render(
+    renderWithFirebase(
       <MemoryRouter initialEntries={["/profile"]}>
         <Routes>
           <Route path="/profile" element={<Profile />} />
@@ -320,7 +338,7 @@ describe("Profile feature tests", () => {
   });
 
   test("7. ProgramStudents page displays users and their current courses", async () => {
-    render(
+    renderWithFirebase(
       <MemoryRouter initialEntries={["/programs/1/students"]}>
         <Routes>
           <Route path="/programs/:programId/students" element={<ProgramStudents />} />
@@ -333,6 +351,89 @@ describe("Profile feature tests", () => {
     expect(screen.getByText("MSE342")).toBeInTheDocument();
     expect(screen.getByText("STAT231")).toBeInTheDocument();
     expect(screen.getByText("MSCI211")).toBeInTheDocument();
+  });
+
+  test("7b. Profile shows empty-state text when program and courses are missing", async () => {
+    global.fetch = jest.fn((url) => {
+      if (url === "/api/profile") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            name: "Alex Chen",
+            bio: "",
+            role: "Student",
+            gender: "",
+            birthday: null,
+            phone_number: "",
+            email: "alex@uwaterloo.ca",
+            department: "",
+            program_id: null,
+            program: "",
+            courses: [],
+          }),
+        });
+      }
+
+      if (url === "/api/profile/user-courses") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [],
+        });
+      }
+
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+
+    renderWithFirebase(
+      <MemoryRouter>
+        <Profile />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText("No bio added yet.")).toBeInTheDocument();
+    expect(screen.getByText("No program added yet.")).toBeInTheDocument();
+    expect(screen.getByText("No courses added yet.")).toBeInTheDocument();
+  });
+
+  test("7c. Staff profile without department shows department empty-state text", async () => {
+    global.fetch = jest.fn((url) => {
+      if (url === "/api/profile") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            name: "Jordan Lee",
+            bio: "Registrar staff member",
+            role: "Staff",
+            gender: "Man",
+            birthday: null,
+            phone_number: "",
+            email: "jordan.lee@uwaterloo.ca",
+            department: "",
+            program_id: 1,
+            program: "Management Engineering",
+            courses: [],
+          }),
+        });
+      }
+
+      if (url === "/api/profile/user-courses") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [],
+        });
+      }
+
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+
+    renderWithFirebase(
+      <MemoryRouter>
+        <Profile />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText("Staff Department")).toBeInTheDocument();
+    expect(screen.getByText("No department added yet.")).toBeInTheDocument();
   });
 
   test("8. ProfileSearch shows full list of users when search bar is empty", async () => {

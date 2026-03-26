@@ -91,7 +91,11 @@ export default function EventCard({
     return String(ev.tags)
       .split(",")
       .map((tag) => tag.trim())
-      .filter(Boolean);
+      .filter((tag) => {
+        if (!tag) return false;
+        const lower = String(tag).toLowerCase();
+        return !(lower === "__calendar__" || lower.startsWith("__cal"));
+      });
   }, [ev.tags]);
 
   const visibleEventTags = useMemo(
@@ -102,10 +106,24 @@ export default function EventCard({
     [eventTags]
   );
 
+  const eventTypeRaw = String(ev.event_type || "public").toLowerCase();
   const eventTypeText =
-    String(ev.event_type || "public").toLowerCase() === "group"
-      ? "Group"
-      : "Public";
+    eventTypeRaw === "group" ? "Group" : eventTypeRaw === "private" ? "Private" : "Public";
+
+  const privateInviteAttendeeCount =
+    eventTypeRaw === "private"
+      ? isOpen && !detailsLoading && Array.isArray(attendees)
+        ? Math.max(attendees.length, current)
+        : Number.isFinite(Number(ev.attendee_count)) && Number(ev.attendee_count) >= 0
+          ? Number(ev.attendee_count)
+          : current
+      : 0;
+  const privateInviteAttendeeLabel =
+    eventTypeRaw === "private"
+      ? privateInviteAttendeeCount === 1
+        ? "1 attendee"
+        : `${privateInviteAttendeeCount} attendees`
+      : "";
 
   const backendStatus =
     ev.event_status || (isPast ? "ended" : "open_for_application");
@@ -185,12 +203,10 @@ export default function EventCard({
     setTagInput("");
     setTags(eventTags);
     setEventType(
-      String(ev.event_type || "public").toLowerCase() === "group"
-        ? "group"
-        : "public"
+      eventTypeRaw === "group" ? "group" : eventTypeRaw === "private" ? "private" : "public"
     );
     setGroupSelectValue("");
-    setSelectedGroups(buildSelectedGroupsFromEvent());
+    setSelectedGroups(eventTypeRaw === "private" ? [] : buildSelectedGroupsFromEvent());
     setEditError("");
     setEditMessage("");
     setGroupMessage("");
@@ -279,10 +295,7 @@ export default function EventCard({
       await loadCategories();
     }
 
-    if (
-      String(ev.event_type || "public").toLowerCase() === "group" &&
-      !groupsLoaded
-    ) {
+    if (eventTypeRaw === "group" && !groupsLoaded) {
       await loadMyGroups();
     }
   };
@@ -298,7 +311,7 @@ export default function EventCard({
     setEditMessage("");
     clearEditFieldError("selectedGroups");
 
-    if (type === "public") {
+    if (type === "public" || type === "private") {
       setGroupSelectValue("");
       setSelectedGroups([]);
       setGroupMessage("");
@@ -668,9 +681,13 @@ export default function EventCard({
               </div>
 
               <div style={styles.capacity}>
-                {current}/{max}
+                {eventTypeRaw === "private"
+                  ? privateInviteAttendeeCount
+                  : `${current}/${max}`}
               </div>
-              <div style={styles.capacityHint}>RSVP spots</div>
+              <div style={styles.capacityHint}>
+                {eventTypeRaw === "private" ? "Attendees" : "RSVP spots"}
+              </div>
             </div>
           </div>
 
@@ -687,10 +704,28 @@ export default function EventCard({
                 style={{
                   ...styles.eventTypeChip,
                   marginLeft: ev.category ? "8px" : "0",
+                  ...(eventTypeRaw === "private"
+                    ? {
+                        background: "#FAF5FF",
+                        color: "#553C9A",
+                        border: "1px solid #D6BCFA",
+                      }
+                    : eventTypeRaw === "group"
+                      ? {
+                          background: "#F0FFF4",
+                          color: "#276749",
+                          border: "1px solid #9AE6B4",
+                        }
+                      : {}),
                 }}
               >
                 {eventTypeText}
               </span>
+              {eventTypeRaw === "private" ? (
+                <span style={{ ...styles.categoryChip, marginLeft: "8px" }}>
+                  {privateInviteAttendeeLabel}
+                </span>
+              ) : null}
             </div>
           ) : null}
 
@@ -903,7 +938,19 @@ export default function EventCard({
                     cursor: "pointer",
                   }}
                 >
-                  Private
+                  Group
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleEditEventTypeChange("private")}
+                  style={{
+                    ...styles.filterChip,
+                    ...(eventType === "private" ? styles.filterChipActive : {}),
+                    cursor: "pointer",
+                  }}
+                >
+                  Invite only
                 </button>
               </div>
             </div>

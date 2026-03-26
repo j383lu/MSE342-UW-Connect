@@ -13,18 +13,24 @@ import {
 } from "@mui/material";
 import { useNavigate, useParams } from "react-router-dom";
 import { FirebaseContext } from "../../Firebase";
+import { useUser } from "../../../contexts/UserContext";
 
 function UserProfileView() {
   const navigate = useNavigate();
   const { userId } = useParams();
   const firebase = useContext(FirebaseContext);
+  const { dbUser } = useUser();
 
   const [profile, setProfile] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [isSelfProfile, setIsSelfProfile] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
+  const [followError, setFollowError] = useState("");
 
   useEffect(() => {
-    const fetchProfile = async () => {
+    const fetchProfileAndFollowState = async () => {
       if (!userId) {
         setLoadError("Invalid user.");
         setLoading(false);
@@ -41,22 +47,38 @@ function UserProfileView() {
 
         const token = await user.getIdToken();
 
-        const res = await fetch(`/api/profile/${userId}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+        const [profileRes, followStatusRes] = await Promise.all([
+          fetch(`/api/profile/${userId}`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }),
+          fetch(`/api/profile/${userId}/follow-status`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }),
+        ]);
 
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          if (res.status === 404) {
+        if (!profileRes.ok) {
+          const body = await profileRes.json().catch(() => ({}));
+          if (profileRes.status === 404) {
             throw new Error("Profile not found.");
           }
           throw new Error(body?.error || "Failed to fetch profile.");
         }
 
-        const data = await res.json();
-        setProfile(data);
+        const profileData = await profileRes.json();
+        setProfile(profileData);
+
+        if (followStatusRes.ok) {
+          const followData = await followStatusRes.json();
+          setIsFollowing(!!followData?.isFollowing);
+          setIsSelfProfile(!!followData?.isSelf);
+        } else {
+          setIsFollowing(false);
+          setIsSelfProfile(Number(dbUser?.userId) === Number(userId));
+        }
       } catch (err) {
         console.error("Failed to load profile", err);
         setLoadError(err.message || "Profile failed to load.");
@@ -66,9 +88,73 @@ function UserProfileView() {
     };
 
     if (firebase?.auth) {
-      fetchProfile();
+      fetchProfileAndFollowState();
     }
-  }, [firebase, userId]);
+  }, [dbUser?.userId, firebase, userId]);
+
+  const handleFollow = async () => {
+    try {
+      setFollowLoading(true);
+      setFollowError("");
+
+      const user = firebase?.auth?.currentUser;
+      if (!user) {
+        throw new Error("No authenticated user found.");
+      }
+
+      const token = await user.getIdToken();
+      const res = await fetch(`/api/profile/${userId}/follow`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || "Failed to follow user.");
+      }
+
+      setIsFollowing(true);
+    } catch (err) {
+      console.error("Failed to follow user", err);
+      setFollowError(err.message || "Failed to follow user.");
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
+  const handleUnfollow = async () => {
+    try {
+      setFollowLoading(true);
+      setFollowError("");
+
+      const user = firebase?.auth?.currentUser;
+      if (!user) {
+        throw new Error("No authenticated user found.");
+      }
+
+      const token = await user.getIdToken();
+      const res = await fetch(`/api/profile/${userId}/follow`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || "Failed to unfollow user.");
+      }
+
+      setIsFollowing(false);
+    } catch (err) {
+      console.error("Failed to unfollow user", err);
+      setFollowError(err.message || "Failed to unfollow user.");
+    } finally {
+      setFollowLoading(false);
+    }
+  };
 
   const formatBirthday = (birthday) => {
     if (!birthday) return "No birthday added yet.";
@@ -178,6 +264,26 @@ function UserProfileView() {
             </Stack>
 
             <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+              {!isSelfProfile && (
+                isFollowing ? (
+                  <Chip
+                    label="Following"
+                    color="success"
+                    clickable
+                    onClick={handleUnfollow}
+                    disabled={followLoading}
+                    sx={{ fontWeight: 600, cursor: "pointer" }}
+                  />
+                ) : (
+                  <Button
+                    variant="contained"
+                    onClick={handleFollow}
+                    disabled={followLoading}
+                  >
+                    {followLoading ? "Following..." : "Follow"}
+                  </Button>
+                )
+              )}
               <Button variant="outlined" onClick={() => navigate("/profile-search")}>
                 Profile Search
               </Button>
@@ -188,6 +294,12 @@ function UserProfileView() {
           </Stack>
 
           <Divider sx={{ my: 2.5 }} />
+
+          {followError && (
+            <Alert severity="error" variant="outlined" sx={{ mb: 2 }}>
+              {followError}
+            </Alert>
+          )}
 
           <Box>
             <Typography variant="h2" sx={{ mb: 1 }}>
