@@ -20,6 +20,7 @@ function Profile() {
 
   const [profile, setProfile] = useState(null);
   const [userCourses, setUserCourses] = useState([]);
+  const [following, setFollowing] = useState([]);
   const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -36,13 +37,18 @@ function Profile() {
 
         const token = await user.getIdToken();
 
-        const [profileRes, coursesRes] = await Promise.all([
+        const [profileRes, coursesRes, followingRes] = await Promise.all([
           fetch("/api/profile", {
             headers: {
               Authorization: `Bearer ${token}`,
             },
           }),
           fetch("/api/profile/user-courses", {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }),
+          fetch("/api/profile/following", {
             headers: {
               Authorization: `Bearer ${token}`,
             },
@@ -67,6 +73,14 @@ function Profile() {
         } else {
           console.error("Failed to load user courses");
           setUserCourses([]);
+        }
+
+        if (followingRes.ok) {
+          const followingData = await followingRes.json();
+          setFollowing(Array.isArray(followingData.following) ? followingData.following : []);
+        } else {
+          console.error("Failed to load following list");
+          setFollowing([]);
         }
       } catch (err) {
         console.error("Failed to load profile", err);
@@ -208,6 +222,14 @@ function Profile() {
             </Stack>
 
             <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+              <Button
+                variant="outlined"
+                onClick={() => navigate("/profile/following")}
+                data-testid="following-list-btn"
+              >
+                Following ({following.length})
+              </Button>
+
               <Button
                 variant="outlined"
                 onClick={() => navigate("/profile-search")}

@@ -420,15 +420,30 @@ export default function GroupsPage() {
         </div>
       )}
       {/* Header with frame */}
-      <div style={headerFrame}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <h1 style={pageTitle}>Groups</h1>
-          {CURRENT_USER_ID && (invites.length > 0 || joinRequests.length > 0) && (
-            <div style={notifBadge}>
-              {invites.length + joinRequests.length}
+      <div style={banner}>
+        <div style={bannerGlowOne} />
+        <div style={bannerGlowTwo} />
+        <div style={bannerOverlay} />
+
+        <div style={bannerContent}>
+          <div style={bannerLeft}>
+            <div style={uwConnect}>UW Connect</div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <h1 style={pageTitle}>Groups</h1>
+              {CURRENT_USER_ID && (invites.length > 0 || joinRequests.length > 0) && (
+                <div style={notifBadge}>
+                  {invites.length + joinRequests.length}
+                </div>
+              )}
             </div>
-          )}
+
+            <p style={bannerSubtitle}>
+              Discover, join, and connect with communities at Waterloo
+            </p>
+          </div>
         </div>
+
         <button style={createBtn} onClick={() => navigate("/groups/new")}>
           + Create Group
         </button>
@@ -566,27 +581,27 @@ export default function GroupsPage() {
       )}
 
       {/* Tab Navigation Bar */}
-      <div style={tabNavBar}>
+      <div style={toggleContainer}>
         <button
-          style={activeTab === "general" ? tabButtonActive : tabButton}
+          style={activeTab === "general" ? toggleButtonActive : toggleButton}
           onClick={() => setActiveTab("general")}
         >
           General
         </button>
         <button
-          style={activeTab === "discover" ? tabButtonActive : tabButton}
+          style={activeTab === "discover" ? toggleButtonActive : toggleButton}
           onClick={() => setActiveTab("discover")}
         >
           Discover Groups
         </button>
         <button
-          style={activeTab === "my" ? tabButtonActive : tabButton}
+          style={activeTab === "my" ? toggleButtonActive : toggleButton}
           onClick={() => setActiveTab("my")}
         >
           My Groups
         </button>
         <button
-          style={activeTab === "owned" ? tabButtonActive : tabButton}
+          style={activeTab === "owned" ? toggleButtonActive : toggleButton}
           onClick={() => setActiveTab("owned")}
         >
           Owned Groups
@@ -866,16 +881,19 @@ function getPillStyle(type) {
 /* ---------------- styles ---------------- */
 const pageContainer = {
   width: "100%",
-  minHeight: "100vh",
-  padding: "24px 32px",
+  maxWidth: "1040px",  
+  margin: "0 auto", 
+  padding: "40px 32px",
   boxSizing: "border-box",
 };
 
 const pageTitle = {
-  margin: 0,
   fontSize: "2.5rem",
-  fontWeight: 700,
-  color: "#17292B",
+  fontWeight: 750,
+  lineHeight: 1.08,
+  letterSpacing: "-0.04em",
+  color: "#FDFDF6",
+  margin: 0,
 };
 
 const notifBadge = {
@@ -891,20 +909,43 @@ const notifBadge = {
   justifyContent: "center",
 };
 
-const headerFrame = {
-  background: "#FFFFFF",
-  padding: "20px 30px",
-  borderRadius: "20px",
-  border: "1px solid #D6DFE2",
-  boxShadow: "0 4px 12px rgba(93,108,92,0.1)",
-  borderLeft: "6px solid #5D6C5C",
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "12px",
+const banner = {
+  padding: "38px 34px",
+  borderRadius: "28px",
   marginBottom: "24px",
-  width: "100%",
-  boxSizing: "border-box",
+  background: "linear-gradient(135deg, rgba(93,108,92,1) 0%, rgba(23,41,43,1) 100%)",
+  boxShadow: "0 24px 60px rgba(23,41,43,0.18)",
+  position: "relative",
+  overflow: "hidden",
+  minHeight: "220px"
+};
+
+const bannerLeft = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "6px",
+};
+
+const uwConnect = {
+  fontSize: "13px",
+  fontWeight: 700,
+  letterSpacing: "0.6px",
+  padding: "4px 10px",
+  borderRadius: "999px",
+  border: "1px solid rgba(255,255,255,0.6)",
+  color: "#FDFDF6",
+  display: "inline-block",
+  width: "fit-content",
+  background: "rgba(255,255,255,0.05)",
+  marginBottom: 10
+};
+
+const bannerSubtitle = {
+  fontSize: 16,
+  lineHeight: 1.65,
+  color: "rgba(253,253,246,0.86)",
+  margin: "14px 0 0",
+  maxWidth: 560,
 };
 
 const searchFilterBar = {
@@ -922,16 +963,63 @@ const searchFilterBar = {
   boxShadow: "0 2px 8px rgba(93,108,92,0.06)",
   width: "100%",
   boxSizing: "border-box",
+  position: "relative", 
+  zIndex: 10,
 };
 
-const tabNavBar = {
-  display: "flex",
-  gap: "8px",
-  marginTop: "0",
-  marginBottom: "0",
-  padding: "8px 0",
-  borderBottom: "2px solid #D6DFE2",
+// const tabNavBar = {
+//   display: "flex",
+//   gap: "8px",
+//   marginTop: "0",
+//   marginBottom: "0",
+//   padding: "8px 0",
+//   borderBottom: "2px solid #D6DFE2",
+//   width: "100%",
+// };
+
+const toggleContainer = {
+  display: 'flex',
+  width: '100%',
+  background: '#F0F3F0',
+  border: '1px solid #D6DFE2',
+  borderRadius: '800px',
+  padding: '4px',
+  gap: '4px',
+  marginTop: '24px', 
+  marginBottom: '24px',
+  boxSizing: 'border-box',
+};
+
+const toggleButton = {
+  flex: 1,
+  borderRadius: '800px',
+  padding: '10px 20px',
+  fontSize: '13px',
+  fontWeight: 400,
+  textTransform: 'none',
+  border: 'none',
+  cursor: 'pointer',
+  background: 'transparent',
+  color: '#686967',
+  transition: 'all 0.2s ease',
+};
+
+const toggleButtonActive = {
+  ...toggleButton,
+  fontWeight: 600,
+  background: '#5D6C5C',
+  color: '#FDFDF6',
+  boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+};
+
+const sectionFrame = {
+  background: "#FFFFFF",
+  borderRadius: "24px", 
+  padding: "24px",
+  border: "1px solid #D6DFE2",
+  boxShadow: "0 4px 12px rgba(93,108,92,0.08)",
   width: "100%",
+  boxSizing: "border-box",
 };
 
 const tabButton = {
@@ -953,18 +1041,6 @@ const tabButtonActive = {
   color: "#17292B",
   borderColor: "#D6DFE2",
   boxShadow: "0 -2px 8px rgba(0,0,0,0.04)",
-};
-
-const sectionFrame = {
-  background: "#FFFFFF",
-  borderRadius: "0 12px 24px 24px",
-  padding: "24px",
-  marginTop: "0",
-  border: "1px solid #D6DFE2",
-  borderTop: "none",
-  boxShadow: "0 4px 12px rgba(93,108,92,0.08)",
-  width: "100%",
-  boxSizing: "border-box",
 };
 
 const postsContainer = {
@@ -1278,18 +1354,20 @@ const emptyMessage = {
 };
 
 const createBtn = {
-  padding: "14px 28px", // Increased vertical padding
-  borderRadius: "30px",
+  position: "absolute",
+  bottom: "16px",
+  right: "16px",
+  fontSize: "14px",
+  height: 44,
+  borderRadius: 999,
   border: "none",
-  background: "#17292B",
-  color: "#FDFDF6",
+  background: "#FDFDF6",
+  color: "#17292B",
   fontWeight: 700,
   cursor: "pointer",
-  fontSize: "15px", // Slightly larger font
-  transition: "all 0.2s",
-  boxShadow: "0 4px 10px rgba(23,41,43,0.2)",
-  minWidth: "160px",
-  lineHeight: "1.2",
+  padding: "0 18px",
+  boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
+  transition: "all 0.2s ease",
 };
 
 // Solid button for Join - TALLER VERTICAL HEIGHT
@@ -1330,4 +1408,46 @@ const buttonWrapper = {
   justifyContent: "flex-end",
   alignItems: "center",
   height: "56px", // Increased from 48px to 56px for taller buttons
+};
+
+const bannerOverlay = {
+  position: "absolute",
+  inset: 0,
+  background: "linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.00) 100%)",
+  pointerEvents: "none",
+};
+
+const bannerGlowOne = {
+  position: "absolute",
+  top: -80,
+  right: -50,
+  width: 260,
+  height: 260,
+  borderRadius: "50%",
+  background: "rgba(255,255,255,0.10)",
+  filter: "blur(20px)",
+  pointerEvents: "none",
+};
+
+const bannerGlowTwo = {
+  position: "absolute",
+  bottom: -70,
+  left: -30,
+  width: 220,
+  height: 220,
+  borderRadius: "50%",
+  background: "rgba(244,238,229,0.10)",
+  filter: "blur(18px)",
+  pointerEvents: "none",
+};
+
+const bannerContent = {
+  position: "relative",
+  zIndex: 2,
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-end", // This aligns the "Create" button to the bottom right like Events
+  gap: 20,
+  flexWrap: "wrap",
+  width: "100%"
 };

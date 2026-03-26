@@ -80,6 +80,7 @@ Steps:
    Important: Do not close this terminal window!
 
    7. Start a new terminal in Codespaces by clicking on the following icon in the top-right corner of the terminal:
+
 ![image](/img/Lab9-img2.png)
    8. In the second terminal, type `yarn dev` to start the app on port 3000.
 
