@@ -534,13 +534,19 @@ export default function GroupDetailsPage() {
 
         {/* Group Cover with Image */}
         <div style={cover}>
-          {group.image_url ? (
-            <img 
-              src={`/uploads/${group.image_url}`} 
-              alt={group.name}
-              style={coverImage}
-            />
-          ) : null}
+          <div style={bannerGlowOne} />
+          <div style={bannerGlowTwo} />
+          <div style={bannerOverlay} />
+
+          <div style={{ position: 'relative', zIndex: 2, width: '100%', height: '100%' }}>
+            {group.image_url ? (
+              <img 
+                src={`/uploads/${group.image_url}`} 
+                alt={group.name}
+                style={coverImage}
+              />
+            ) : null}
+          </div>
           <div style={avatar}>
             {group.image_url ? null : "👥"}
           </div>
@@ -770,9 +776,9 @@ function initials(name) {
 
 /* ---------- styles ---------- */
 const page = {
-  backgroundColor: "#f5f5f5",
+  backgroundColor: "radial-gradient(circle at top left, rgba(93,108,92,0.12), transparent 35%), #FDFDF6",
   minHeight: "100vh",
-  padding: 20,
+  padding: "40px 20px",
 };
 
 const container = {
@@ -784,34 +790,36 @@ const navBar = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  marginBottom: 20,
+  marginBottom: 24,
   padding: "10px 0",
 };
 
 const backLink = {
   border: "none",
   background: "transparent",
-  color: "#666",
+  color: "#5D6C5C",
+  fontWeight: 700,
   cursor: "pointer",
   fontSize: 16,
   display: "flex",
   alignItems: "center",
-  gap: 6,
+  gap: 8,
 };
 
 const actionButtons = {
   display: "flex",
-  gap: 10,
+  gap: 12,
   flexWrap: "wrap",
 };
 
 const cover = {
-  height: 300,
-  borderRadius: "12px 12px 0 0",
+  height: 200,
+  borderRadius: "28px",
   position: "relative",
-  marginBottom: 80,
-  background: "linear-gradient(135deg, #111 0%, #444 100%)",
-  overflow: "hidden",
+  marginBottom: 60,
+  background: "linear-gradient(135deg, #5D6C5C 0%, #17292B 100%)",
+  overflow: "visible",
+  boxShadow: "0 10px 30px rgba(23,41,43,0.1)",
 };
 
 const coverImage = {
@@ -821,25 +829,25 @@ const coverImage = {
 };
 
 const avatar = {
-  width: 120,
-  height: 120,
-  background: "white",
+  width: 130,
+  height: 130,
+  background: "#FFFFFF",
   borderRadius: "50%",
   position: "absolute",
-  bottom: -60,
+  bottom: -65,
   left: 40,
-  border: "4px solid white",
-  boxShadow: "0 2px 10px rgba(0,0,0,0.12)",
+  border: "6px solid #FFFFFF",
+  boxShadow: "0 18px 45px rgba(23,41,43,0.12)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  fontSize: 48,
-  color: "#111",
+  fontSize: 52,
+  color: "#17292B",
 };
 
 const mainCard = {
   background: "white",
-  borderRadius: 12,
+  borderRadius: 28,
   boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
   padding: 30,
   marginTop: -50,
@@ -867,7 +875,7 @@ const groupTitle = {
 const groupMeta = {
   display: "flex",
   gap: 20,
-  color: "#666",
+  color: "#686967",
   fontSize: 14,
   flexWrap: "wrap",
 };
@@ -910,8 +918,8 @@ const statsGrid = {
   gap: 20,
   margin: "30px 0",
   padding: "20px 0",
-  borderTop: "1px solid #eee",
-  borderBottom: "1px solid #eee",
+  borderTop: "1px solid #EEF1F2",
+  borderBottom: "1px solid #EEF1F2",
 };
 
 const statItem = { textAlign: "center" };
@@ -1023,7 +1031,7 @@ function btn(kind, disabled = false) {
   const base = {
     padding: "10px 20px",
     border: "1px solid",
-    borderRadius: 8,
+    borderRadius: 30,
     fontSize: 14,
     fontWeight: 800,
     cursor: disabled ? "not-allowed" : "pointer",
@@ -1206,4 +1214,36 @@ const modalSendBtnDisabled = {
   background: "#ccc",
   color: "#666",
   border: "1px solid #ccc",
+};
+
+const bannerOverlay = {
+  position: "absolute",
+  inset: 0,
+  // Catch light at the very top of the banner
+  background: "linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.00) 100%)",
+  pointerEvents: "none",
+};
+
+const bannerGlowOne = {
+  position: "absolute",
+  top: -80,
+  right: -50,
+  width: 260,
+  height: 260,
+  borderRadius: "50%",
+  background: "rgba(255,255,255,0.14)", // Soft blur highlight
+  filter: "blur(20px)",
+  pointerEvents: "none",
+};
+
+const bannerGlowTwo = {
+  position: "absolute",
+  bottom: -70,
+  left: -30,
+  width: 220,
+  height: 220,
+  borderRadius: "50%",
+  background: "rgba(244,238,229,0.12)", // Creamy glow wash
+  filter: "blur(18px)",
+  pointerEvents: "none",
 };

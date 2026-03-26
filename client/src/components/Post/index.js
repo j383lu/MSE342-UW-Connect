@@ -5,6 +5,7 @@ import CreatePostForm from "./CreatePostForm";
 import EditPostForm from "./EditPostForm";
 import { withFirebase } from "../Firebase";
 import { useUser } from "../../contexts/UserContext";
+import styles from "../App/Events/eventStyles";
 
 
 function Post({ firebase }) {
@@ -220,181 +221,195 @@ function Post({ firebase }) {
   };
 
   return (
-    <Grid container spacing={3} sx={{ maxWidth: 1000, margin: '0 auto', px: 2 }}>
+    
+    <div style={styles.pageBackground}>
+      <div style={styles.pageWrapper}>
+        {/* Header card*/}
+        <div style={styles.hero}>
+          <div style={styles.heroGlowOne} />
+          <div style={styles.heroGlowTwo} />
+          <div style={styles.heroOverlay} />
 
-      {/* Header card*/}
-      <Grid item xs={12}>
-        <MuiCard sx={{
-          border: '1px solid #D6DFE2',
-          borderRadius: 3,
-          boxShadow: '0px 2px 8px rgba(0,0,0,0.05)',
-          px: 5,
-          py: 2
-        }}>
-          <Stack direction="row" alignItems="center" justifyContent="space-between">
-            <Typography variant="h4" fontWeight={600}>
-              Posts
-            </Typography>
-            <Button
-              variant="contained"
-              onClick={() => setOpen(true)}
-            >
-              Create Post
-            </Button>
-          </Stack>
-        </MuiCard>
-      </Grid>
+          <div style={styles.heroContent}>
+            <div style={styles.heroTextBlock}>
+              <div style={styles.heroEyebrow}>UW Connect</div>
+              <h1 style={styles.heroTitle}>Campus Feed</h1>
+              <p style={styles.heroSubtitle}>
+                Stay updated with the latest discussions, questions, and 
+                stories from your fellow Waterloo students.
+              </p>
+            </div>
 
-      {/* Search + Sort Card */}
-      <Grid item xs={12}>
-        <MuiCard sx={{
-          border: '1px solid #D6DFE2',
-          borderRadius: 3,
-          boxShadow: '0px 2px 8px rgba(0,0,0,0.05)',
-          p: 5
-        }}>
-          <Stack direction="row" spacing={2} alignItems="flex-start" flexWrap="wrap">
-            <TextField
-              label="Search posts..."
-              value={searchKeyword}
-              onChange={(e) => { setSearchKeyword(e.target.value); setSearchError(""); }}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-              error={Boolean(searchError)}
-              helperText={searchError}
-              sx={{
-                flex: 1,
-                minWidth: 200,
-                '& .MuiOutlinedInput-root': { borderRadius: '50px' }
-              }}
-            />
-
-            {/* Sort dropdown */}
-            <FormControl sx={{ minWidth: 160 }}>
-              <InputLabel>Sort by</InputLabel>
-              <Select
-                value={sortBy}
-                label="Sort by"
-                onChange={(e) => setSortBy(e.target.value)}
-                sx={{ borderRadius: '50px' }}
+            <div style={styles.heroActionRow}>
+              <button
+                style={styles.heroSecondaryBtn}
+                onClick={handleReset}
               >
-                <MenuItem value="recent">Most recent</MenuItem>
-                <MenuItem value="likes">Most liked</MenuItem>
-                <MenuItem value="comments">Most commented</MenuItem>
-              </Select>
-            </FormControl>
+                Refresh
+              </button>
+              <button
+                style={styles.heroPrimaryBtn}
+                onClick={() => setOpen(true)}
+              >
+                Create Post
+              </button>
+            </div>
+          </div>
+        </div>
 
-            <Button
-              variant="contained"
-              onClick={handleSearch}
-              sx={{ height: 56, borderRadius: '50px', px: 3 }}
-            >
-              Search
-            </Button>
-            <Button
-              variant="outlined"
-              onClick={handleReset}
-              sx={{ height: 56, borderRadius: '50px', px: 3 }}
-            >
-              Clear
-            </Button>
-          </Stack>
-
-          {activeTag && (
-            <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1.5 }}>
-              <Typography variant="body2" color="text.secondary">Filtering by:</Typography>
-              <Chip
-                label={`#${activeTag}`}
-                onDelete={handleReset}
-                color="primary"
-                size="small"
+        {/* Search + Sort Card */}
+        <Grid item xs={12}>
+          <MuiCard sx={{
+            border: '1px solid #D6DFE2',
+            borderRadius: 3,
+            boxShadow: '0px 2px 8px rgba(0,0,0,0.05)',
+            p: 5
+          }}>
+            <Stack direction="row" spacing={2} alignItems="flex-start" flexWrap="wrap">
+              <TextField
+                label="Search posts..."
+                value={searchKeyword}
+                onChange={(e) => { setSearchKeyword(e.target.value); setSearchError(""); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
+                error={Boolean(searchError)}
+                helperText={searchError}
+                sx={{
+                  flex: 1,
+                  minWidth: 200,
+                  '& .MuiOutlinedInput-root': { borderRadius: '50px' }
+                }}
               />
+
+              {/* Sort dropdown */}
+              <FormControl sx={{ minWidth: 160 }}>
+                <InputLabel>Sort by</InputLabel>
+                <Select
+                  value={sortBy}
+                  label="Sort by"
+                  onChange={(e) => setSortBy(e.target.value)}
+                  sx={{ borderRadius: '50px' }}
+                >
+                  <MenuItem value="recent">Most recent</MenuItem>
+                  <MenuItem value="likes">Most liked</MenuItem>
+                  <MenuItem value="comments">Most commented</MenuItem>
+                </Select>
+              </FormControl>
+
+              <Button
+                variant="contained"
+                onClick={handleSearch}
+                sx={{ height: 56, borderRadius: '50px', px: 3 }}
+              >
+                Search
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={handleReset}
+                sx={{ height: 56, borderRadius: '50px', px: 3 }}
+              >
+                Clear
+              </Button>
             </Stack>
-          )}
-        </MuiCard>
-      </Grid>
 
-      {/* All Posts / My Groups toggle */}
-      <Grid item xs={12}>
-        <Box sx={{
-          display: 'flex',
-          width: '100%',
-          background: '#F0F3F0',
-          border: '1px solid #D6DFE2',
-          borderRadius: '800px',
-          padding: '3px',
-          gap: '2px'
-        }}>
-          <Button
-            fullWidth
-            onClick={() => { setActiveView('all'); setActiveTag(null); }}
-            sx={{
-              borderRadius: '30px',
-              padding: '4px 20px',
-              fontSize: '13px',
-              textTransform: 'none',
-              fontWeight: activeView === 'all' ? 600 : 400,
-              background: activeView === 'all' ? '#5D6C5C' : 'transparent',
-              color: activeView === 'all' ? '#FDFDF6' : '#686967',
-            }}
-          >
-            All posts
-          </Button>
+            {activeTag && (
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1.5 }}>
+                <Typography variant="body2" color="text.secondary">Filtering by:</Typography>
+                <Chip
+                  label={`#${activeTag}`}
+                  onDelete={handleReset}
+                  color="primary"
+                  size="small"
+                />
+              </Stack>
+            )}
+          </MuiCard>
+        </Grid>
 
-          <Button
-            fullWidth
-            onClick={() => { setActiveView('groups'); setActiveTag(null); }}
-            sx={{
-              borderRadius: '30px',
-              padding: '4px 20px',
-              fontSize: '13px',
-              textTransform: 'none',
-              fontWeight: activeView === 'groups' ? 600 : 400,
-              background: activeView === 'groups' ? '#5D6C5C' : 'transparent',
-              color: activeView === 'groups' ? '#FDFDF6' : '#686967',
-            }}
-          >
-            My Groups
-          </Button>
-        </Box>
-      </Grid>
+        {/* All Posts / My Groups toggle */}
+        <Grid item xs={12}>
+          <Box sx={{
+            display: 'flex',
+            width: '100%',
+            background: '#F0F3F0',
+            border: '1px solid #D6DFE2',
+            borderRadius: '800px',
+            padding: '3px',
+            gap: '2px',
+            marginTop: '24px', 
+            marginBottom: '24px'
+          }}>
+            <Button
+              fullWidth
+              onClick={() => { setActiveView('all'); setActiveTag(null); }}
+              sx={{
+                borderRadius: '30px',
+                padding: '4px 20px',
+                fontSize: '13px',
+                textTransform: 'none',
+                fontWeight: activeView === 'all' ? 600 : 400,
+                background: activeView === 'all' ? '#5D6C5C' : 'transparent',
+                color: activeView === 'all' ? '#FDFDF6' : '#686967',
+              }}
+            >
+              All posts
+            </Button>
 
-      {/* Post List */}
-      <Grid item xs={12}>
-        <MuiCard sx={{
-          border: '1px solid #D6DFE2',
-          borderRadius: 3,
-          boxShadow: '0px 2px 8px rgba(0,0,0,0.05)',
-          p: 5,
-          background: '#ffffff'
-        }}>
-          {posts.length === 0 ? (
-            <Box sx={{
-              textAlign: 'center',
-              py: 6,
-              color: '#686967'
-            }}>
-              <Typography variant="body1" fontWeight={500}>
-                {activeView === 'groups'
-                  ? "No posts from your groups yet."
-                  : "No posts found."}
-              </Typography>
-              <Typography variant="body2" sx={{ mt: 0.5 }}>
-                {activeView === 'groups'
-                  ? "Join a group to see their posts here."
-                  : "Be the first to post something!"}
-              </Typography>
-            </Box>
-          ) : (
-            <PostList
-              posts={posts}
-              onDeletePost={handleDeletePost}
-              onEditPost={(post) => { setEditingPost(post); setEditOpen(true); }}
-              onLikePost={handleLikePost}
-              onTagFilter={handleTagFilter}
-            />
-          )}
-        </MuiCard>
-      </Grid>
+            <Button
+              fullWidth
+              onClick={() => { setActiveView('groups'); setActiveTag(null); }}
+              sx={{
+                borderRadius: '30px',
+                padding: '4px 20px',
+                fontSize: '13px',
+                textTransform: 'none',
+                fontWeight: activeView === 'groups' ? 600 : 400,
+                background: activeView === 'groups' ? '#5D6C5C' : 'transparent',
+                color: activeView === 'groups' ? '#FDFDF6' : '#686967',
+              }}
+            >
+              My Groups
+            </Button>
+          </Box>
+        </Grid>
+
+        {/* Post List */}
+        <Grid item xs={12}>
+          <MuiCard sx={{
+            border: '1px solid #D6DFE2',
+            borderRadius: 3,
+            boxShadow: '0px 2px 8px rgba(0,0,0,0.05)',
+            p: 5,
+            background: '#ffffff'
+          }}>
+            {posts.length === 0 ? (
+              <Box sx={{
+                textAlign: 'center',
+                py: 6,
+                color: '#686967'
+              }}>
+                <Typography variant="body1" fontWeight={500}>
+                  {activeView === 'groups'
+                    ? "No posts from your groups yet."
+                    : "No posts found."}
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 0.5 }}>
+                  {activeView === 'groups'
+                    ? "Join a group to see their posts here."
+                    : "Be the first to post something!"}
+                </Typography>
+              </Box>
+            ) : (
+              <PostList
+                posts={posts}
+                onDeletePost={handleDeletePost}
+                onEditPost={(post) => { setEditingPost(post); setEditOpen(true); }}
+                onLikePost={handleLikePost}
+                onTagFilter={handleTagFilter}
+              />
+            )}
+          </MuiCard>
+        </Grid>
+      </div>
 
       <CreatePostForm
         open={open}
@@ -409,7 +424,7 @@ function Post({ firebase }) {
         post={editingPost}
         firebase={firebase}
       />
-    </Grid>
+    </div>
   );
 }
 

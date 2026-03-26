@@ -372,52 +372,78 @@ export default function EditGroupForm() {
 }
 
 // Styles
+
+const page = {
+  background: "radial-gradient(circle at top left, rgba(93,108,92,0.12), transparent 35%), #FDFDF6",
+  minHeight: "100vh",
+  padding: "60px 20px",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+};
+
 const container = {
-  maxWidth: 720, 
-  margin: "0 auto", 
-  padding: 16
+  maxWidth: 680, 
+  width: "100%",
+  margin: "0 auto",
 };
 
 const headerRow = {
   display: "flex",
   justifyContent: "space-between",
-  alignItems: "center",
-  gap: 12,
+  alignItems: "flex-end",
+  marginBottom: 28,
+  width: "100%",
+};
+
+const pageTitle = {
+  fontSize: "2.2rem",
+  fontWeight: 750,
+  color: "#17292B",
+  margin: 0,
 };
 
 const card = {
-  border: "1px solid #ddd",
-  borderRadius: 14,
-  padding: 24,
+  background: "#FFFFFF",
+  borderRadius: 28,
+  padding: "32px",
   marginTop: 14,
-  background: "#fff",
+  border: "1px solid #D6DFE2",
+  borderTop: "6px solid #5D6C5C",
+  boxShadow: "0 18px 45px rgba(23,41,43,0.05)",
+  width: "100%",
+  boxSizing: "border-box",
 };
 
 const formGroup = {
-  marginBottom: 20
+  marginBottom: 24
 };
 
 const label = { 
   display: "block", 
   marginBottom: 8, 
   fontWeight: 700,
-  color: "#444"
+  color: "#17292B",
+  fontSize: 14
 };
 
 const input = {
   width: "100%",
-  padding: 12,
-  borderRadius: 10,
-  border: "1px solid #ccc",
+  padding: "14px 18px",
+  borderRadius: 16,
+  border: "2px solid #D6DFE2",
   outline: "none",
   fontSize: 14,
+  background: "#F9FAFA",
+  color: "#17292B",
   boxSizing: "border-box",
+  transition: "all 0.2s ease",
 };
 
 const formRow = {
   display: "flex",
-  gap: 20,
-  marginBottom: 20
+  gap: 24,
+  marginBottom: 24
 };
 
 const privacyOptions = { 
