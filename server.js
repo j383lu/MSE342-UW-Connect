@@ -309,6 +309,131 @@ const notifyEventAttendeesAboutDelete = (
   });
 };
 
+const formatDateLocal = (value) => {
+  if (!value) return "";
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  const text = String(value).trim();
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return text;
+  }
+
+  const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (match) {
+    return match[1];
+  }
+
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) {
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, "0");
+    const day = String(parsed.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  return text;
+};
+
+const formatTimeOnly = (value) => {
+  if (!value) return "";
+
+  const text = String(value).trim();
+  const match = text.match(/^(\d{2}):(\d{2})/);
+
+  if (match) {
+    return `${match[1]}:${match[2]}`;
+  }
+
+  return text;
+};
+
+const buildEventUpdateMessage = (actorName, oldEvent, newEvent) => {
+  const changedLines = [];
+
+  const oldTitle = String(oldEvent.title || "").trim();
+  const newTitle = String(newEvent.title || "").trim();
+
+  const oldDescription = String(oldEvent.description || "").trim();
+  const newDescription = String(newEvent.description || "").trim();
+
+  const oldEventDate = formatDateLocal(oldEvent.event_date);
+  const newEventDate = formatDateLocal(newEvent.event_date);
+
+  const oldEventTime = formatTimeOnly(oldEvent.event_time);
+  const newEventTime = formatTimeOnly(newEvent.event_time);
+
+  const oldEndDate = formatDateLocal(oldEvent.end_date);
+  const newEndDate = formatDateLocal(newEvent.end_date);
+
+  const oldEndTime = formatTimeOnly(oldEvent.end_time);
+  const newEndTime = formatTimeOnly(newEvent.end_time);
+
+  const oldLocation = String(oldEvent.location || "").trim();
+  const newLocation = String(newEvent.location || "").trim();
+
+  const oldCapacity = Number(oldEvent.capacity || 0);
+  const newCapacity = Number(newEvent.capacity || 0);
+
+  const oldCategory = String(oldEvent.category || "").trim();
+  const newCategory = String(newEvent.category || "").trim();
+
+  const oldEventType = String(oldEvent.event_type || "").trim();
+  const newEventType = String(newEvent.event_type || "").trim();
+
+  if (oldTitle !== newTitle) {
+    changedLines.push(`Title: ${oldTitle || "N/A"} -> ${newTitle || "N/A"}`);
+  }
+
+  if (oldDescription !== newDescription) {
+    changedLines.push(`Description: ${oldDescription || "N/A"} -> ${newDescription || "N/A"}`);
+  }
+
+  if (oldEventDate !== newEventDate) {
+    changedLines.push(`Start date: ${oldEventDate || "N/A"} -> ${newEventDate || "N/A"}`);
+  }
+
+  if (oldEventTime !== newEventTime) {
+    changedLines.push(`Start time: ${oldEventTime || "N/A"} -> ${newEventTime || "N/A"}`);
+  }
+
+  if (oldEndDate !== newEndDate) {
+    changedLines.push(`End date: ${oldEndDate || "N/A"} -> ${newEndDate || "N/A"}`);
+  }
+
+  if (oldEndTime !== newEndTime) {
+    changedLines.push(`End time: ${oldEndTime || "N/A"} -> ${newEndTime || "N/A"}`);
+  }
+
+  if (oldLocation !== newLocation) {
+    changedLines.push(`Location: ${oldLocation || "N/A"} -> ${newLocation || "N/A"}`);
+  }
+
+  if (oldCapacity !== newCapacity) {
+    changedLines.push(`Capacity: ${oldCapacity} -> ${newCapacity}`);
+  }
+
+  if (oldCategory !== newCategory) {
+    changedLines.push(`Category: ${oldCategory || "N/A"} -> ${newCategory || "N/A"}`);
+  }
+
+  if (oldEventType !== newEventType) {
+    changedLines.push(`Event type: ${oldEventType || "N/A"} -> ${newEventType || "N/A"}`);
+  }
+
+  if (changedLines.length === 0) {
+    return `${actorName} updated the event "${newTitle || oldTitle}".`;
+  }
+
+  return `${actorName} updated the event "${newTitle || oldTitle}".\nChanged fields:\n${changedLines.join("\n")}`;
+};
+
 // Create database connection using your config (ONLY ONE DECLARATION)
 const db = mysql.createConnection({
   host: config.host,
@@ -4761,9 +4886,7 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
     return res.status(400).json({ error: "Invalid event id." });
   }
 
-  const {title, description, event_date, event_time, end_date, end_time, location, capacity,
-    category, tags, event_type, group_ids,
-  } = req.body;
+  const { title, description, event_date, event_time, end_date, end_time, location, capacity, category, tags, event_type, group_ids } = req.body;
 
   if (!title || !description || !event_date || !event_time || !end_date || !end_time || !location || capacity === undefined || !category) {
     return res.status(400).json({ error: "Missing required fields." });
@@ -4781,7 +4904,7 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
 
   if (endDateOnly < startDateOnly) {
     return res.status(400).json({
-      error: "End date must be later than or equal to start date.",
+      error: "End date must be after or equal to start date.",
     });
   }
 
@@ -4797,13 +4920,13 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
 
   if (event_date === end_date && endDateTime <= startDateTime) {
     return res.status(400).json({
-      error: "If end date is the same as start date, end time must be later than start time.",
+      error: "End time must be after start time.",
     });
   }
 
   if (endDateTime <= startDateTime) {
     return res.status(400).json({
-      error: "End date and end time must be later than start date and start time.",
+      error: "End date and end time must be after start date and start time.",
     });
   }
 
@@ -4931,205 +5054,288 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
             return res.status(403).json({ error: verifyError.message });
           }
 
-          db.beginTransaction((txErr) => {
-            if (txErr) {
-              return res.status(500).json({ error: "Failed to start update transaction." });
+          const oldEventSql = `
+            SELECT
+              title,
+              description,
+              event_date,
+              event_time,
+              end_date,
+              end_time,
+              location,
+              capacity,
+              category,
+              event_type
+            FROM Events
+            WHERE id = ?
+            LIMIT 1
+          `;
+
+          db.query(oldEventSql, [eventId], (oldErr, oldRows) => {
+            if (oldErr) {
+              console.log("PUT /api/events/:id original event lookup error:", oldErr);
+              return res.status(500).json({ error: "Failed to load original event." });
             }
 
-            const rollbackWithError = (message, errObj = null) => {
-              return db.rollback(() => {
-                if (errObj) {
-                  console.log(message, errObj);
-                }
-                return res.status(500).json({ error: message });
-              });
-            };
+            if (!oldRows || oldRows.length === 0) {
+              return res.status(404).json({ error: "Event not found." });
+            }
 
-            const updateEventSql = `
-              UPDATE Events
-              SET
-                title = ?,
-                description = ?,
-                event_date = ?,
-                event_time = ?,
-                end_date = ?,
-                end_time = ?,
-                location = ?,
-                capacity = ?,
-                category = ?,
-                event_type = ?
-              WHERE id = ?
-            `;
+            const oldEvent = oldRows[0];
 
-            db.query(
-              updateEventSql,
-              [
-                title,
-                description,
-                event_date,
-                event_time,
-                end_date,
-                end_time,
-                location,
-                capNum,
-                category,
-                safeEventType,
-                eventId,
-              ],
-              (updateErr) => {
-                if (updateErr) {
-                  return rollbackWithError("Failed to update event.", updateErr);
-                }
+            db.beginTransaction((txErr) => {
+              if (txErr) {
+                return res.status(500).json({ error: "Failed to start update transaction." });
+              }
 
-                db.query(
-                  `DELETE FROM Event_Tags WHERE event_id = ?`,
-                  [eventId],
-                  (deleteTagsErr) => {
-                    if (deleteTagsErr) {
-                      return rollbackWithError("Failed to update tags.", deleteTagsErr);
-                    }
+              const rollbackWithError = (message, errObj = null) => {
+                return db.rollback(() => {
+                  if (errObj) {
+                    console.log(message, errObj);
+                  }
+                  return res.status(500).json({ error: message });
+                });
+              };
 
-                    const uniqueTags = [
-                      ...new Set(
-                        safeTags.map((tag) => String(tag).trim()).filter(Boolean)
-                      ),
-                    ];
+              const updateEventSql = `
+                UPDATE Events
+                SET
+                  title = ?,
+                  description = ?,
+                  event_date = ?,
+                  event_time = ?,
+                  end_date = ?,
+                  end_time = ?,
+                  location = ?,
+                  capacity = ?,
+                  category = ?,
+                  event_type = ?
+                WHERE id = ?
+              `;
 
-                    const insertTags = (done) => {
-                      if (uniqueTags.length === 0) {
-                        return done(null);
+              db.query(
+                updateEventSql,
+                [
+                  title,
+                  description,
+                  event_date,
+                  event_time,
+                  end_date,
+                  end_time,
+                  location,
+                  capNum,
+                  category,
+                  safeEventType,
+                  eventId,
+                ],
+                (updateErr) => {
+                  if (updateErr) {
+                    return rollbackWithError("Failed to update event.", updateErr);
+                  }
+
+                  db.query(
+                    `DELETE FROM Event_Tags WHERE event_id = ?`,
+                    [eventId],
+                    (deleteTagsErr) => {
+                      if (deleteTagsErr) {
+                        return rollbackWithError("Failed to update tags.", deleteTagsErr);
                       }
 
-                      const tagValues = uniqueTags.map((tag) => [eventId, tag]);
-                      const insertTagsSql = `
-                        INSERT INTO Event_Tags (event_id, tag_name)
-                        VALUES ?
-                      `;
+                      const uniqueTags = [
+                        ...new Set(
+                          safeTags.map((tag) => String(tag).trim()).filter(Boolean)
+                        ),
+                      ];
 
-                      db.query(insertTagsSql, [tagValues], (tagErr) => {
-                        if (tagErr) {
-                          return done(tagErr);
+                      const insertTags = (done) => {
+                        if (uniqueTags.length === 0) {
+                          return done(null);
                         }
 
-                        return done(null);
-                      });
-                    };
+                        const tagValues = uniqueTags.map((tag) => [eventId, tag]);
+                        const insertTagsSql = `
+                          INSERT INTO Event_Tags (event_id, tag_name)
+                          VALUES ?
+                        `;
 
-                    insertTags((insertTagsErr) => {
-                      if (insertTagsErr) {
-                        return rollbackWithError("Failed to update tags.", insertTagsErr);
-                      }
-
-                      db.query(
-                        `DELETE FROM Event_Groups WHERE event_id = ?`,
-                        [eventId],
-                        (deleteGroupsErr) => {
-                          if (deleteGroupsErr) {
-                            return rollbackWithError(
-                              "Failed to update selected groups.",
-                              deleteGroupsErr
-                            );
+                        db.query(insertTagsSql, [tagValues], (tagErr) => {
+                          if (tagErr) {
+                            return done(tagErr);
                           }
 
-                          const insertGroups = (done) => {
-                            if (safeEventType !== "group" || safeGroupIds.length === 0) {
-                              return done(null);
-                            }
+                          return done(null);
+                        });
+                      };
 
-                            const groupValues = safeGroupIds.map((groupId) => [
-                              eventId,
-                              groupId,
-                            ]);
+                      insertTags((insertTagsErr) => {
+                        if (insertTagsErr) {
+                          return rollbackWithError("Failed to update tags.", insertTagsErr);
+                        }
 
-                            const insertGroupsSql = `
-                              INSERT INTO Event_Groups (event_id, group_id)
-                              VALUES ?
-                            `;
-
-                            db.query(insertGroupsSql, [groupValues], (groupErr) => {
-                              if (groupErr) {
-                                return done(groupErr);
-                              }
-
-                              return done(null);
-                            });
-                          };
-
-                          insertGroups((insertGroupsErr) => {
-                            if (insertGroupsErr) {
+                        db.query(
+                          `DELETE FROM Event_Groups WHERE event_id = ?`,
+                          [eventId],
+                          (deleteGroupsErr) => {
+                            if (deleteGroupsErr) {
                               return rollbackWithError(
                                 "Failed to update selected groups.",
-                                insertGroupsErr
+                                deleteGroupsErr
                               );
                             }
 
-                            const updateAttendeesForPrivateEvent = (done) => {
+                            const insertGroups = (done) => {
                               if (safeEventType !== "group" || safeGroupIds.length === 0) {
                                 return done(null);
                               }
 
-                              const placeholders = safeGroupIds.map(() => "?").join(", ");
+                              const groupValues = safeGroupIds.map((groupId) => [
+                                eventId,
+                                groupId,
+                              ]);
 
-                              const deleteNonMemberAttendeesSql = `
-                                DELETE ea
-                                FROM Event_Attendees ea
-                                INNER JOIN Events e
-                                  ON e.id = ea.event_id
-                                LEFT JOIN User_Credentials uc_creator
-                                  ON uc_creator.user_id = e.created_by
-                                WHERE ea.event_id = ?
-                                  AND LOWER(ea.attendee_name) <> LOWER(uc_creator.email)
-                                  AND LOWER(ea.attendee_name) NOT IN (
-                                    SELECT LOWER(uc.email)
-                                    FROM Group_Members gm
-                                    INNER JOIN User_Credentials uc
-                                      ON uc.user_id = gm.user_id
-                                    WHERE gm.group_id IN (${placeholders})
-                                  )
+                              const insertGroupsSql = `
+                                INSERT INTO Event_Groups (event_id, group_id)
+                                VALUES ?
                               `;
 
-                              db.query(
-                                deleteNonMemberAttendeesSql,
-                                [eventId, ...safeGroupIds],
-                                (attendeeDeleteErr) => {
-                                  if (attendeeDeleteErr) {
-                                    return done(attendeeDeleteErr);
-                                  }
-
-                                  return done(null);
+                              db.query(insertGroupsSql, [groupValues], (groupErr) => {
+                                if (groupErr) {
+                                  return done(groupErr);
                                 }
-                              );
+
+                                return done(null);
+                              });
                             };
 
-                            updateAttendeesForPrivateEvent((attendeeDeleteErr) => {
-                              if (attendeeDeleteErr) {
+                            insertGroups((insertGroupsErr) => {
+                              if (insertGroupsErr) {
                                 return rollbackWithError(
-                                  "Failed to update attendees for the private event.",
-                                  attendeeDeleteErr
+                                  "Failed to update selected groups.",
+                                  insertGroupsErr
                                 );
                               }
 
-                              db.commit((commitErr) => {
-                                if (commitErr) {
+                              const updateAttendeesForPrivateEvent = (done) => {
+                                if (safeEventType !== "group" || safeGroupIds.length === 0) {
+                                  return done(null);
+                                }
+
+                                const placeholders = safeGroupIds.map(() => "?").join(", ");
+
+                                const deleteNonMemberAttendeesSql = `
+                                  DELETE ea
+                                  FROM Event_Attendees ea
+                                  INNER JOIN Events e
+                                    ON e.id = ea.event_id
+                                  LEFT JOIN User_Credentials uc_creator
+                                    ON uc_creator.user_id = e.created_by
+                                  WHERE ea.event_id = ?
+                                    AND LOWER(ea.attendee_name) <> LOWER(uc_creator.email)
+                                    AND LOWER(ea.attendee_name) NOT IN (
+                                      SELECT LOWER(uc.email)
+                                      FROM Group_Members gm
+                                      INNER JOIN User_Credentials uc
+                                        ON uc.user_id = gm.user_id
+                                      WHERE gm.group_id IN (${placeholders})
+                                    )
+                                `;
+
+                                db.query(
+                                  deleteNonMemberAttendeesSql,
+                                  [eventId, ...safeGroupIds],
+                                  (attendeeDeleteErr) => {
+                                    if (attendeeDeleteErr) {
+                                      return done(attendeeDeleteErr);
+                                    }
+
+                                    return done(null);
+                                  }
+                                );
+                              };
+
+                              updateAttendeesForPrivateEvent((attendeeDeleteErr) => {
+                                if (attendeeDeleteErr) {
                                   return rollbackWithError(
-                                    "Failed to save event changes.",
-                                    commitErr
+                                    "Failed to update attendees for the private event.",
+                                    attendeeDeleteErr
                                   );
                                 }
 
-                                return res.json({
-                                  message: "Event updated successfully.",
+                                db.commit((commitErr) => {
+                                  if (commitErr) {
+                                    return rollbackWithError(
+                                      "Failed to save event changes.",
+                                      commitErr
+                                    );
+                                  }
+
+                                  const newEvent = {
+                                    title,
+                                    description,
+                                    event_date,
+                                    event_time,
+                                    end_date,
+                                    end_time,
+                                    location,
+                                    capacity: capNum,
+                                    category,
+                                    event_type: safeEventType,
+                                  };
+
+                                  getUserDisplayNameById(currentUserId, (nameErr, actorName) => {
+                                    const safeActorName =
+                                      !nameErr && actorName ? actorName : "Someone";
+
+                                    const message = buildEventUpdateMessage(
+                                      safeActorName,
+                                      oldEvent,
+                                      newEvent
+                                    );
+
+                                    getEventAttendeeUsers(eventId, (attendeeErr, attendeeRows) => {
+                                      if (!attendeeErr && attendeeRows && attendeeRows.length > 0) {
+                                        const sentUserIds = new Set();
+
+                                        attendeeRows.forEach((row) => {
+                                          const recipientId = Number(row.user_id);
+
+                                          if (recipientId === Number(currentUserId)) {
+                                            return;
+                                          }
+
+                                          if (sentUserIds.has(recipientId)) {
+                                            return;
+                                          }
+
+                                          sentUserIds.add(recipientId);
+
+                                          createNotification(
+                                            recipientId,
+                                            currentUserId,
+                                            eventId,
+                                            "EVENT",
+                                            "UPDATE",
+                                            message
+                                          );
+                                        });
+                                      }
+
+                                      return res.json({
+                                        message: "Event updated successfully.",
+                                      });
+                                    });
+                                  });
                                 });
                               });
                             });
-                          });
-                        }
-                      );
-                    });
-                  }
-                );
-              }
-            );
+                          }
+                        );
+                      });
+                    }
+                  );
+                }
+              );
+            });
           });
         });
       });

@@ -137,10 +137,13 @@ const Notifications = () => {
                 </div>
                 
                 <div style={{ flex: 1 }}>
-                  <Typography style={{ 
-                    ...s.messageText, 
-                    fontWeight: n.is_read ? 500 : 700 
-                  }}>
+                  <Typography
+                    style={{
+                      ...s.messageText,
+                      fontWeight: n.is_read ? 500 : 700,
+                      whiteSpace: "pre-line",
+                    }}
+                  >
                     {n.message}
                   </Typography>
                   <span style={s.timeLabel}>
