@@ -1,8 +1,15 @@
 import { getAuth } from "firebase/auth";
 
 const apiRequest = async (url, options = {}) => {
-  const auth = getAuth();
-  const user = auth.currentUser;
+  let user = null;
+
+  try {
+    const auth = getAuth();
+    user = auth.currentUser;
+  } catch (error) {
+    // Some tests render components without initializing Firebase.
+    user = null;
+  }
   
   // 1. Get the token automatically
   const token = user ? await user.getIdToken() : null;
