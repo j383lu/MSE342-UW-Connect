@@ -5479,6 +5479,43 @@ app.put("/api/events/:id", checkAuth, (req, res) => {
                                       };
 
                                       if (visibilityPlan.type) {
+                                        const sentUpdateUserIds = new Set();
+
+                                        const sendDetailedUpdateToKeptUsers = (recipientIds) => {
+                                          recipientIds.forEach((recipientId) => {
+                                            if (recipientId === Number(currentUserId)) {
+                                              return;
+                                            }
+
+                                            if (sentUpdateUserIds.has(recipientId)) {
+                                              return;
+                                            }
+
+                                            sentUpdateUserIds.add(recipientId);
+
+                                            createNotification(
+                                              recipientId,
+                                              currentUserId,
+                                              eventId,
+                                              "EVENT",
+                                              "UPDATE",
+                                              updateMessage
+                                            );
+                                          });
+                                        };
+
+                                        if (visibilityPlan.type === "public_to_group") {
+                                          sendDetailedUpdateToKeptUsers(visibilityPlan.keptRecipientIds);
+                                        }
+
+                                        if (visibilityPlan.type === "group_to_public") {
+                                          sendDetailedUpdateToKeptUsers(visibilityPlan.keptRecipientIds);
+                                        }
+
+                                        if (visibilityPlan.type === "group_to_group") {
+                                          sendDetailedUpdateToKeptUsers(visibilityPlan.keptRecipientIds);
+                                        }
+
                                         return sendVisibilityNotifications();
                                       }
 
