@@ -19,6 +19,10 @@ import {
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import { FirebaseContext } from "../../Firebase";
+import ProfilePageStyle, {
+  profileActionButtonSx,
+  profileCardSx,
+} from "./ProfilePageStyle";
 
 export function validateDisplayName(rawName) {
   const trimmed = rawName.trim();
@@ -211,223 +215,235 @@ function EditProfile() {
     }
   };
 
-  if (!draft) {
-    return (
-      <Box sx={{ p: 3, bgcolor: "background.default" }}>
-        <Typography color="text.secondary">Loading...</Typography>
-      </Box>
-    );
-  }
-
   return (
-    <Box sx={{ p: 3, display: "flex", justifyContent: "center", bgcolor: "background.default" }}>
-      <Card sx={{ width: 800, bgcolor: "background.paper", borderColor: "divider" }}>
-        <CardContent>
-          <Typography variant="h2" sx={{ color: "text.primary" }}>
-            Edit Profile
-          </Typography>
+    <ProfilePageStyle
+      title="Edit Profile"
+      subtitle="Update how you show up across UW Connect, from your photo to your courses."
+      actions={[
+        <Button
+          key="cancel"
+          variant="outlined"
+          onClick={handleCancel}
+          sx={{
+            ...profileActionButtonSx,
+            color: "#FDFDF6",
+            borderColor: "rgba(255,255,255,0.24)",
+            backgroundColor: "rgba(255,255,255,0.08)",
+          }}
+        >
+          Cancel
+        </Button>,
+        <Button
+          key="save"
+          variant="contained"
+          onClick={draft ? handleSave : undefined}
+          disabled={!draft}
+          sx={{
+            ...profileActionButtonSx,
+            backgroundColor: "#FDFDF6",
+            color: "#17292B",
+            "&:hover": { backgroundColor: "#f3f3ec" },
+          }}
+        >
+          Save Changes
+        </Button>,
+      ]}
+    >
+      {!draft ? (
+        <Typography color="text.secondary">Loading...</Typography>
+      ) : (
+        <Card sx={{ ...profileCardSx, width: "100%", maxWidth: 880, mx: "auto" }}>
+          <CardContent sx={{ p: { xs: 2.5, md: 3 } }}>
+            <Typography variant="h2" sx={{ color: "text.primary" }}>
+              Edit your details
+            </Typography>
 
-          <Divider sx={{ my: 3, borderColor: "divider" }} />
+            <Divider sx={{ my: 3, borderColor: "divider" }} />
 
-          <Stack spacing={2}>
-            <Box>
-              <Typography variant="h2" sx={{ fontSize: "1rem", color: "text.primary", mb: 2 }}>
-                Profile Picture
-              </Typography>
-              <Stack direction="row" alignItems="center" spacing={2}>
-                <Avatar
-                  src={draft.avatar_url ? `/uploads/${draft.avatar_url}` : undefined}
-                  alt={draft.name}
-                  sx={{
-                    width: 80,
-                    height: 80,
-                    bgcolor: "primary.main",
-                    fontSize: "2rem",
-                  }}
-                >
-                  {!draft.avatar_url && (draft.name?.[0]?.toUpperCase() ?? "?")}
-                </Avatar>
-                <Button variant="outlined" component="label">
-                  Change Photo
-                  <input
-                    type="file"
-                    hidden
-                    accept="image/jpeg,image/jpg,image/png,image/gif"
-                    onChange={handleAvatarChange}
-                  />
-                </Button>
-              </Stack>
-            </Box>
-
-            <TextField
-              label="Display Name"
-              value={draft.name}
-              onChange={(e) => {
-                setDraft({ ...draft, name: e.target.value });
-                if (nameError) setNameError("");
-              }}
-              fullWidth
-              error={!!nameError}
-              helperText={
-                nameError ||
-                "Only letters, numbers, and spaces. Max 30 characters."
-              }
-              inputProps={{
-                maxLength: 30,
-                "data-testid": "display-name-input",
-              }}
-            />
-
-            <FormControl fullWidth>
-              <InputLabel id="program-select-label">Program</InputLabel>
-              <Select
-                labelId="program-select-label"
-                id="program-select"
-                value={draft.program_id}
-                label="Program"
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    program_id: e.target.value,
-                  })
-                }
-                inputProps={{ "data-testid": "program-input" }}
-              >
-                {programOptions.map((program) => (
-                  <MenuItem
-                    key={program.program_id}
-                    value={program.program_id}
+            <Stack spacing={2}>
+              <Box>
+                <Typography variant="h2" sx={{ fontSize: "1rem", color: "text.primary", mb: 2 }}>
+                  Profile Picture
+                </Typography>
+                <Stack direction="row" alignItems="center" spacing={2}>
+                  <Avatar
+                    src={draft.avatar_url ? `/uploads/${draft.avatar_url}` : undefined}
+                    alt={draft.name}
+                    sx={{
+                      width: 88,
+                      height: 88,
+                      bgcolor: "primary.main",
+                      fontSize: "2rem",
+                    }}
                   >
-                    {program.program_name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+                    {!draft.avatar_url && (draft.name?.[0]?.toUpperCase() ?? "?")}
+                  </Avatar>
+                  <Button variant="outlined" component="label" sx={profileActionButtonSx}>
+                    Change Photo
+                    <input
+                      type="file"
+                      hidden
+                      accept="image/jpeg,image/jpg,image/png,image/gif"
+                      onChange={handleAvatarChange}
+                    />
+                  </Button>
+                </Stack>
+              </Box>
 
-            <FormControl fullWidth>
-              <InputLabel id="gender-select-label">Gender</InputLabel>
-              <Select
-                labelId="gender-select-label"
-                id="gender-select"
-                value={draft.gender}
-                label="Gender"
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    gender: e.target.value,
-                  })
+              <TextField
+                label="Display Name"
+                value={draft.name}
+                onChange={(e) => {
+                  setDraft({ ...draft, name: e.target.value });
+                  if (nameError) setNameError("");
+                }}
+                fullWidth
+                error={!!nameError}
+                helperText={
+                  nameError ||
+                  "Only letters, numbers, and spaces. Max 30 characters."
                 }
-                inputProps={{ "data-testid": "gender-input" }}
-              >
-                <MenuItem value="She/Her">She/Her</MenuItem>
-                <MenuItem value="He/Him">He/Him</MenuItem>
-                <MenuItem value="They/Them">They/Them</MenuItem>
-                <MenuItem value="Prefer not to say">Prefer not to say</MenuItem>
-              </Select>
-            </FormControl>
+                inputProps={{
+                  maxLength: 30,
+                  "data-testid": "display-name-input",
+                }}
+              />
 
-            <TextField
-              label="Birthday"
-              type="date"
-              value={draft.birthday}
-              onChange={(e) =>
-                setDraft({ ...draft, birthday: e.target.value })
-              }
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-              inputProps={{ "data-testid": "birthday-input" }}
-            />
-
-            <TextField
-              label="Bio"
-              value={draft.bio}
-              onChange={(e) =>
-                setDraft({ ...draft, bio: e.target.value })
-              }
-              multiline
-              minRows={3}
-              fullWidth
-              inputProps={{ "data-testid": "bio-input" }}
-            />
-
-            <TextField
-              label="Phone Number (Optional)"
-              value={draft.phone_number}
-              onChange={(e) =>
-                setDraft({ ...draft, phone_number: e.target.value })
-              }
-              fullWidth
-              inputProps={{
-                maxLength: 20,
-                "data-testid": "phone-number-input",
-              }}
-            />
-
-            <Box>
-              <Typography variant="h2" sx={{ fontSize: "1rem", color: "text.primary" }}>
-                Courses
-              </Typography>
-
-              <FormControl fullWidth sx={{ mt: 2 }}>
-                <InputLabel id="courses-select-label">Select Courses</InputLabel>
+              <FormControl fullWidth>
+                <InputLabel id="program-select-label">Program</InputLabel>
                 <Select
-                  labelId="courses-select-label"
-                  id="courses-select"
-                  multiple
-                  value={draft.courses || []}
-                  label="Select Courses"
-                  onChange={handleCoursesChange}
-                  renderValue={(selected) => (
-                    <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 0.5 }}>
-                      {selected.map((courseId) => {
-                        const course = courseOptions.find(
-                          (c) => Number(c.course_id) === Number(courseId)
-                        );
-                        return (
-                          <Chip
-                            key={courseId}
-                            label={course ? course.course_code : courseId}
-                            color="primary"
-                            sx={{ fontWeight: 600 }}
-                          />
-                        );
-                      })}
-                    </Stack>
-                  )}
+                  labelId="program-select-label"
+                  id="program-select"
+                  value={draft.program_id}
+                  label="Program"
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      program_id: e.target.value,
+                    })
+                  }
+                  inputProps={{ "data-testid": "program-input" }}
                 >
-                  {courseOptions.map((course) => (
-                    <MenuItem key={course.course_id} value={course.course_id}>
-                      {course.course_code}
+                  {programOptions.map((program) => (
+                    <MenuItem
+                      key={program.program_id}
+                      value={program.program_id}
+                    >
+                      {program.program_name}
                     </MenuItem>
                   ))}
                 </Select>
               </FormControl>
-            </Box>
 
-            {saveError && (
-              <Alert severity="error" variant="outlined">
-                {saveError}
-              </Alert>
-            )}
+              <FormControl fullWidth>
+                <InputLabel id="gender-select-label">Gender</InputLabel>
+                <Select
+                  labelId="gender-select-label"
+                  id="gender-select"
+                  value={draft.gender}
+                  label="Gender"
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      gender: e.target.value,
+                    })
+                  }
+                  inputProps={{ "data-testid": "gender-input" }}
+                >
+                  <MenuItem value="She/Her">She/Her</MenuItem>
+                  <MenuItem value="He/Him">He/Him</MenuItem>
+                  <MenuItem value="They/Them">They/Them</MenuItem>
+                  <MenuItem value="Prefer not to say">Prefer not to say</MenuItem>
+                </Select>
+              </FormControl>
 
-            <Stack direction="row" justifyContent="flex-end" spacing={1}>
-              <Button
-                variant="text"
-                onClick={handleCancel}
-                sx={{ color: "text.primary" }}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="contained"
-                onClick={handleSave}
-              >
-                Save
-              </Button>
+              <TextField
+                label="Birthday"
+                type="date"
+                value={draft.birthday}
+                onChange={(e) =>
+                  setDraft({ ...draft, birthday: e.target.value })
+                }
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+                inputProps={{ "data-testid": "birthday-input" }}
+              />
+
+              <TextField
+                label="Bio"
+                value={draft.bio}
+                onChange={(e) =>
+                  setDraft({ ...draft, bio: e.target.value })
+                }
+                multiline
+                minRows={3}
+                fullWidth
+                inputProps={{ "data-testid": "bio-input" }}
+              />
+
+              <TextField
+                label="Phone Number (Optional)"
+                value={draft.phone_number}
+                onChange={(e) =>
+                  setDraft({ ...draft, phone_number: e.target.value })
+                }
+                fullWidth
+                inputProps={{
+                  maxLength: 20,
+                  "data-testid": "phone-number-input",
+                }}
+              />
+
+              <Box>
+                <Typography variant="h2" sx={{ fontSize: "1rem", color: "text.primary" }}>
+                  Courses
+                </Typography>
+
+                <FormControl fullWidth sx={{ mt: 2 }}>
+                  <InputLabel id="courses-select-label">Select Courses</InputLabel>
+                  <Select
+                    labelId="courses-select-label"
+                    id="courses-select"
+                    multiple
+                    value={draft.courses || []}
+                    label="Select Courses"
+                    onChange={handleCoursesChange}
+                    renderValue={(selected) => (
+                      <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 0.5 }}>
+                        {selected.map((courseId) => {
+                          const course = courseOptions.find(
+                            (c) => Number(c.course_id) === Number(courseId)
+                          );
+                          return (
+                            <Chip
+                              key={courseId}
+                              label={course ? course.course_code : courseId}
+                              color="primary"
+                              sx={{ fontWeight: 600 }}
+                            />
+                          );
+                        })}
+                      </Stack>
+                    )}
+                  >
+                    {courseOptions.map((course) => (
+                      <MenuItem key={course.course_id} value={course.course_id}>
+                        {course.course_code}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Box>
+
+              {saveError && (
+                <Alert severity="error" variant="outlined">
+                  {saveError}
+                </Alert>
+              )}
             </Stack>
-          </Stack>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       <Snackbar
         open={successOpen}
@@ -441,7 +457,7 @@ function EditProfile() {
           Profile successfully updated
         </Alert>
       </Snackbar>
-    </Box>
+    </ProfilePageStyle>
   );
 }
 

@@ -76,7 +76,7 @@ export default function CreateEventForm() {
     }
   };
 
-  // This helper function removes the error message of one specific field after user changes it
+  // Remove the error message of one specific field after user changes it
   const clearFieldError = (fieldName) => {
     setFieldErrors((prev) => {
       const next = { ...prev };
@@ -87,7 +87,8 @@ export default function CreateEventForm() {
 
   // This hook runs once when the page loads and fetches category data from the server
   useEffect(() => {
-    // The loadCategories function loads event categories from the backend when the page first opens
+
+    // Load event categories from the backend when the page first opens
     const loadCategories = async () => {
       try {
         const res = await fetch("/api/categories");
@@ -107,7 +108,7 @@ export default function CreateEventForm() {
     loadCategories();
   }, []);
 
-  // This function loads the groups that user has joined so they can create group events
+  // Load the groups that user has joined so they can create group events
   const loadMyGroups = async () => {
     try {
       setGroupsLoading(true);
@@ -196,12 +197,12 @@ export default function CreateEventForm() {
     setTagInput("");
   };
 
-  // This handler function removes a selected tag from the tag list
+  // This function removes a selected tag from the tag list
   const handleRemoveTag = (tagToRemove) => {
     setTags((prev) => prev.filter((tag) => tag !== tagToRemove));
   };
 
-  // This handler function adds a selected group to the event
+  // Add a selected group to the event
   const handleAddGroup = () => {
     if (!groupSelectValue) return;
 
@@ -225,7 +226,7 @@ export default function CreateEventForm() {
     clearFieldError("selectedGroups");
   };
 
-  // This handler function removes a selected group from the group list
+  // Remove a selected group from the group list
   const handleRemoveGroup = (groupIdToRemove) => {
     setSelectedGroups((prev) =>
       prev.filter((group) => String(group.group_id) !== String(groupIdToRemove))

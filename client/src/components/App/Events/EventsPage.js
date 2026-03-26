@@ -1,11 +1,4 @@
-import React, {
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, {useCallback, useContext, useEffect, useMemo, useRef, useState} from "react";
 import { useNavigate } from "react-router-dom";
 import styles from "./eventStyles";
 import EventCard from "./EventCard";
@@ -39,8 +32,8 @@ export default function EventsPage() {
   const [sortBy, setSortBy] = useState("mostUpcoming");
   const [activeTab, setActiveTab] = useState("public");
 
-  // This function gets authentication headers and includes the user token if logged in.
-  const getAuthHeaders = async (includeJson = false) => {
+  // Get authentication headers and includes the user token if log in
+  const getAuthHeaders = useCallback(async (includeJson = false) => {
     const headers = {};
 
     if (includeJson) {
@@ -54,10 +47,11 @@ export default function EventsPage() {
     }
 
     return headers;
-  };
+  }, [firebase]);
 
-  // Return the correct API route based on the selected tab.
-  const getEventsRouteByTab = (tab, includePastValue = true) => {
+  // Decide which events API route should be used for the current event tab
+  // It returns different backend paths for public events, group events, or my events
+  const getEventsRouteByTab = useCallback((tab, includePastValue = true) => {
     const includePastParam = includePastValue ? "true" : "false";
 
     if (tab === "my-groups") {
@@ -69,9 +63,9 @@ export default function EventsPage() {
     }
 
     return `/api/events/public?includePast=${includePastParam}`;
-  };
+  }, []);
 
-  // Update event data in both the main list and search results.
+  // Update event data in both the main list and search results
   const updateEventStateEverywhere = (eventId, updates) => {
     setEvents((prev) =>
       prev.map((item) => (item.id === eventId ? { ...item, ...updates } : item))
@@ -82,6 +76,8 @@ export default function EventsPage() {
     );
   };
 
+  // Search through the local event list with the user input
+  // Compare keyword with fields like title, category, tags, description, etc.
   const filterEventsByTerm = (list, rawTerm) => {
     const term = String(rawTerm || "").trim().toLowerCase();
 
@@ -104,8 +100,9 @@ export default function EventsPage() {
     });
   };
 
-  // This function loads events from the backend based on the selected tab and filter.
-  const loadEvents = async (
+  // This function fetch and load events from the backend based on the selected tab and filter
+  // After receiving the data, update the page state and clear old search results
+  const loadEvents = useCallback(async (
     tab = activeTab,
     includePastValue = showPastEvents,
     shouldResetSearch = false
@@ -143,9 +140,9 @@ export default function EventsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeTab, showPastEvents, getAuthHeaders, getEventsRouteByTab]);
 
-  // Load attendees of a specific event
+  // Send a request to the backend and get the attendee list for one selected event
   const loadAttendees = async (eventId) => {
     try {
       setDetailsLoading(true);
@@ -169,7 +166,7 @@ export default function EventsPage() {
     }
   };
 
-  // This function shows or hides the attendee list for an event.
+  // Show or hide the attendee list for an event.
   const toggleAttendees = async (eventId) => {
     if (openDetailsId === eventId) {
       setOpenDetailsId(null);
@@ -182,7 +179,8 @@ export default function EventsPage() {
     await loadAttendees(eventId);
   };
 
-  // handleJoin function allows the user to join an event and updates the event state.
+  // handleJoin function allows users to join an event and updates the event state
+  // It sends the join request, updates the event numbers and attendees list
   const handleJoin = async (ev) => {
     const user = firebase?.auth?.currentUser;
 
@@ -224,6 +222,7 @@ export default function EventsPage() {
   };
 
   // handleLeave function allows the user to leave an event and updates the event state
+  // Also it updates the capacity count on the page and reloads the attendee list
   const handleLeave = async (ev) => {
     const user = firebase?.auth?.currentUser;
 
@@ -264,8 +263,9 @@ export default function EventsPage() {
     }
   };
 
-  // Load user's recent search history from the backend
-  const loadRecentSearches = async () => {
+  // Load the user's recent search history from the backend
+  // Return the search records in the dropdown box
+  const loadRecentSearches = useCallback(async () => {
     try {
       const headers = await getAuthHeaders(false);
       const res = await fetch("/api/events/search-history", { headers });
@@ -276,7 +276,7 @@ export default function EventsPage() {
     } catch (e) {
       console.log("Failed to load recent searches.");
     }
-  };
+  }, [getAuthHeaders]);
 
   // Save a new search term into the user's search history
   const saveSearchHistory = async (term) => {
@@ -320,6 +320,7 @@ export default function EventsPage() {
   };
 
   // Load search suggestions based on the keyword input
+  // The suggestion list is updated from the backend response for the current tab
   const loadSuggestions = async (keyword, tab = activeTab) => {
     try {
       const headers = await getAuthHeaders(false);
@@ -342,10 +343,12 @@ export default function EventsPage() {
     }
   };
 
+  // Convert the event start date and time and published timestamp into a Date object
   const getStartDateTime = (ev) => new Date(`${ev.event_date}T${ev.event_time}`);
   const getPublishedDateTime = (ev) => new Date(`${ev.published_time}`);
 
-  // Sort a list of events based on the selected sorting option.
+  // Sort the event list using the selected sorting rule
+  // Order events by number of likes, publish time, or start time
   const applySortToList = useCallback(
     (list, customSort = sortBy) => {
       const copied = [...list];
@@ -370,7 +373,8 @@ export default function EventsPage() {
     [sortBy]
   );
 
-  // The handleSearch function handles searching events based on the input keyword and updates results.
+  // The handleSearch function handles searching events based on the input keyword and updates results
+  // Filter the matching events and applies the selected sorting method
   const handleSearch = async (
     rawTerm,
     customSort = sortBy,
@@ -413,7 +417,7 @@ export default function EventsPage() {
     }
   };
 
-  // Update the sorting option and re-apply search if needed.
+  // Update the sorting option and sort the search results
   const handleSortChange = async (e) => {
     const newSort = e.target.value;
     setSortBy(newSort);
@@ -444,6 +448,8 @@ export default function EventsPage() {
     }
   };
 
+  // Send updated event information to the backend
+  // Then refresh the event data shown on the page
   const handleUpdateEvent = async (eventId, payload) => {
     try {
       const headers = await getAuthHeaders(true);
@@ -477,6 +483,8 @@ export default function EventsPage() {
     }
   };
 
+  // Delete an event from the backend after the user confirms the action
+  // When the delete succeeds, the event is removed from both displayed lists
   const handleDeleteEvent = async (ev) => {
     try {
       const headers = await getAuthHeaders(false);
@@ -542,7 +550,7 @@ export default function EventsPage() {
     setShowSearchDropdown(true);
   };
 
-  // Handle the search submission
+  // Handle the search submission and return results
   const handleSearchSubmit = async (e) => {
     e.preventDefault();
 
@@ -556,18 +564,21 @@ export default function EventsPage() {
     await handleSearch(searchTerm);
   };
 
+  // When user click a recent search result, use this keyword to search
   const handleRecentSearchClick = async (term) => {
     setSearchTerm(term);
     setShowSearchDropdown(false);
     await handleSearch(term);
   };
 
+  // When user click a search result suggestions, use this keyword to search
   const handleSuggestionClick = async (value) => {
     setSearchTerm(value);
     setShowSearchDropdown(false);
     await handleSearch(value);
   };
 
+  // Clear all search fields
   const clearSearch = async () => {
     setSearchTerm("");
     setSuggestions([]);
@@ -577,7 +588,7 @@ export default function EventsPage() {
     setShowSearchDropdown(false);
   };
 
-  // This function switches between tabs and reloads events for the selected section.
+  // This function switches between tabs and reloads events for the selected section
   const handleTabChange = async (tab) => {
     setActiveTab(tab);
     setSearchTerm("");
@@ -589,17 +600,15 @@ export default function EventsPage() {
     setOpenDetailsId(null);
     setAttendees([]);
     setDetailsError("");
-    await loadEvents(tab, showPastEvents, true);
   };
 
   useEffect(() => {
-    loadEvents(activeTab, showPastEvents);
     loadRecentSearches();
-  }, []);
+  }, [loadRecentSearches]);
 
   useEffect(() => {
     loadEvents(activeTab, showPastEvents, true);
-  }, [showPastEvents]);
+  }, [activeTab, showPastEvents, loadEvents]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -655,6 +664,8 @@ export default function EventsPage() {
     );
   };
 
+  // These variables decide what text should be shown in each section of the page
+  // They change the titles, subtitles, and empty messages based on the current event tab and sorting method
   const sectionTitle =
     activeTab === "my-groups"
       ? "My Group Events"
