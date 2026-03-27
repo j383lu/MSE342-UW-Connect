@@ -3730,6 +3730,7 @@ app.post('/api/posts', checkAuth, upload.single('image'), async (req, res) => {
                 author_id: author_id,
                 title,
                 description: content,
+                image_url,
                 tags: tagResult.map(t => t.tag_name),
                 createdAt: new Date().toISOString(),
                 like_count: 0,
@@ -3741,7 +3742,7 @@ app.post('/api/posts', checkAuth, upload.single('image'), async (req, res) => {
         } else {
           //db.end();
           res.json({
-            post: { post_id: postId, author_id: author_id, title, description: content, tags: [], createdAt: new Date().toISOString(), like_count: 0, liked_by_me: false },
+            post: { post_id: postId, author_id: author_id, title, description: content, image_url, tags: [], createdAt: new Date().toISOString(), like_count: 0, liked_by_me: false },
             message: 'Post created successfully but no valid tags found'
           });
         }
@@ -3749,7 +3750,7 @@ app.post('/api/posts', checkAuth, upload.single('image'), async (req, res) => {
     } else {
       //db.end();
       res.json({
-        post: { post_id: postId, author_id: author_id, title, description: content, tags: [], createdAt: new Date().toISOString(), like_count: 0, liked_by_me: false },
+        post: { post_id: postId, author_id: author_id, title, description: content, image_url, tags: [], createdAt: new Date().toISOString(), like_count: 0, liked_by_me: false },
         message: 'Post created successfully without tags'
       });
     }

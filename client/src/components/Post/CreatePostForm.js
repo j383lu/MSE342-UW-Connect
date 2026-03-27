@@ -80,7 +80,9 @@ function CreatePostForm({
       title,
       description,
       tags: selectedTags,
-      group_id: (fixedGroupId ?? selectedGroup) || null  // null if no group selected
+      group_id: (fixedGroupId ?? selectedGroup) || null,
+      is_anonymous: isAnonymous ? 1 : 0, 
+      imageFile: imageFile 
     });
 
     // reset form
