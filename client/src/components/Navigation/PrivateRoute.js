@@ -1,10 +1,11 @@
 import React from 'react';
 import {Routes, Route, Navigate} from 'react-router-dom';
-import LogInAndRegister from './LogIn/LogInAndRegister';
-import Post from '../../Post';
-import EventsPage from "../Events/EventsPage";
-import GroupsPage from "../Groups/GroupsPage";
-import ProfilePage from '../Profile/Profile';
+import LogInAndRegister from '../App/LogIn/LogInAndRegister';
+import Post from '../Post';
+import EventsPage from "../App/Events/EventsPage";
+import GroupsPage from "../App/Groups/GroupsPage";
+import ProfilePage from '../App/Profile/Profile';
+import Notifications from '../App/Notifications/Notifications';
 
 const PrivateRoute = ({authenticated, authUser}) => {
     return (
@@ -30,6 +31,11 @@ const PrivateRoute = ({authenticated, authUser}) => {
             <Route
                 path="/events"
                 element={authenticated ? <EventsPage /> : <Navigate replace to="/" />}
+            />
+
+            <Route
+                path="/notifications"
+                element={authenticated ? <Notifications /> : <Navigate replace to="/" />}
             />
 
             <Route path="*" element={<Navigate replace to="/" />} />

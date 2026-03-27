@@ -1,13 +1,13 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {useCallback, useContext, useEffect, useMemo, useRef, useState} from "react";
 import { useNavigate } from "react-router-dom";
-import EventCard from "./EventCard";
 import styles from "./eventStyles";
+import EventCard from "./EventCard";
+import { FirebaseContext } from "../../Firebase";
 
 export default function EventsPage() {
   const navigate = useNavigate();
+  const firebase = useContext(FirebaseContext);
   const searchBoxRef = useRef(null);
-
-  const USER_ID = 1;
 
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -30,37 +30,127 @@ export default function EventsPage() {
   const [isSearching, setIsSearching] = useState(false);
 
   const [sortBy, setSortBy] = useState("mostUpcoming");
+  const [activeTab, setActiveTab] = useState("public");
 
-  const loadEvents = async () => {
+  // Get authentication headers and includes the user token if log in
+  const getAuthHeaders = useCallback(async (includeJson = false) => {
+    const headers = {};
+
+    if (includeJson) {
+      headers["Content-Type"] = "application/json";
+    }
+
+    const user = firebase?.auth?.currentUser;
+    if (user) {
+      const token = await user.getIdToken();
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    return headers;
+  }, [firebase]);
+
+  // Decide which events API route should be used for the current event tab
+  // It returns different backend paths for public events, group events, or my events
+  const getEventsRouteByTab = useCallback((tab, includePastValue = true) => {
+    const includePastParam = includePastValue ? "true" : "false";
+
+    if (tab === "my-groups") {
+      return `/api/events/my-groups?includePast=${includePastParam}`;
+    }
+
+    if (tab === "my-events") {
+      return `/api/events/my-events?includePast=${includePastParam}`;
+    }
+
+    return `/api/events/public?includePast=${includePastParam}`;
+  }, []);
+
+  // Update event data in both the main list and search results
+  const updateEventStateEverywhere = (eventId, updates) => {
+    setEvents((prev) =>
+      prev.map((item) => (item.id === eventId ? { ...item, ...updates } : item))
+    );
+
+    setSearchResults((prev) =>
+      prev.map((item) => (item.id === eventId ? { ...item, ...updates } : item))
+    );
+  };
+
+  // Search through the local event list with the user input
+  // Compare keyword with fields like title, category, tags, description, etc.
+  const filterEventsByTerm = (list, rawTerm) => {
+    const term = String(rawTerm || "").trim().toLowerCase();
+
+    if (!term) return [];
+
+    return list.filter((ev) => {
+      const title = String(ev.title || "").toLowerCase();
+      const category = String(ev.category || "").toLowerCase();
+      const tags = String(ev.tags || "").toLowerCase();
+      const description = String(ev.description || "").toLowerCase();
+      const eventType = String(ev.event_type || "").toLowerCase();
+
+      return (
+        title.includes(term) ||
+        category.includes(term) ||
+        tags.includes(term) ||
+        description.includes(term) ||
+        eventType.includes(term)
+      );
+    });
+  };
+
+  // This function fetch and load events from the backend based on the selected tab and filter
+  // After receiving the data, update the page state and clear old search results
+  const loadEvents = useCallback(async (
+    tab = activeTab,
+    includePastValue = showPastEvents,
+    shouldResetSearch = false
+  ) => {
     try {
       setLoading(true);
       setError("");
 
-      const res = await fetch("/api/events?includePast=true");
+      const headers = await getAuthHeaders(false);
+      const route = getEventsRouteByTab(tab, includePastValue);
+
+      const res = await fetch(route, { headers });
       const data = await res.json();
 
       if (!res.ok) {
         setError(data.error || "Failed to load events.");
         setEvents([]);
-        return;
+        return [];
       }
 
-      setEvents(Array.isArray(data) ? data : []);
+      const rows = Array.isArray(data) ? data : [];
+      setEvents(rows);
+
+      if (shouldResetSearch) {
+        setIsSearching(false);
+        setSearchResults([]);
+        setSearchMessage("");
+      }
+
+      return rows;
     } catch (e) {
       setError("Cannot connect to backend.");
       setEvents([]);
+      return [];
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeTab, showPastEvents, getAuthHeaders, getEventsRouteByTab]);
 
+  // Send a request to the backend and get the attendee list for one selected event
   const loadAttendees = async (eventId) => {
     try {
       setDetailsLoading(true);
       setDetailsError("");
       setAttendees([]);
 
-      const res = await fetch(`/api/events/${eventId}/attendees`);
+      const headers = await getAuthHeaders(false);
+      const res = await fetch(`/api/events/${eventId}/attendees`, { headers });
       const data = await res.json();
 
       if (!res.ok) {
@@ -68,7 +158,7 @@ export default function EventsPage() {
         return;
       }
 
-      setAttendees(data);
+      setAttendees(Array.isArray(data) ? data : []);
     } catch (e) {
       setDetailsError("Cannot load attendees.");
     } finally {
@@ -76,6 +166,7 @@ export default function EventsPage() {
     }
   };
 
+  // Show or hide the attendee list for an event.
   const toggleAttendees = async (eventId) => {
     if (openDetailsId === eventId) {
       setOpenDetailsId(null);
@@ -88,15 +179,22 @@ export default function EventsPage() {
     await loadAttendees(eventId);
   };
 
+  // handleJoin function allows users to join an event and updates the event state
+  // It sends the join request, updates the event numbers and attendees list
   const handleJoin = async (ev) => {
-    const name = window.prompt("Enter your name to join this event:");
-    if (!name) return;
+    const user = firebase?.auth?.currentUser;
+
+    if (!user) {
+      window.alert("Please log in to join events.");
+      return;
+    }
 
     try {
+      const headers = await getAuthHeaders(true);
+
       const res = await fetch(`/api/events/${ev.id}/join`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ attendee_name: name }),
+        headers,
       });
 
       const data = await res.json();
@@ -106,16 +204,13 @@ export default function EventsPage() {
         return;
       }
 
-      setEvents((prev) =>
-        prev.map((x) =>
-          x.id === ev.id ? { ...x, current_count: data.current_count } : x
-        )
-      );
+      updateEventStateEverywhere(ev.id, {
+        current_count: data.current_count,
+        has_joined: 1,
+      });
 
-      setSearchResults((prev) =>
-        prev.map((x) =>
-          x.id === ev.id ? { ...x, current_count: data.current_count } : x
-        )
+      window.alert(
+        data.message || `You have successfully joined the "${ev.title}" event.`
       );
 
       if (openDetailsId === ev.id) {
@@ -126,43 +221,87 @@ export default function EventsPage() {
     }
   };
 
-  const loadRecentSearches = async () => {
+  // handleLeave function allows the user to leave an event and updates the event state
+  // Also it updates the capacity count on the page and reloads the attendee list
+  const handleLeave = async (ev) => {
+    const user = firebase?.auth?.currentUser;
+
+    if (!user) {
+      window.alert("Please log in to leave events.");
+      return;
+    }
+
     try {
-      const res = await fetch(`/api/events/search-history?user_id=${USER_ID}`);
+      const headers = await getAuthHeaders(true);
+
+      const res = await fetch(`/api/events/${ev.id}/leave`, {
+        method: "DELETE",
+        headers,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        window.alert(data.error || "Failed to leave event.");
+        return;
+      }
+
+      updateEventStateEverywhere(ev.id, {
+        current_count: data.current_count,
+        has_joined: 0,
+      });
+
+      window.alert(
+        data.message || `You have successfully left the "${ev.title}" event.`
+      );
+
+      if (openDetailsId === ev.id) {
+        await loadAttendees(ev.id);
+      }
+    } catch (e) {
+      window.alert("Cannot connect to backend.");
+    }
+  };
+
+  // Load the user's recent search history from the backend
+  // Return the search records in the dropdown box
+  const loadRecentSearches = useCallback(async () => {
+    try {
+      const headers = await getAuthHeaders(false);
+      const res = await fetch("/api/events/search-history", { headers });
       const data = await res.json();
 
       if (!res.ok) return;
-
       setRecentSearches(Array.isArray(data) ? data : []);
     } catch (e) {
       console.log("Failed to load recent searches.");
     }
-  };
+  }, [getAuthHeaders]);
 
+  // Save a new search term into the user's search history
   const saveSearchHistory = async (term) => {
     try {
+      const headers = await getAuthHeaders(true);
+
       await fetch("/api/events/search-history", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: USER_ID,
-          search_term: term,
-        }),
+        headers,
+        body: JSON.stringify({ search_term: term }),
       });
     } catch (e) {
       console.log("Failed to save search history.");
     }
   };
 
+  // Delete a specific search item from user's search history
   const deleteSearchHistory = async (term) => {
     try {
+      const headers = await getAuthHeaders(true);
+
       const res = await fetch("/api/events/search-history", {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: USER_ID,
-          search_term: term,
-        }),
+        headers,
+        body: JSON.stringify({ search_term: term }),
       });
 
       const data = await res.json();
@@ -180,11 +319,17 @@ export default function EventsPage() {
     }
   };
 
-  const loadSuggestions = async (keyword) => {
+  // Load search suggestions based on the keyword input
+  // The suggestion list is updated from the backend response for the current tab
+  const loadSuggestions = async (keyword, tab = activeTab) => {
     try {
+      const headers = await getAuthHeaders(false);
+
       const res = await fetch(
-        `/api/events/suggestions?keyword=${encodeURIComponent(keyword)}`
+        `/api/events/suggestions?keyword=${encodeURIComponent(keyword)}&tab=${encodeURIComponent(tab)}`,
+        { headers }
       );
+
       const data = await res.json();
 
       if (!res.ok) {
@@ -198,7 +343,43 @@ export default function EventsPage() {
     }
   };
 
-  const handleSearch = async (rawTerm, customSort = sortBy) => {
+  // Convert the event start date and time and published timestamp into a Date object
+  const getStartDateTime = (ev) => new Date(`${ev.event_date}T${ev.event_time}`);
+  const getPublishedDateTime = (ev) => new Date(`${ev.published_time}`);
+
+  // Sort the event list using the selected sorting rule
+  // Order events by number of likes, publish time, or start time
+  const applySortToList = useCallback(
+    (list, customSort = sortBy) => {
+      const copied = [...list];
+
+      if (customSort === "mostLiked") {
+        copied.sort((a, b) => {
+          const likeDiff = Number(b.likes || 0) - Number(a.likes || 0);
+          if (likeDiff !== 0) return likeDiff;
+          return getPublishedDateTime(b) - getPublishedDateTime(a);
+        });
+        return copied;
+      }
+
+      if (customSort === "mostRecentPublished") {
+        copied.sort((a, b) => getPublishedDateTime(b) - getPublishedDateTime(a));
+        return copied;
+      }
+
+      copied.sort((a, b) => getStartDateTime(a) - getStartDateTime(b));
+      return copied;
+    },
+    [sortBy]
+  );
+
+  // The handleSearch function handles searching events based on the input keyword and updates results
+  // Filter the matching events and applies the selected sorting method
+  const handleSearch = async (
+    rawTerm,
+    customSort = sortBy,
+    baseEvents = events
+  ) => {
     const term = String(rawTerm || "").trim();
 
     if (!term) {
@@ -213,24 +394,13 @@ export default function EventsPage() {
       setSearchMessage("");
       setShowSearchDropdown(false);
 
-      const res = await fetch(
-        `/api/events/search?keyword=${encodeURIComponent(
-          term
-        )}&sort=${encodeURIComponent(customSort)}`
-      );
-      const data = await res.json();
+      const matched = filterEventsByTerm(baseEvents, term);
+      const sortedMatched = applySortToList(matched, customSort);
 
-      if (!res.ok) {
-        setSearchResults([]);
-        setIsSearching(true);
-        setSearchMessage(data.error || "Failed to search events.");
-        return;
-      }
-
-      setSearchResults(Array.isArray(data.events) ? data.events : []);
+      setSearchResults(sortedMatched);
       setIsSearching(true);
 
-      if (Array.isArray(data.events) && data.events.length === 0) {
+      if (sortedMatched.length === 0) {
         setSearchMessage("No matching events found.");
       } else {
         setSearchMessage("");
@@ -241,62 +411,114 @@ export default function EventsPage() {
     } catch (e) {
       setSearchResults([]);
       setIsSearching(true);
-      setSearchMessage("Cannot connect to backend.");
+      setSearchMessage("Cannot search events right now.");
     } finally {
       setSearchLoading(false);
     }
   };
 
+  // Update the sorting option and sort the search results
   const handleSortChange = async (e) => {
     const newSort = e.target.value;
     setSortBy(newSort);
 
     const currentTerm = searchTerm.trim();
-
     if (currentTerm) {
       await handleSearch(currentTerm, newSort);
     }
   };
 
-  const reloadSearchResultsIfNeeded = async () => {
+  // Reload search results after updates of likes or joins
+  const reloadSearchResultsIfNeeded = async (rows = null) => {
     const currentTerm = searchTerm.trim();
-
     if (!currentTerm || !isSearching) return;
 
-    try {
-      const res = await fetch(
-        `/api/events/search?keyword=${encodeURIComponent(
-          currentTerm
-        )}&sort=${encodeURIComponent(sortBy)}`
-      );
-      const data = await res.json();
-
-      if (!res.ok) return;
-
-      setSearchResults(Array.isArray(data.events) ? data.events : []);
-    } catch (e) {
-      console.log("Failed to reload search results.");
-    }
+    await handleSearch(currentTerm, sortBy, Array.isArray(rows) ? rows : events);
   };
 
-  const handleLikeRefresh = async (eventId, newLikes) => {
-    setEvents((prev) =>
-      prev.map((item) =>
-        item.id === eventId ? { ...item, likes: newLikes } : item
-      )
-    );
-
-    setSearchResults((prev) =>
-      prev.map((item) =>
-        item.id === eventId ? { ...item, likes: newLikes } : item
-      )
-    );
+  // Update event like data and refresh search results
+  const handleLikeRefresh = async (eventId, newLikes, newHasLiked) => {
+    updateEventStateEverywhere(eventId, {
+      likes: newLikes,
+      has_liked: newHasLiked ? 1 : 0,
+    });
 
     if (isSearching && searchTerm.trim()) {
       await reloadSearchResultsIfNeeded();
     }
   };
 
+  // Send updated event information to the backend
+  // Then refresh the event data shown on the page
+  const handleUpdateEvent = async (eventId, payload) => {
+    try {
+      const headers = await getAuthHeaders(true);
+
+      const res = await fetch(`/api/events/${eventId}`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        window.alert(data.error || "Failed to update event.");
+        return false;
+      }
+
+      const refreshedRows = await loadEvents(activeTab, showPastEvents, false);
+
+      if (openDetailsId === eventId) {
+        await loadAttendees(eventId);
+      }
+
+      await reloadSearchResultsIfNeeded(refreshedRows);
+
+      window.alert(data.message || "Event updated successfully.");
+      return true;
+    } catch (e) {
+      window.alert("Cannot connect to backend.");
+      return false;
+    }
+  };
+
+  // Delete an event from the backend after the user confirms the action
+  // When the delete succeeds, the event is removed from both displayed lists
+  const handleDeleteEvent = async (ev) => {
+    try {
+      const headers = await getAuthHeaders(false);
+
+      const res = await fetch(`/api/events/${ev.id}`, {
+        method: "DELETE",
+        headers,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        window.alert(data.error || "Failed to delete event.");
+        return false;
+      }
+
+      if (openDetailsId === ev.id) {
+        setOpenDetailsId(null);
+        setAttendees([]);
+        setDetailsError("");
+      }
+
+      const refreshedRows = await loadEvents(activeTab, showPastEvents, false);
+      await reloadSearchResultsIfNeeded(refreshedRows);
+
+      window.alert(data.message || "Event deleted successfully.");
+      return true;
+    } catch (e) {
+      window.alert("Cannot connect to backend.");
+      return false;
+    }
+  };
+
+  // This handler function handles input changes and loads suggestions or recent searches
   const handleSearchInputChange = async (e) => {
     const value = e.target.value;
     setSearchTerm(value);
@@ -310,10 +532,11 @@ export default function EventsPage() {
       return;
     }
 
-    await loadSuggestions(cleanValue);
+    await loadSuggestions(cleanValue, activeTab);
     setShowSearchDropdown(true);
   };
 
+  // When user clicks the search box, show recent searches or suggestions
   const handleSearchFocus = async () => {
     const cleanValue = searchTerm.trim();
 
@@ -321,12 +544,13 @@ export default function EventsPage() {
       await loadRecentSearches();
       setSuggestions([]);
     } else {
-      await loadSuggestions(cleanValue);
+      await loadSuggestions(cleanValue, activeTab);
     }
 
     setShowSearchDropdown(true);
   };
 
+  // Handle the search submission and return results
   const handleSearchSubmit = async (e) => {
     e.preventDefault();
 
@@ -340,18 +564,21 @@ export default function EventsPage() {
     await handleSearch(searchTerm);
   };
 
+  // When user click a recent search result, use this keyword to search
   const handleRecentSearchClick = async (term) => {
     setSearchTerm(term);
     setShowSearchDropdown(false);
     await handleSearch(term);
   };
 
+  // When user click a search result suggestions, use this keyword to search
   const handleSuggestionClick = async (value) => {
     setSearchTerm(value);
     setShowSearchDropdown(false);
     await handleSearch(value);
   };
 
+  // Clear all search fields
   const clearSearch = async () => {
     setSearchTerm("");
     setSuggestions([]);
@@ -359,20 +586,33 @@ export default function EventsPage() {
     setSearchMessage("");
     setIsSearching(false);
     setShowSearchDropdown(false);
-    await loadEvents();
+  };
+
+  // This function switches between tabs and reloads events for the selected section
+  const handleTabChange = async (tab) => {
+    setActiveTab(tab);
+    setSearchTerm("");
+    setSuggestions([]);
+    setSearchResults([]);
+    setSearchMessage("");
+    setIsSearching(false);
+    setShowSearchDropdown(false);
+    setOpenDetailsId(null);
+    setAttendees([]);
+    setDetailsError("");
   };
 
   useEffect(() => {
-    loadEvents();
     loadRecentSearches();
-  }, []);
+  }, [loadRecentSearches]);
+
+  useEffect(() => {
+    loadEvents(activeTab, showPastEvents, true);
+  }, [activeTab, showPastEvents, loadEvents]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (
-        searchBoxRef.current &&
-        !searchBoxRef.current.contains(event.target)
-      ) {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(event.target)) {
         setShowSearchDropdown(false);
       }
     };
@@ -384,74 +624,89 @@ export default function EventsPage() {
   }, []);
 
   const sortedEvents = useMemo(() => {
-    const copied = [...events];
-
-    if (sortBy === "mostLiked") {
-      copied.sort((a, b) => {
-        const likeDiff = Number(b.likes || 0) - Number(a.likes || 0);
-        if (likeDiff !== 0) return likeDiff;
-
-        const bTime = new Date(`${b.published_time}`);
-        const aTime = new Date(`${a.published_time}`);
-        return bTime - aTime;
-      });
-      return copied;
-    }
-
-    if (sortBy === "mostRecentPublished") {
-      copied.sort((a, b) => {
-        const bTime = new Date(`${b.published_time}`);
-        const aTime = new Date(`${a.published_time}`);
-        return bTime - aTime;
-      });
-      return copied;
-    }
-
-    copied.sort((a, b) => {
-      const aTime = new Date(`${a.event_date}T${a.event_time}`);
-      const bTime = new Date(`${b.event_date}T${b.event_time}`);
-      return aTime - bTime;
-    });
-
-    return copied;
-  }, [events, sortBy]);
+    return applySortToList(events, sortBy);
+  }, [events, sortBy, applySortToList]);
 
   const upcoming = sortedEvents.filter((e) => Number(e.is_past) === 0);
   const past = sortedEvents.filter((e) => Number(e.is_past) === 1);
 
-  const upcomingSearchResults = searchResults.filter(
+  const sortedSearchResults = useMemo(() => {
+    return applySortToList(searchResults, sortBy);
+  }, [searchResults, sortBy, applySortToList]);
+
+  const upcomingSearchResults = sortedSearchResults.filter(
     (e) => Number(e.is_past) === 0
   );
 
-  const pastSearchResults = searchResults.filter(
+  const pastSearchResults = sortedSearchResults.filter(
     (e) => Number(e.is_past) === 1
   );
 
-  const renderCard = (ev, isPast) => {
+  const renderCard = (ev, isPastValue) => {
     const isOpen = openDetailsId === ev.id;
 
     return (
       <EventCard
         key={ev.id}
         ev={ev}
-        isPast={isPast}
+        isPast={isPastValue}
         isOpen={isOpen}
         attendees={attendees}
         detailsLoading={detailsLoading}
         detailsError={detailsError}
         toggleAttendees={toggleAttendees}
         handleJoin={handleJoin}
+        handleLeave={handleLeave}
         onLikeSuccess={handleLikeRefresh}
+        onUpdateEvent={handleUpdateEvent}
+        onDeleteEvent={handleDeleteEvent}
       />
     );
   };
 
+  // These variables decide what text should be shown in each section of the page
+  // They change the titles, subtitles, and empty messages based on the current event tab and sorting method
+  const sectionTitle =
+    activeTab === "my-groups"
+      ? "My Group Events"
+      : activeTab === "my-events"
+      ? "My Events"
+      : "Upcoming Events";
+
+  const sectionSubtitle =
+    activeTab === "my-groups"
+      ? "Events created for groups you have joined."
+      : activeTab === "my-events"
+      ? "Events you created or joined."
+      : "Public events available to the campus community.";
+
   const searchSubtitleText =
     sortBy === "mostLiked"
-      ? "Results are sorted from highest to lowest number of likes within each section."
+      ? "Results are sorted from highest to lowest number of likes within this section."
       : sortBy === "mostRecentPublished"
-      ? "Results are sorted from most recently published to least recently published within each section."
-      : "Results are sorted from earliest upcoming event to latest upcoming event within each section.";
+      ? "Results are sorted from most recently published to least recently published within this section."
+      : "Results are sorted from earliest start date and time to latest start date and time within this section.";
+
+  const emptyUpcomingTitle =
+    activeTab === "my-groups"
+      ? "No group events"
+      : activeTab === "my-events"
+      ? "No events found for you"
+      : "No upcoming events";
+
+  const emptyUpcomingText =
+    activeTab === "my-groups"
+      ? "You are not currently in any groups, or no group events match yet."
+      : activeTab === "my-events"
+      ? "Events you create or join will appear here."
+      : "Create a new event to get started.";
+
+  const emptyPastTitle =
+    activeTab === "my-groups"
+      ? "No past group events"
+      : activeTab === "my-events"
+      ? "No past events found for you"
+      : "No past events";
 
   return (
     <div style={styles.pageBackground}>
@@ -472,7 +727,10 @@ export default function EventsPage() {
             </div>
 
             <div style={styles.heroActionRow}>
-              <button style={styles.heroSecondaryBtn} onClick={loadEvents}>
+              <button
+                style={styles.heroSecondaryBtn}
+                onClick={() => loadEvents(activeTab, showPastEvents, false)}
+              >
                 Refresh
               </button>
 
@@ -492,8 +750,8 @@ export default function EventsPage() {
           <div style={styles.searchHeaderBlock}>
             <h2 style={styles.panelTitle}>Search Events</h2>
             <p style={styles.panelSubtitle}>
-              Search by event title, category, or tags. Recent searches will
-              appear when the search bar is empty.
+              Search by event title, category, tags, description, or event type
+              within the current section.
             </p>
           </div>
 
@@ -504,7 +762,7 @@ export default function EventsPage() {
                 value={searchTerm}
                 onChange={handleSearchInputChange}
                 onFocus={handleSearchFocus}
-                placeholder="Search by title, category, or tag"
+                placeholder="Search by title, category, tag, or event type"
                 style={styles.searchInput}
               />
 
@@ -606,27 +864,45 @@ export default function EventsPage() {
           </form>
         </div>
 
-        <div style={styles.summaryGrid}>
-          <div style={styles.summaryCard}>
-            <div style={styles.summaryNumber}>{upcoming.length}</div>
-            <div style={styles.summaryLabel}>Upcoming Events</div>
-          </div>
+        <div style={styles.toggleContainer}>
+          <button
+            type="button"
+            onClick={() => handleTabChange("public")}
+            style={{
+              ...styles.toggleButton,
+              ...(activeTab === "public" ? styles.toggleButtonActive : {}),
+            }}
+          >
+            Upcoming Events
+          </button>
 
-          <div style={styles.summaryCard}>
-            <div style={styles.summaryNumber}>{past.length}</div>
-            <div style={styles.summaryLabel}>Past Events</div>
-          </div>
+          <button
+            type="button"
+            onClick={() => handleTabChange("my-groups")}
+            style={{
+              ...styles.toggleButton,
+              ...(activeTab === "my-groups" ? styles.toggleButtonActive : {}),
+            }}
+          >
+            My Group Events
+          </button>
 
-          <div style={styles.summaryCard}>
-            <div style={styles.summaryNumber}>{events.length}</div>
-            <div style={styles.summaryLabel}>Total Events</div>
-          </div>
+          <button
+            type="button"
+            onClick={() => handleTabChange("my-events")}
+            style={{
+              ...styles.toggleButton,
+              ...(activeTab === "my-events" ? styles.toggleButtonActive : {}),
+            }}
+          >
+            My Events
+          </button>
         </div>
 
         {isSearching ? (
           <div style={styles.panel}>
             <div style={styles.sectionHeaderBlock}>
-              <h2 style={styles.panelTitle}>Search Results</h2>
+              <h2 style={styles.panelTitle}>Search Results, {sectionTitle}</h2>
               <p style={styles.panelSubtitle}>{searchSubtitleText}</p>
             </div>
 
@@ -636,7 +912,7 @@ export default function EventsPage() {
               <div style={styles.emptyStateCard}>
                 <div style={styles.emptyStateTitle}>{searchMessage}</div>
               </div>
-            ) : searchResults.length === 0 ? (
+            ) : sortedSearchResults.length === 0 ? (
               <div style={styles.emptyStateCard}>
                 <div style={styles.emptyStateTitle}>No matching events</div>
                 <div style={styles.emptyStateText}>
@@ -647,19 +923,12 @@ export default function EventsPage() {
               <>
                 <div style={styles.sectionHeaderBlock}>
                   <h2 style={styles.panelTitle}>Upcoming Search Results</h2>
-                  <p style={styles.panelSubtitle}>
-                    Matching upcoming events based on your current search and
-                    sort option.
-                  </p>
                 </div>
 
                 {upcomingSearchResults.length === 0 ? (
                   <div style={styles.emptyStateCard}>
                     <div style={styles.emptyStateTitle}>
                       No upcoming matching events
-                    </div>
-                    <div style={styles.emptyStateText}>
-                      Try another keyword or check past search results below.
                     </div>
                   </div>
                 ) : (
@@ -668,30 +937,27 @@ export default function EventsPage() {
                   </div>
                 )}
 
-                <div style={styles.sectionDivider} />
+                {showPastEvents ? (
+                  <>
+                    <div style={styles.sectionDivider} />
 
-                <div style={styles.sectionHeaderBlock}>
-                  <h2 style={styles.panelTitle}>Past Search Results</h2>
-                  <p style={styles.panelSubtitle}>
-                    Matching past events based on your current search and sort
-                    option.
-                  </p>
-                </div>
+                    <div style={styles.sectionHeaderBlock}>
+                      <h2 style={styles.panelTitle}>Past Search Results</h2>
+                    </div>
 
-                {pastSearchResults.length === 0 ? (
-                  <div style={styles.emptyStateCard}>
-                    <div style={styles.emptyStateTitle}>
-                      No past matching events
-                    </div>
-                    <div style={styles.emptyStateText}>
-                      There are no matching past events for this search.
-                    </div>
-                  </div>
-                ) : (
-                  <div style={styles.grid}>
-                    {pastSearchResults.map((ev) => renderCard(ev, true))}
-                  </div>
-                )}
+                    {pastSearchResults.length === 0 ? (
+                      <div style={styles.emptyStateCard}>
+                        <div style={styles.emptyStateTitle}>
+                          No past matching events
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={styles.grid}>
+                        {pastSearchResults.map((ev) => renderCard(ev, true))}
+                      </div>
+                    )}
+                  </>
+                ) : null}
               </>
             )}
           </div>
@@ -699,13 +965,13 @@ export default function EventsPage() {
           <div style={styles.panel}>
             <div style={styles.panelTitleRow}>
               <div>
-                <h2 style={styles.panelTitle}>Upcoming Events</h2>
+                <h2 style={styles.panelTitle}>{sectionTitle}</h2>
                 <p style={styles.panelSubtitle}>
                   {sortBy === "mostLiked"
-                    ? "Events are currently sorted by likes."
+                    ? `${sectionSubtitle} Results are currently sorted by likes.`
                     : sortBy === "mostRecentPublished"
-                    ? "Events are currently sorted by publish time."
-                    : "Events are currently sorted by upcoming event time."}
+                    ? `${sectionSubtitle} Results are currently sorted by publish time.`
+                    : `${sectionSubtitle} Results are currently sorted by start date and time.`}
                 </p>
               </div>
 
@@ -721,10 +987,8 @@ export default function EventsPage() {
               <p style={styles.infoText}>Loading...</p>
             ) : upcoming.length === 0 ? (
               <div style={styles.emptyStateCard}>
-                <div style={styles.emptyStateTitle}>No upcoming events</div>
-                <div style={styles.emptyStateText}>
-                  Create a new event to get started.
-                </div>
+                <div style={styles.emptyStateTitle}>{emptyUpcomingTitle}</div>
+                <div style={styles.emptyStateText}>{emptyUpcomingText}</div>
               </div>
             ) : (
               <div style={styles.grid}>
@@ -745,7 +1009,7 @@ export default function EventsPage() {
 
                 {loading ? null : past.length === 0 ? (
                   <div style={styles.emptyStateCard}>
-                    <div style={styles.emptyStateTitle}>No past events</div>
+                    <div style={styles.emptyStateTitle}>{emptyPastTitle}</div>
                     <div style={styles.emptyStateText}>
                       Past events will appear here automatically.
                     </div>

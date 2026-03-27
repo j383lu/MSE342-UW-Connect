@@ -1,4 +1,32 @@
 describe('Profile and EditProfile flows', () => {
+  const openLoginFormFromLanding = () => {
+    cy.clearAllCookies();
+    cy.clearAllLocalStorage();
+    cy.clearAllSessionStorage();
+    cy.visit('about:blank');
+    cy.window().then((win) => {
+      return new Cypress.Promise((resolve) => {
+        const done = () => resolve(null);
+        try {
+          const del = win.indexedDB.deleteDatabase('firebaseLocalStorageDb');
+          del.onsuccess = done;
+          del.onerror = done;
+          del.onblocked = done;
+        } catch {
+          done();
+        }
+      });
+    });
+    cy.visit('/', { timeout: 60000 });
+    cy.get('body', { timeout: 30000 }).should('be.visible');
+    cy.get('body').then(($body) => {
+      if (!$body.find('input[name="email"]:visible').length) {
+        cy.contains('a, button', 'Sign In').filter(':visible').first().click();
+      }
+    });
+    cy.get('#email, input[name="email"]', { timeout: 20000 }).should('be.visible');
+  };
+
   const goToProfile = () => {
     cy.contains('Profile', { timeout: 10000 }).click();
     cy.wait('@getProfile');
@@ -87,6 +115,7 @@ describe('Profile and EditProfile flows', () => {
         {
           user_id: 1,
           display_name: 'Alice',
+          email: 'alice@uwaterloo.ca',
           bio: 'Sample bio',
           role: 'Student',
           program_name: 'Management Engineering',
@@ -95,6 +124,7 @@ describe('Profile and EditProfile flows', () => {
         {
           user_id: 2,
           display_name: 'Jordan Lee',
+          email: 'jordan.lee@uwaterloo.ca',
           bio: 'Registrar staff member',
           role: 'Staff',
           program_name: '',
@@ -103,6 +133,7 @@ describe('Profile and EditProfile flows', () => {
         {
           user_id: 3,
           display_name: 'Sarah Patel',
+          email: 'sarah.patel@uwaterloo.ca',
           bio: 'Interested in UX',
           role: 'Student',
           program_name: 'Management Engineering',
@@ -111,9 +142,12 @@ describe('Profile and EditProfile flows', () => {
       ];
 
       const filteredUsers = query
-        ? allUsers.filter((user) =>
-            user.display_name.toLowerCase().includes(query)
-          )
+        ? allUsers.filter((user) => {
+            const q = query;
+            const name = user.display_name.toLowerCase();
+            const email = (user.email || '').toLowerCase();
+            return name.includes(q) || email.includes(q);
+          })
         : allUsers;
 
       req.reply({
@@ -124,8 +158,18 @@ describe('Profile and EditProfile flows', () => {
       });
     }).as('searchUsers');
 
+    cy.intercept('GET', '**/api/users/by-email*', {
+      statusCode: 200,
+      body: { userId: 1, display_name: 'Alice' },
+    }).as('getUserByEmail');
+
+    cy.intercept('GET', '**/api/notifications/**', {
+      statusCode: 200,
+      body: {},
+    }).as('getNotifications');
+
     // login first
-    cy.visit('/');
+    openLoginFormFromLanding();
 
     cy.get('input[name="email"]').type('jc@uwaterloo.ca');
     cy.get('input[name="password"]').type('Password');
@@ -175,6 +219,27 @@ describe('Profile and EditProfile flows', () => {
     cy.url().should('include', '/profile');
   });
 
+  it('shows an error message when saving the profile fails', () => {
+    cy.intercept('PUT', '/api/profile', {
+      statusCode: 500,
+      body: { error: 'Failed to save profile.' },
+    }).as('putProfileFail');
+
+    goToProfile();
+
+    cy.contains('Edit Profile').click();
+    cy.wait('@getPrograms');
+    cy.wait('@getCourses');
+    cy.url().should('include', '/edit-profile');
+
+    cy.get('[data-testid="display-name-input"]').clear().type('Bob');
+    cy.contains('Save').click();
+
+    cy.wait('@putProfileFail');
+    cy.contains('Failed to save profile.');
+    cy.url().should('include', '/edit-profile');
+  });
+
   it('displays gender, birthday, and phone number on the profile page', () => {
     goToProfile();
 
@@ -182,6 +247,39 @@ describe('Profile and EditProfile flows', () => {
     cy.contains('Woman');
     cy.contains('Birthday: 12/19/2005');
     cy.contains('Phone Number: 519-555-1234');
+  });
+
+  it('shows empty-state text when bio, program, and courses are missing', () => {
+    cy.intercept('GET', '/api/profile', {
+      statusCode: 200,
+      body: {
+        name: 'Alice',
+        bio: '',
+        gender: '',
+        birthday: null,
+        phone_number: '',
+        role: 'Student',
+        department: '',
+        program_id: null,
+        program_name: '',
+        program: '',
+        courses: [],
+      },
+    }).as('getEmptyProfile');
+
+    cy.intercept('GET', '/api/profile/user-courses', {
+      statusCode: 200,
+      body: [],
+    }).as('getEmptyUserCourses');
+
+    cy.contains('Profile', { timeout: 10000 }).click();
+    cy.wait('@getEmptyProfile');
+    cy.wait('@getEmptyUserCourses');
+    cy.url().should('include', '/profile');
+
+    cy.contains('No bio added yet.');
+    cy.contains('No program added yet.');
+    cy.contains('No courses added yet.');
   });
 
   it('does not display gender when it is Prefer not to say', () => {
@@ -277,6 +375,21 @@ describe('Profile and EditProfile flows', () => {
     cy.wait('@searchUsers');
     cy.contains('Alice');
     cy.contains('Jordan Lee').should('not.exist');
+    cy.contains('Sarah Patel').should('not.exist');
+  });
+
+  it('filters the profile search list by email', () => {
+    goToProfile();
+
+    cy.contains('Profile Search').click();
+    cy.url().should('include', '/profile-search');
+    cy.wait('@searchUsers');
+
+    cy.get('[data-testid="user-search-input"]').type('jordan.lee@uwaterloo.ca');
+
+    cy.wait('@searchUsers');
+    cy.contains('Jordan Lee');
+    cy.contains('Alice').should('not.exist');
     cy.contains('Sarah Patel').should('not.exist');
   });
 

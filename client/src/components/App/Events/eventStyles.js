@@ -426,8 +426,8 @@ const eventStyles = {
 
   card: {
     border: "1px solid #e6e6e6",
-    borderRadius: 18,
-    padding: 22,
+    borderRadius: 3,
+    padding: '16px 20px',
     background: "#FDFDF6",
     transition: "all 0.25s ease",
   },
@@ -533,9 +533,9 @@ const eventStyles = {
   },
 
   statusFull: {
-    background: "rgba(244,238,229,0.96)",
-    color: "#7A4E1D",
-    borderColor: "#E0D2BE",
+    background: "#f3e7d6",
+    color: "#9a6a1b",
+    border: "1px solid #e2c99c",
   },
 
   statusEnded: {
@@ -861,7 +861,166 @@ const eventStyles = {
     cursor: "pointer",
     outline: "none",
   },
+
+  leaveBtn: {
+    height: 40,
+    borderRadius: 999,
+    border: "none",
+    background: "#C62828",
+    color: "#FFFFFF",
+    fontWeight: 700,
+    cursor: "pointer",
+    padding: "0 18px",
+    boxShadow: "0 8px 18px rgba(198,40,40,0.18)",
+    transition: "all 0.2s ease",
+  },
+
+  filterChip: {
+    padding: "10px 18px",
+    borderRadius: "999px",
+    border: "1px solid #c8d0d8",
+    background: "#f7f4ee",
+    color: "#22343c",
+    fontWeight: 600,
+    fontSize: "15px",
+  },
+
+  filterChipActive: {
+    background: "#dfe8dc",
+    border: "1px solid #a9b8a2",
+  },
+
+  eventTypeChip: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "6px 12px",
+    borderRadius: "999px",
+    background: "#eef6ff",
+    color: "#1d4f91",
+    fontWeight: 600,
+    fontSize: "13px",
+    border: "1px solid #c7dcf7",
+  },
+
+  statusOpenForApplication: {
+  background: "#dfe8db",
+  color: "#49654b",
+  border: "1px solid #b9cab7",
+},
+
+  statusInProgress: {
+    background: "#e8f1ff",
+    color: "#2d5ea8",
+    border: "1px solid #bfd2f2",
+  },
   
+  cardBottomRow: {
+    marginTop: 18,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+
+  ownerActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: 10,
+    flexWrap: "wrap",
+    marginLeft: "auto",
+  },
+
+  ownerEditBtn: {
+    height: 40,
+    borderRadius: 999,
+    border: "1px solid #D6DFE2",
+    background: "#FFFFFF",
+    color: "#17292B",
+    fontWeight: 700,
+    cursor: "pointer",
+    padding: "0 18px",
+    transition: "all 0.2s ease",
+  },
+
+  ownerDeleteBtn: {
+    height: 40,
+    borderRadius: 999,
+    border: "none",
+    background: "#8B1E1E",
+    color: "#FFFFFF",
+    fontWeight: 700,
+    cursor: "pointer",
+    padding: "0 18px",
+    boxShadow: "0 8px 18px rgba(139,30,30,0.18)",
+    transition: "all 0.2s ease",
+  },
+
+  editTitleRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 16,
+    flexWrap: "wrap",
+    marginBottom: 12,
+  },
+
+  inlineSuccess: {
+    background: "rgba(223,232,219,0.55)",
+    border: "1px solid #B9CAB7",
+    color: "#49654B",
+    padding: "12px 14px",
+    borderRadius: 14,
+    marginBottom: 18,
+    fontWeight: 600,
+  },
+
+  formInputError: {
+    border: "1px solid #d93025",
+    boxShadow: "0 0 0 3px rgba(217, 48, 37, 0.08)",
+  },
+
+  fieldErrorText: {
+    marginTop: "8px",
+    fontSize: "14px",
+    fontWeight: 600,
+    color: "#d93025",
+    lineHeight: 1.4,
+  },
+
+  toggleContainer: {
+  display: 'flex',
+  width: '100%',
+  background: '#F0F3F0', 
+  border: '1px solid #D6DFE2',
+  borderRadius: '800px',
+  padding: '4px',
+  gap: '4px',
+  marginTop: '24px', 
+  marginBottom: '24px',
+  boxSizing: 'border-box',
+},
+
+toggleButton: {
+  flex: 1,
+  borderRadius: '800px',
+  padding: '10px 20px',
+  fontSize: '14px',
+  fontWeight: 500,
+  border: 'none',
+  cursor: 'pointer',
+  background: 'transparent',
+  color: '#686967',
+  transition: 'all 0.2s ease',
+},
+
+toggleButtonActive: {
+  fontWeight: 700,
+  background: '#5D6C5C', // Signature Sage Green
+  color: '#FDFDF6',
+  boxShadow: '0 2px 8px rgba(93,108,92,0.2)',
+},
+
 };
 
 export default eventStyles;

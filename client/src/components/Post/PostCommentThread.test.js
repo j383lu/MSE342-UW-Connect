@@ -1,6 +1,7 @@
 import React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { MemoryRouter, Routes, Route } from "react-router-dom";
 import PostCommentThread from "../Post/PostCommentThread";
 
 const mockComment = (overrides = {}) => ({
@@ -13,11 +14,13 @@ const mockComment = (overrides = {}) => ({
   ...overrides
 });
 
+const renderWithRouter = (ui) => render(<MemoryRouter>{ui}</MemoryRouter>);
+
 describe("CommentThread - Comment Timestamps", () => {
 
   test("1. Shows relative time for a comment (e.g. '2 hours ago')", () => {
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-    render(
+    renderWithRouter(
       <PostCommentThread
         comment={mockComment({ createdAt: twoHoursAgo })}
         allComments={[]}
@@ -29,7 +32,7 @@ describe("CommentThread - Comment Timestamps", () => {
 
   test("2. Shows minutes for a comment created within the last hour", () => {
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    render(
+    renderWithRouter(
       <PostCommentThread
         comment={mockComment({ createdAt: fiveMinutesAgo })}
         allComments={[]}
@@ -41,7 +44,7 @@ describe("CommentThread - Comment Timestamps", () => {
 
   test("3. Shows days for a comment created several days ago", () => {
     const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
-    render(
+    renderWithRouter(
       <PostCommentThread
         comment={mockComment({ createdAt: threeDaysAgo })}
         allComments={[]}
@@ -55,7 +58,7 @@ describe("CommentThread - Comment Timestamps", () => {
     const comment1 = mockComment({ comment_id: 1, createdAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(), content: "First comment" });
     const comment2 = mockComment({ comment_id: 2, createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), content: "Second comment" });
 
-    const { container } = render(
+    renderWithRouter(
       <div>
         <PostCommentThread comment={comment1} allComments={[]} onReply={() => {}} />
         <PostCommentThread comment={comment2} allComments={[]} onReply={() => {}} />
@@ -68,7 +71,7 @@ describe("CommentThread - Comment Timestamps", () => {
 
   test("5. Handles missing timestamp without crashing", () => {
     expect(() => {
-      render(
+      renderWithRouter(
         <PostCommentThread
           comment={mockComment({ createdAt: null })}
           allComments={[]}
@@ -79,7 +82,7 @@ describe("CommentThread - Comment Timestamps", () => {
   });
 
   test("6. Shows 'just now' for a newly added comment", () => {
-    render(
+    renderWithRouter(
       <PostCommentThread
         comment={mockComment({ createdAt: new Date().toISOString() })}
         allComments={[]}
@@ -90,7 +93,7 @@ describe("CommentThread - Comment Timestamps", () => {
   });
 
   test("7. Renders reply button on each comment", () => {
-    render(
+    renderWithRouter(
       <PostCommentThread
         comment={mockComment()}
         allComments={[]}
@@ -101,7 +104,7 @@ describe("CommentThread - Comment Timestamps", () => {
   });
 
   test("8. Clicking reply shows reply input box", () => {
-    render(
+    renderWithRouter(
       <PostCommentThread
         comment={mockComment()}
         allComments={[]}
@@ -114,7 +117,7 @@ describe("CommentThread - Comment Timestamps", () => {
 
   test("9. Submitting a reply calls onReply with correct args", () => {
     const onReply = jest.fn();
-    render(
+    renderWithRouter(
       <PostCommentThread
         comment={mockComment({ comment_id: 42 })}
         allComments={[]}
@@ -133,7 +136,7 @@ describe("CommentThread - Comment Timestamps", () => {
     const parent = mockComment({ comment_id: 1, content: "Parent comment" });
     const child = mockComment({ comment_id: 2, parent_comment_id: 1, content: "Child reply" });
 
-    render(
+    renderWithRouter(
       <PostCommentThread
         comment={parent}
         allComments={[parent, child]}
@@ -143,5 +146,37 @@ describe("CommentThread - Comment Timestamps", () => {
 
     expect(screen.getByText("Parent comment")).toBeInTheDocument();
     expect(screen.getByText("Child reply")).toBeInTheDocument();
+  });
+
+  test("11. Commenter name and avatar link to the commenter's profile", () => {
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <PostCommentThread
+                comment={mockComment({
+                  user_id: 7,
+                  author_name: "Casey Morgan",
+                })}
+                allComments={[]}
+                onReply={() => {}}
+              />
+            }
+          />
+          <Route path="/users/:userId" element={<div>Commenter Profile Page</div>} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const avatarLink = screen.getByRole("link", { name: /view casey morgan's profile/i });
+    const nameLink = screen.getByRole("link", { name: "Casey Morgan" });
+
+    expect(avatarLink).toHaveAttribute("href", "/users/7");
+    expect(nameLink).toHaveAttribute("href", "/users/7");
+
+    fireEvent.click(nameLink);
+    expect(screen.getByText("Commenter Profile Page")).toBeInTheDocument();
   });
 });

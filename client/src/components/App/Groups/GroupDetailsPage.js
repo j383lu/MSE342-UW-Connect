@@ -2,6 +2,9 @@
 
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import apiRequest from "../../../utils/api";
+import FeedPostCard from "../../Post/PostCard";
+import CreatePostForm from "../../Post/CreatePostForm";
 
 export default function GroupDetailsPage() {
   const navigate = useNavigate();
@@ -21,6 +24,11 @@ export default function GroupDetailsPage() {
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState("");
   const [inviteFeedback, setInviteFeedback] = useState("");
+  const [groupPosts, setGroupPosts] = useState([]);
+  const [loadingPosts, setLoadingPosts] = useState(false);
+  const [postsError, setPostsError] = useState("");
+  const [createPostOpen, setCreatePostOpen] = useState(false);
+  const [privateGroupModalOpen, setPrivateGroupModalOpen] = useState(false);
   
   // Add a ref to track if we've manually updated the state
   const manuallyUpdated = useRef(false);
@@ -31,6 +39,7 @@ export default function GroupDetailsPage() {
 
   useEffect(() => {
     loadGroup();
+    loadGroupPosts();
   }, [groupId]);
 
   // Check membership after group loads
@@ -49,7 +58,7 @@ export default function GroupDetailsPage() {
       setLoading(true);
       setError("");
 
-      const res = await fetch(`/api/groups/${groupId}`);
+      const res = await apiRequest(`/api/groups/${groupId}`);
       
       if (!res.ok) {
         if (res.status === 404) {
@@ -77,7 +86,7 @@ export default function GroupDetailsPage() {
     
     try {
       setLoadingMembers(true);
-      const res = await fetch(`/api/groups/${groupId}/members`);
+      const res = await apiRequest(`/api/groups/${groupId}/members`);
       if (res.ok) {
         const data = await res.json();
         console.log("Group members with details:", data);
@@ -107,7 +116,7 @@ export default function GroupDetailsPage() {
       if (CURRENT_USER_ID && group.creator_id === CURRENT_USER_ID) {
         console.log("User is the owner");
         // Check if owner is also a member (from Group_Members)
-        const res = await fetch(`/api/users/${CURRENT_USER_ID}/groups/member`);
+        const res = await apiRequest(`/api/users/${CURRENT_USER_ID}/groups/member`);
         
         if (res.ok) {
           const userGroups = await res.json();
@@ -125,7 +134,7 @@ export default function GroupDetailsPage() {
       
       // For non-owners, check memberships
       console.log("User is not the owner, checking memberships...");
-      const res = await fetch(`/api/users/${CURRENT_USER_ID}/groups/member`);
+      const res = await apiRequest(`/api/users/${CURRENT_USER_ID}/groups/member`);
       
       if (res.ok) {
         const userGroups = await res.json();
@@ -149,6 +158,81 @@ export default function GroupDetailsPage() {
     }
   }
 
+  async function loadGroupPosts() {
+    if (!groupId) return;
+    try {
+      setLoadingPosts(true);
+      setPostsError("");
+      const res = await apiRequest(`/api/groups/${groupId}/posts`);
+      const data = await res.json().catch(() => []);
+
+      if (!res.ok) {
+        setPostsError(data?.error || "Failed to load group posts");
+        setGroupPosts([]);
+        return;
+      }
+
+      setGroupPosts(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Error loading group posts:", err);
+      setPostsError("Failed to load group posts");
+      setGroupPosts([]);
+    } finally {
+      setLoadingPosts(false);
+    }
+  }
+
+  async function handleLikePost(postId) {
+    try {
+      const res = await apiRequest(`/api/posts/${postId}/like`, {
+        method: "POST",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return;
+      }
+
+      setGroupPosts((prev) =>
+        prev.map((p) =>
+          p.post_id === postId
+            ? { ...p, like_count: data.like_count, liked_by_me: data.liked_by_me }
+            : p
+        )
+      );
+    } catch (err) {
+      console.error("Error liking post:", err);
+    }
+  }
+
+  async function handleCreatePost(newPost) {
+    try {
+      const res = await apiRequest("/api/posts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: newPost.title,
+          content: newPost.description,
+          tags: newPost.tags,
+          group_id: Number(groupId),
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.error || "Failed to create post");
+        return;
+      }
+
+      setCreatePostOpen(false);
+      await loadGroupPosts();
+    } catch (err) {
+      console.error("Error creating post:", err);
+      alert("Failed to create post");
+    }
+  }
+
   async function handleJoin() {
     // Allow owner to join even if the group is private
     if (!group) return;
@@ -157,7 +241,7 @@ export default function GroupDetailsPage() {
     setIsJoining(true);
     try {
       console.log(`Joining group ${groupId}`);
-      const res = await fetch(`/api/groups/${groupId}/join`, {
+      const res = await apiRequest(`/api/groups/${groupId}/join`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -204,11 +288,32 @@ export default function GroupDetailsPage() {
     }
   }
 
+  async function handleRequestAccess() {
+    if (!groupId) return;
+    try {
+      const res = await apiRequest(`/api/groups/${groupId}/request-access`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setPrivateGroupModalOpen(false);
+        setInviteFeedback("Your request has been sent to the group owner.");
+      } else {
+        alert(data.error || "Failed to send request");
+      }
+    } catch (err) {
+      console.error("Error requesting access:", err);
+      alert("Failed to send request");
+    }
+  }
+
   async function handleLeave() {
     setIsJoining(true);
     try {
       console.log(`Leaving group ${groupId}`);
-      const res = await fetch(`/api/groups/${groupId}/leave`, {
+      const res = await apiRequest(`/api/groups/${groupId}/leave`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json'
@@ -266,7 +371,7 @@ export default function GroupDetailsPage() {
     setInviteError("");
     setInviting(true);
     try {
-      const res = await fetch(`/api/groups/${groupId}/invite`, {
+      const res = await apiRequest(`/api/groups/${groupId}/invite`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ emails: [email], inviterId: CURRENT_USER_ID })
@@ -293,26 +398,6 @@ export default function GroupDetailsPage() {
       setInviting(false);
     }
   }
-
-  // Mock data for posts (keeping as is)
-  const posts = useMemo(() => [
-    {
-      id: 1,
-      author: "Van Nguyen",
-      time: "2h ago",
-      content: "Welcome! Drop an intro + what you're looking for.",
-      likes: 7,
-      comments: 2
-    },
-    {
-      id: 2,
-      author: "Student",
-      time: "1d ago",
-      content: "Anyone down to meet up this week?",
-      likes: 3,
-      comments: 1
-    }
-  ], []);
 
   if (loading) {
     return (
@@ -370,6 +455,30 @@ export default function GroupDetailsPage() {
             </div>
           </div>
         )}
+
+        {/* Private group invite-only modal */}
+        {privateGroupModalOpen && (
+          <div style={modalOverlay} onClick={() => setPrivateGroupModalOpen(false)}>
+            <div style={privateGroupModalCard} onClick={(e) => e.stopPropagation()}>
+              <p style={privateGroupModalText}>This group is Invite-only.</p>
+              <div style={privateGroupModalActions}>
+                <button
+                  style={privateGroupModalRequestBtn}
+                  onClick={() => handleRequestAccess()}
+                >
+                  Request Access
+                </button>
+                <button
+                  style={privateGroupModalCancelBtn}
+                  onClick={() => setPrivateGroupModalOpen(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Navigation */}
         <div style={navBar}>
           <button style={backLink} onClick={() => navigate("/groups")}>
@@ -398,7 +507,13 @@ export default function GroupDetailsPage() {
               ) : (
                 <button
                   style={btn("primary", isJoining)}
-                  onClick={handleJoin}
+                  onClick={() => {
+                    if (group.is_private && !isOwner) {
+                      setPrivateGroupModalOpen(true);
+                    } else {
+                      handleJoin();
+                    }
+                  }}
                   disabled={isJoining}
                   title={
                     group.is_private && !isOwner
@@ -419,13 +534,19 @@ export default function GroupDetailsPage() {
 
         {/* Group Cover with Image */}
         <div style={cover}>
-          {group.image_url ? (
-            <img 
-              src={`/uploads/${group.image_url}`} 
-              alt={group.name}
-              style={coverImage}
-            />
-          ) : null}
+          <div style={bannerGlowOne} />
+          <div style={bannerGlowTwo} />
+          <div style={bannerOverlay} />
+
+          <div style={{ position: 'relative', zIndex: 2, width: '100%', height: '100%' }}>
+            {group.image_url ? (
+              <img 
+                src={`/uploads/${group.image_url}`} 
+                alt={group.name}
+                style={coverImage}
+              />
+            ) : null}
+          </div>
           <div style={avatar}>
             {group.image_url ? null : "👥"}
           </div>
@@ -441,7 +562,7 @@ export default function GroupDetailsPage() {
               <div style={groupMeta}>
                 <span style={metaItem}>📅 Created {createdDate}</span>
                 <span style={metaItem}>
-                  👤 Created by {isOwner ? "You" : `User ${group.creator_id}`}
+                  👤 Created by {group.creator_name || `User ${group.creator_id}`}
                 </span>
                 {group.max_members && (
                   <span style={metaItem}>
@@ -465,7 +586,7 @@ export default function GroupDetailsPage() {
           <div style={statsGrid}>
             <StatItem value={membersCount} label="Members" />
             <StatItem value={group.max_members || "∞"} label="Max Members" />
-            <StatItem value="12" label="Posts" />
+            <StatItem value={groupPosts.length} label="Posts" />
             <StatItem value="3" label="Events" />
           </div>
 
@@ -510,7 +631,20 @@ export default function GroupDetailsPage() {
               <div style={membersGrid}>
                 {members.length > 0 ? (
                   members.map((member, index) => (
-                    <div key={index} style={memberCard}>
+                    <div
+                      key={index}
+                      style={memberCard}
+                      onClick={() => navigate(`/users/${member.user_id}`)}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`View profile of ${member.display_name || `User ${member.user_id}`}`}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          navigate(`/users/${member.user_id}`);
+                        }
+                      }}
+                    >
                       <div style={memberAvatar}>
                         {member.display_name ? initials(member.display_name) : "👤"}
                       </div>
@@ -578,39 +712,46 @@ export default function GroupDetailsPage() {
 
           {/* Posts Preview */}
           <div style={section}>
-            <h3 style={sectionTitle}>Posts</h3>
-
-            <div style={postsList}>
-              {posts.map(post => (
-                <PostCard
-                  key={post.id}
-                  author={post.author}
-                  time={post.time}
-                  content={post.content}
-                  likes={post.likes}
-                  comments={post.comments}
-                />
-              ))}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <h3 style={{ ...sectionTitle, margin: 0 }}>Posts</h3>
+              <button
+                type="button"
+                style={btn("primary")}
+                onClick={() => setCreatePostOpen(true)}
+              >
+                Create Post
+              </button>
             </div>
-
-            <div style={createPost}>
-              <textarea
-                style={createPostTextarea}
-                placeholder="Write a post... (coming soon)"
-                disabled
-              />
-              <div style={createPostActions}>
-                <button style={btn("primary", true)} disabled>
-                  Post
-                </button>
+            {loadingPosts ? (
+              <p>Loading posts...</p>
+            ) : postsError ? (
+              <p style={{ color: "#b00020" }}>{postsError}</p>
+            ) : groupPosts.length === 0 ? (
+              <p style={{ color: "#666", fontStyle: "italic" }}>
+                No posts in this group yet.
+              </p>
+            ) : (
+              <div style={postsList}>
+                {groupPosts.map((post) => (
+                  <FeedPostCard
+                    key={post.post_id}
+                    post={post}
+                    onLikePost={handleLikePost}
+                    onTagFilter={() => {}}
+                  />
+                ))}
               </div>
-              <div style={{ marginTop: 8, color: "#666", fontSize: 12 }}>
-                * Posting feature coming soon
-              </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
+      <CreatePostForm
+        open={createPostOpen}
+        onClose={() => setCreatePostOpen(false)}
+        onSubmit={handleCreatePost}
+        hideGroupSelect
+        fixedGroupId={Number(groupId)}
+      />
     </div>
   );
 }
@@ -625,29 +766,6 @@ function StatItem({ value, label }) {
   );
 }
 
-function PostCard({ author, time, content, likes, comments }) {
-  return (
-    <div style={postCard}>
-      <div style={postHeader}>
-        <div style={postAuthor}>
-          <div style={postAuthorAvatar} />
-          <div>
-            <div style={postAuthorName}>{author}</div>
-            <div style={postAuthorTime}>{time}</div>
-          </div>
-        </div>
-      </div>
-
-      <div style={postContent}>{content}</div>
-
-      <div style={postStats}>
-        <span>👍 {likes}</span>
-        <span>💬 {comments}</span>
-      </div>
-    </div>
-  );
-}
-
 function initials(name) {
   if (!name) return "👤";
   const parts = name.trim().split(/\s+/);
@@ -658,9 +776,9 @@ function initials(name) {
 
 /* ---------- styles ---------- */
 const page = {
-  backgroundColor: "#f5f5f5",
+  backgroundColor: "radial-gradient(circle at top left, rgba(93,108,92,0.12), transparent 35%), #FDFDF6",
   minHeight: "100vh",
-  padding: 20,
+  padding: "40px 20px",
 };
 
 const container = {
@@ -672,34 +790,36 @@ const navBar = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  marginBottom: 20,
+  marginBottom: 24,
   padding: "10px 0",
 };
 
 const backLink = {
   border: "none",
   background: "transparent",
-  color: "#666",
+  color: "#5D6C5C",
+  fontWeight: 700,
   cursor: "pointer",
   fontSize: 16,
   display: "flex",
   alignItems: "center",
-  gap: 6,
+  gap: 8,
 };
 
 const actionButtons = {
   display: "flex",
-  gap: 10,
+  gap: 12,
   flexWrap: "wrap",
 };
 
 const cover = {
-  height: 300,
-  borderRadius: "12px 12px 0 0",
+  height: 200,
+  borderRadius: "28px",
   position: "relative",
-  marginBottom: 80,
-  background: "linear-gradient(135deg, #111 0%, #444 100%)",
-  overflow: "hidden",
+  marginBottom: 60,
+  background: "linear-gradient(135deg, #5D6C5C 0%, #17292B 100%)",
+  overflow: "visible",
+  boxShadow: "0 10px 30px rgba(23,41,43,0.1)",
 };
 
 const coverImage = {
@@ -709,25 +829,25 @@ const coverImage = {
 };
 
 const avatar = {
-  width: 120,
-  height: 120,
-  background: "white",
+  width: 130,
+  height: 130,
+  background: "#FFFFFF",
   borderRadius: "50%",
   position: "absolute",
-  bottom: -60,
+  bottom: -65,
   left: 40,
-  border: "4px solid white",
-  boxShadow: "0 2px 10px rgba(0,0,0,0.12)",
+  border: "6px solid #FFFFFF",
+  boxShadow: "0 18px 45px rgba(23,41,43,0.12)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  fontSize: 48,
-  color: "#111",
+  fontSize: 52,
+  color: "#17292B",
 };
 
 const mainCard = {
   background: "white",
-  borderRadius: 12,
+  borderRadius: 28,
   boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
   padding: 30,
   marginTop: -50,
@@ -755,7 +875,7 @@ const groupTitle = {
 const groupMeta = {
   display: "flex",
   gap: 20,
-  color: "#666",
+  color: "#686967",
   fontSize: 14,
   flexWrap: "wrap",
 };
@@ -798,8 +918,8 @@ const statsGrid = {
   gap: 20,
   margin: "30px 0",
   padding: "20px 0",
-  borderTop: "1px solid #eee",
-  borderBottom: "1px solid #eee",
+  borderTop: "1px solid #EEF1F2",
+  borderBottom: "1px solid #EEF1F2",
 };
 
 const statItem = { textAlign: "center" };
@@ -840,6 +960,8 @@ const memberCard = {
   borderRadius: 8,
   backgroundColor: "#f9f9f9",
   border: "1px solid #eee",
+  cursor: "pointer",
+  transition: "background-color 0.2s",
 };
 
 const memberAvatar = {
@@ -909,7 +1031,7 @@ function btn(kind, disabled = false) {
   const base = {
     padding: "10px 20px",
     border: "1px solid",
-    borderRadius: 8,
+    borderRadius: 30,
     fontSize: 14,
     fontWeight: 800,
     cursor: disabled ? "not-allowed" : "pointer",
@@ -1006,6 +1128,51 @@ const modalCard = {
   boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
 };
 
+const privateGroupModalCard = {
+  background: "#fff",
+  borderRadius: 16,
+  padding: 28,
+  maxWidth: 380,
+  width: "90%",
+  boxShadow: "0 4px 24px rgba(0,0,0,0.15)",
+  border: "1px solid #D6DFE2",
+};
+
+const privateGroupModalText = {
+  margin: "0 0 24px 0",
+  fontSize: 18,
+  fontWeight: 600,
+  color: "#17292B",
+};
+
+const privateGroupModalActions = {
+  display: "flex",
+  gap: 12,
+  justifyContent: "flex-end",
+};
+
+const privateGroupModalRequestBtn = {
+  padding: "12px 24px",
+  borderRadius: 30,
+  border: "none",
+  background: "#111",
+  color: "#fff",
+  fontWeight: 700,
+  fontSize: 14,
+  cursor: "pointer",
+};
+
+const privateGroupModalCancelBtn = {
+  padding: "12px 24px",
+  borderRadius: 30,
+  border: "2px solid #D6DFE2",
+  background: "transparent",
+  color: "#17292B",
+  fontWeight: 700,
+  fontSize: 14,
+  cursor: "pointer",
+};
+
 const inviteEmailInput = {
   width: "100%",
   padding: "12px 14px",
@@ -1047,4 +1214,36 @@ const modalSendBtnDisabled = {
   background: "#ccc",
   color: "#666",
   border: "1px solid #ccc",
+};
+
+const bannerOverlay = {
+  position: "absolute",
+  inset: 0,
+  // Catch light at the very top of the banner
+  background: "linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.00) 100%)",
+  pointerEvents: "none",
+};
+
+const bannerGlowOne = {
+  position: "absolute",
+  top: -80,
+  right: -50,
+  width: 260,
+  height: 260,
+  borderRadius: "50%",
+  background: "rgba(255,255,255,0.14)", // Soft blur highlight
+  filter: "blur(20px)",
+  pointerEvents: "none",
+};
+
+const bannerGlowTwo = {
+  position: "absolute",
+  bottom: -70,
+  left: -30,
+  width: 220,
+  height: 220,
+  borderRadius: "50%",
+  background: "rgba(244,238,229,0.12)", // Creamy glow wash
+  filter: "blur(18px)",
+  pointerEvents: "none",
 };

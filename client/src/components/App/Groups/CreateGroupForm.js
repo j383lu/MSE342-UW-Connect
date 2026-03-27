@@ -1,10 +1,12 @@
 // client/src/components/App/Groups/CreateGroupForm.js
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useContext } from "react";
 import { useNavigate } from "react-router-dom";
+import { FirebaseContext } from '../../Firebase';
 
 export default function CreateGroupForm() {
   const navigate = useNavigate();
+  const firebase = useContext(FirebaseContext);
 
   const [coverImage, setCoverImage] = useState(null);
   const [coverPreview, setCoverPreview] = useState("");
@@ -47,10 +49,17 @@ export default function CreateGroupForm() {
         setLoadingTags(true);
         setTagsError("");
 
-        console.log("Fetching tags from /api/tags...");
-        const res = await fetch("/api/tags");
-        console.log("Tags response status:", res.status);
+        const user = firebase.auth.currentUser;
+        const token = user ? await user.getIdToken() : null;
+
+        // console.log("Fetching tags from /api/tags...");
+        // const res = await fetch("/api/tags");
+        // console.log("Tags response status:", res.status);
         
+        const res = await fetch("/api/tags", {
+          headers: token ? { 'Authorization': token } : {} // Only send if user is loaded
+        });
+
         // Check if response is OK
         if (!res.ok) {
           const text = await res.text();
@@ -79,7 +88,7 @@ export default function CreateGroupForm() {
     }
 
     loadTags();
-  }, []);
+  }, [firebase.auth]);
 
   const errors = useMemo(() => {
     const e = {};
@@ -133,6 +142,10 @@ export default function CreateGroupForm() {
 
   async function onSubmit(e) {
     e.preventDefault();
+    if (!canSubmit) return;
+
+    setIsSubmitting(true);
+    setSubmitError("");
 
     setTouched({
       name: true,
@@ -148,6 +161,12 @@ export default function CreateGroupForm() {
     setUploadProgress(0);
 
     try {
+      const user = firebase.auth.currentUser;
+      if (!user) {
+        throw new Error("Authentication required. Please log in again.");
+      }
+      const token = await user.getIdToken();
+      
       // Create FormData for file upload
       const formData = new FormData();
       formData.append('name', name.trim());
@@ -157,10 +176,10 @@ export default function CreateGroupForm() {
       formData.append('maxMembers', maxMembers || '');
 
       // Attach current app user id so backend can set creator_id correctly
-      const currentUserId = localStorage.getItem('currentUserId');
-      if (currentUserId) {
-        formData.append('user_id', currentUserId);
-      }
+      // const currentUserId = localStorage.getItem('currentUserId');
+      // if (currentUserId) {
+      //   formData.append('user_id', currentUserId);
+      // }
       
       if (coverImage) {
         formData.append('coverImage', coverImage);
@@ -181,25 +200,47 @@ export default function CreateGroupForm() {
       const apiUrl = `${baseUrl}/api/groups`;
       console.log("Sending request to:", apiUrl);
 
-      const res = await fetch(apiUrl, {
+      // const res = await fetch(apiUrl, {
+      //   method: 'POST',
+      //   body: formData,
+      // });
+      const res = await fetch("/api/groups", {
         method: 'POST',
+        headers: { 
+          'Authorization': token // Add token here
+          // NOTE: Do NOT set Content-Type; FormData sets it automatically
+        },
         body: formData,
       });
 
       console.log("Response status:", res.status);
       
       // Check if response is OK
-      if (!res.ok) {
-        const responseText = await res.text();
-        console.error("Error response:", responseText.substring(0, 500));
+      // if (!res.ok) {
+      //   const responseText = await res.text();
+      //   console.error("Error response:", responseText.substring(0, 500));
         
-        // Try to parse as JSON if possible
+      //   // Try to parse as JSON if possible
+      //   try {
+      //     const errorData = JSON.parse(responseText);
+      //     throw new Error(errorData.error || errorData.details || `Server error: ${res.status}`);
+      //   } catch (e) {
+      //     // If not JSON, throw the text
+      //     throw new Error(`Server returned ${res.status}: ${responseText.substring(0, 100)}`);
+      //   }
+      // }
+      
+      if (!res.ok) {
+        const errorText = await res.text();
+        
         try {
-          const errorData = JSON.parse(responseText);
-          throw new Error(errorData.error || errorData.details || `Server error: ${res.status}`);
+          const errorData = JSON.parse(errorText);
+          throw new Error(errorData.error || `Server Error: ${res.status}`);
         } catch (e) {
-          // If not JSON, throw the text
-          throw new Error(`Server returned ${res.status}: ${responseText.substring(0, 100)}`);
+          if (errorText.includes("Proxy error")) {
+            throw new Error("Backend server is down (Proxy Error). Check your terminal!");
+          }
+          throw new Error(`Server returned ${res.status}: ${errorText.substring(0, 50)}...`);
         }
       }
 
@@ -442,127 +483,131 @@ export default function CreateGroupForm() {
 
 // Updated styles with functions where needed
 const page = {
-  background: "#f5f5f5",
+  background: "radial-gradient(circle at top left, rgba(93,108,92,0.12), transparent 35%), #FDFDF6",
   minHeight: "100vh",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  padding: 20,
+  padding: "40px 20px",
 };
 
-const container = { maxWidth: 600, width: "100%" };
+const container = { maxWidth: 650, width: "100%" };
 
 const card = {
-  background: "#fff",
-  borderRadius: 12,
-  boxShadow: "0 4px 6px rgba(0,0,0,0.08)",
+  background: "#FFFFFF",
+  borderRadius: 28,
+  boxShadow: "0 18px 45px rgba(23,41,43,0.05)",
   overflow: "hidden",
-  border: "1px solid #e6e6e6",
+  border: "1px solid #D6DFE2",
+  borderTop: "6px solid #5D6C5C",
 };
 
 const cardHeader = {
-  padding: 24,
-  borderBottom: "1px solid #e0e0e0",
+  padding: "24px 32px",
+  borderBottom: "1px solid #EEF1F2",
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
+  background: "#FFFFFF",
 };
 
 const closeBtn = {
-  fontSize: 28,
-  lineHeight: "28px",
+  fontSize: 24,
+  fontWeight: 700,
   border: "none",
-  background: "transparent",
+  background: "rgba(93,108,92,0.1)",
+  background: "#F4EEE5",
   cursor: "pointer",
-  color: "#666",
-  padding: "0 8px",
-  borderRadius: 4,
-  ":hover": {
-    background: "#f0f0f0"
-  }
+  color: "#17292B",
+  width: 36,
+  height: 36,
+  borderRadius: "50%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  transition: "all 0.2s ease",
 };
 
-const cardBody = { padding: 24 };
+const cardBody = { padding: "32px" };
 
-const formGroup = { marginBottom: 20 };
+const formGroup = { marginBottom: 24 };
 
 const label = {
   display: "block",
-  marginBottom: 8,
-  fontWeight: 600,
-  color: "#444",
+  marginBottom: 10,
+  fontWeight: 700,
+  color: "#17292B",
+  fontSize: 14,
 };
 
 const input = {
   width: "100%",
-  padding: 12,
-  border: "1px solid #ddd",
-  borderRadius: 8,
+  padding: "14px 18px",
+  border: "2px solid #D6DFE2",
+  borderRadius: 16,
   fontSize: 14,
   outline: "none",
+  background: "#F9FAFA",
+  color: "#17292B",
   boxSizing: "border-box",
-  ":focus": {
-    borderColor: "#111"
-  }
+  transition: "border-color 0.2s ease",
 };
 
 const formRow = {
   display: "grid",
   gridTemplateColumns: "1fr 1fr",
-  gap: 20,
+  gap: 24,
 };
 
-const privacyOptions = { display: "flex", gap: 20, marginTop: 8 };
+const privacyOptions = { display: "flex", gap: 12, marginTop: 10 };
 
 const privacyOption = {
   display: "flex",
   alignItems: "center",
-  gap: 8,
-  color: "#444",
+  gap: 10,
+  color: "#17292B",
   fontWeight: 600,
+  fontSize: 14,
   cursor: "pointer",
 };
 
 const imageUpload = (hasPreview) => ({
-  border: "2px dashed #ddd",
-  borderRadius: 8,
-  padding: hasPreview ? 0 : 24,
+  border: "2px dashed #5D6C5C",
+  borderRadius: 20,
+  padding: hasPreview ? 0 : 28,
   textAlign: "center",
   cursor: "pointer",
-  userSelect: "none",
-  minHeight: 150,
+  minHeight: 160,
   display: "flex",
   flexDirection: "column",
   alignItems: "center",
   justifyContent: "center",
   overflow: "hidden",
-  backgroundColor: "#fafafa",
-  ":hover": {
-    borderColor: "#999"
-  }
+  backgroundColor: "rgba(93,108,92,0.02)",
+  transition: "all 0.2s ease",
 });
 
 const imagePreview = {
   width: "100%",
-  maxHeight: 200,
+  maxHeight: 220,
   objectFit: "cover",
 };
 
 const progressContainer = {
-  marginBottom: 20,
+  marginBottom: 24,
 };
 
 const progressBar = {
   width: "100%",
   height: 4,
-  background: "#ededed",
-  borderRadius: 2,
+  background: "#F0F3F0",
+  borderRadius: 10,
   overflow: "hidden",
 };
 
 const progressFill = {
   height: "100%",
-  background: "#111",
+  background: "#5D6C5C",
   width: "0%",
   transition: "width 0.25s ease",
 };
@@ -570,8 +615,9 @@ const progressFill = {
 const progressText = {
   textAlign: "right",
   fontSize: 12,
-  color: "#666",
-  marginTop: 6,
+  color: "#5D6C5C",
+  fontWeight: 600,
+  marginTop: 8,
 };
 
 const errorText = {
@@ -583,33 +629,36 @@ const errorText = {
 
 const cardFooter = {
   padding: 24,
-  borderTop: "1px solid #e0e0e0",
+  borderTop: "1px solid #EEF1F2",
   display: "flex",
   justifyContent: "flex-end",
   gap: 12,
 };
 
 const cancelBtn = (disabled) => ({
-  padding: "12px 24px",
-  borderRadius: 8,
-  border: "1px solid #ddd",
-  background: "#f5f5f5",
-  color: "#333",
-  fontWeight: 800,
+  padding: "12px 28px",
+  borderRadius: 30,
+  border: "2px solid #D6DFE2",
+  background: "transparent",
+  color: "#17292B",
+  fontWeight: 700,
+  fontSize: 15,
   cursor: disabled ? "not-allowed" : "pointer",
   opacity: disabled ? 0.5 : 1,
+  transition: "all 0.2s",
 });
 
 function createBtn(enabled) {
   return {
-    padding: "12px 24px",
-    borderRadius: 8,
-    border: "1px solid",
-    borderColor: enabled ? "#111" : "#bbb",
-    background: enabled ? "#111" : "#ccc",
-    color: "#fff",
-    fontWeight: 900,
+    padding: "12px 28px",
+    borderRadius: 30,
+    border: "none",
+    background: enabled ? "#17292B" : "#D6DFE2",
+    color: enabled ? "#FDFDF6" : "#9DA3A8",
+    fontWeight: 700,
+    fontSize: 15,
     cursor: enabled ? "pointer" : "not-allowed",
-    opacity: enabled ? 1 : 0.5,
+    boxShadow: enabled ? "0 8px 20px rgba(23,41,43,0.15)" : "none",
+    transition: "all 0.2s",
   };
 }

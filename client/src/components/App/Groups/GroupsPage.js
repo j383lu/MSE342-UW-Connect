@@ -2,6 +2,8 @@
 
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import apiRequest from "../../../utils/api";
+import PostCard from "../../Post/PostCard";
 
 export default function GroupsPage() {
   const navigate = useNavigate();
@@ -12,9 +14,17 @@ export default function GroupsPage() {
   
   const [memberships, setMemberships] = useState([]);
   const [invites, setInvites] = useState([]);
+  const [joinRequests, setJoinRequests] = useState([]);
   const [feedback, setFeedback] = useState("");
   const [filter, setFilter] = useState("Any");
   const [search, setSearch] = useState("");
+
+  // Active tab: 'general' | 'discover' | 'my' | 'owned'
+  const [activeTab, setActiveTab] = useState("general");
+  
+  // Posts for General tab (all posts across all groups)
+  const [posts, setPosts] = useState([]);
+  const [loadingPosts, setLoadingPosts] = useState(false);
   
   // Tags from database
   const [tagOptions, setTagOptions] = useState([]);
@@ -62,7 +72,7 @@ export default function GroupsPage() {
   async function loadTags() {
     try {
       setLoadingTags(true);
-      const res = await fetch('/api/tags');
+      const res = await apiRequest('/api/tags');
       
       if (!res.ok) {
         throw new Error('Failed to load tags');
@@ -88,7 +98,7 @@ export default function GroupsPage() {
   async function fetchFreshData() {
     try {
       // Fetch fresh groups
-      const groupsRes = await fetch('/api/groups');
+      const groupsRes = await apiRequest('/api/groups');
       if (!groupsRes.ok) {
         throw new Error('Failed to fetch groups');
       }
@@ -104,7 +114,7 @@ export default function GroupsPage() {
       }
 
       // Fetch fresh memberships - ONLY from Group_Members table for this user
-      const membershipsRes = await fetch(`/api/users/${CURRENT_USER_ID}/groups/member`);
+      const membershipsRes = await apiRequest(`/api/users/${CURRENT_USER_ID}/groups/member`);
       let memberIds = [];
       
       if (membershipsRes.ok) {
@@ -117,14 +127,21 @@ export default function GroupsPage() {
       setMemberships(memberIds);
 
       // Fetch pending group invites for this user
-      const invitesRes = await fetch(`/api/users/${CURRENT_USER_ID}/invites`);
+      const invitesRes = await apiRequest(`/api/users/${CURRENT_USER_ID}/invites`);
       if (invitesRes.ok) {
         const invitesData = await invitesRes.json();
-        console.log("Pending invites:", invitesData);
         setInvites(invitesData);
       } else {
-        console.warn("Failed to load invites, status:", invitesRes.status);
         setInvites([]);
+      }
+
+      // Fetch pending join requests for groups the user owns
+      const joinRequestsRes = await apiRequest(`/api/users/${CURRENT_USER_ID}/join-requests-as-owner`);
+      if (joinRequestsRes.ok) {
+        const joinRequestsData = await joinRequestsRes.json();
+        setJoinRequests(joinRequestsData || []);
+      } else {
+        setJoinRequests([]);
       }
       
     } catch (err) {
@@ -146,6 +163,31 @@ export default function GroupsPage() {
     }
   }
 
+  async function loadPosts() {
+    try {
+      setLoadingPosts(true);
+      const res = await apiRequest('/api/posts?filter=mygroups');
+      if (res.ok) {
+        const data = await res.json();
+        setPosts(Array.isArray(data) ? data : []);
+      } else {
+        setPosts([]);
+      }
+    } catch (err) {
+      console.error("Error loading posts:", err);
+      setPosts([]);
+    } finally {
+      setLoadingPosts(false);
+    }
+  }
+
+  // Load posts when switching to General tab
+  useEffect(() => {
+    if (activeTab === "general") {
+      loadPosts();
+    }
+  }, [activeTab]);
+
   async function handleJoin(groupId) {
     // Prevent multiple simultaneous join attempts
     if (isJoining.current) return;
@@ -155,7 +197,7 @@ export default function GroupsPage() {
       console.log("========== JOIN ATTEMPT ==========");
       console.log("Joining group ID:", groupId);
       
-      const res = await fetch(`/api/groups/${groupId}/join`, {
+      const res = await apiRequest(`/api/groups/${groupId}/join`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -201,7 +243,7 @@ export default function GroupsPage() {
       console.log("========== LEAVE ATTEMPT ==========");
       console.log("Leaving group ID:", groupId);
       
-      const res = await fetch(`/api/groups/${groupId}/leave`, {
+      const res = await apiRequest(`/api/groups/${groupId}/leave`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json'
@@ -241,45 +283,117 @@ export default function GroupsPage() {
     }
   }
 
-  // Refetch when filter or search changes
-  useEffect(() => {
-    loadAllGroups();
-  }, [filter, search]);
+  // Helper: apply filter and search to a group (client-side filtering)
+  const matchesFilterAndSearch = (g) => {
+    if (filter !== "Any" && g.category !== filter) return false;
+    if (search.trim()) {
+      const searchLower = search.toLowerCase();
+      return (
+        g.name.toLowerCase().includes(searchLower) ||
+        (g.description && g.description.toLowerCase().includes(searchLower))
+      );
+    }
+    return true;
+  };
 
   const ownedGroups = useMemo(() => {
-    return groups.filter((g) => Number(g.creator_id) === CURRENT_USER_ID);
-  }, [groups]);
+    return groups
+      .filter((g) => Number(g.creator_id) === CURRENT_USER_ID)
+      .filter(matchesFilterAndSearch);
+  }, [groups, filter, search]);
 
   const myGroups = useMemo(() => {
-    // Debug log to see what's happening
-    console.log("Calculating myGroups. memberships:", memberships);
-    console.log("All groups:", groups.map(g => ({ id: g.group_id, name: g.name })));
-    
-    const filtered = groups.filter((g) => memberships.includes(Number(g.group_id)));
-    console.log("Filtered myGroups:", filtered.map(g => ({ id: g.group_id, name: g.name })));
-    return filtered;
-  }, [groups, memberships]);
+    return groups
+      .filter((g) => memberships.includes(Number(g.group_id)))
+      .filter(matchesFilterAndSearch);
+  }, [groups, memberships, filter, search]);
 
-  // Filtered discover groups based on filter and search
+  // Discover groups: groups user is NOT in but are available
   const discoverGroups = useMemo(() => {
-    return groups.filter((g) => {
-      // Apply category filter
-      if (filter !== 'Any' && g.category !== filter) {
-        return false;
-      }
-      
-      // Apply search filter
+    return groups
+      .filter((g) => !memberships.includes(Number(g.group_id)))
+      .filter(matchesFilterAndSearch);
+  }, [groups, memberships, filter, search]);
+
+  // General tab: all posts across all groups, filtered by search (group name) and category
+  const generalPosts = useMemo(() => {
+    return posts.filter((p) => {
+      if (!p.group_id) return false;
+      const group = groups.find((g) => Number(g.group_id) === Number(p.group_id));
+      if (filter !== "Any" && group && group.category !== filter) return false;
       if (search.trim()) {
         const searchLower = search.toLowerCase();
-        return (
-          g.name.toLowerCase().includes(searchLower) ||
-          g.description.toLowerCase().includes(searchLower)
-        );
+        const groupName = (p.group_name || group?.name || "").toLowerCase();
+        return groupName.includes(searchLower);
       }
-      
       return true;
     });
-  }, [groups, filter, search]);
+  }, [posts, groups, filter, search]);
+
+  async function handleRequestAccess(groupId) {
+    try {
+      const res = await apiRequest(`/api/groups/${groupId}/request-access`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setFeedback("Your request has been sent to the group owner.");
+      } else {
+        alert(data.error || "Failed to send request");
+      }
+    } catch (err) {
+      console.error("Error requesting access:", err);
+      alert("Failed to send request");
+    }
+  }
+
+  async function handleRespondToJoinRequest(requestId, action) {
+    const req = joinRequests.find((r) => r.request_id === requestId);
+    const name = req?.requester_name || "User";
+    const groupName = req?.group_name || "group";
+    try {
+      const res = await apiRequest(`/api/join-requests/${requestId}/respond`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ownerId: CURRENT_USER_ID }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.error || "Failed to respond");
+        return;
+      }
+      setJoinRequests((prev) => prev.filter((r) => r.request_id !== requestId));
+      await fetchFreshData();
+      setFeedback(
+        action === "accept"
+          ? `You have accepted ${name}'s request to join "${groupName}"`
+          : `You have declined ${name}'s request to join "${groupName}"`
+      );
+    } catch (err) {
+      console.error("Error responding to join request:", err);
+      alert("Failed to respond");
+    }
+  }
+
+  async function handleLikePost(postId) {
+    try {
+      const res = await apiRequest(`/api/posts/${postId}/like`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.post_id === postId
+            ? { ...p, like_count: data.like_count, liked_by_me: data.liked_by_me }
+            : p
+        )
+      );
+    } catch (err) {
+      console.error("Error liking post:", err);
+    }
+  }
 
   return (
     <div style={pageContainer}>
@@ -306,15 +420,30 @@ export default function GroupsPage() {
         </div>
       )}
       {/* Header with frame */}
-      <div style={headerFrame}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <h1 style={pageTitle}>Groups</h1>
-          {CURRENT_USER_ID && invites.length > 0 && (
-            <div style={notifBadge}>
-              {invites.length}
+      <div style={banner}>
+        <div style={bannerGlowOne} />
+        <div style={bannerGlowTwo} />
+        <div style={bannerOverlay} />
+
+        <div style={bannerContent}>
+          <div style={bannerLeft}>
+            <div style={uwConnect}>UW Connect</div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <h1 style={pageTitle}>Groups</h1>
+              {CURRENT_USER_ID && (invites.length > 0 || joinRequests.length > 0) && (
+                <div style={notifBadge}>
+                  {invites.length + joinRequests.length}
+                </div>
+              )}
             </div>
-          )}
+
+            <p style={bannerSubtitle}>
+              Discover, join, and connect with communities at Waterloo
+            </p>
+          </div>
         </div>
+
         <button style={createBtn} onClick={() => navigate("/groups/new")}>
           + Create Group
         </button>
@@ -323,7 +452,7 @@ export default function GroupsPage() {
       {/* Global invitation banner area, directly under Groups header */}
       {CURRENT_USER_ID && invites.length > 0 && (
         <div style={{ marginBottom: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-          {invites.map(invite => (
+          {invites.map((invite) => (
             <div key={invite.invite_id} style={inviteBanner}>
               <span>
                 <strong>{invite.inviter_name || "Someone"}</strong> invited you to join{" "}
@@ -335,7 +464,7 @@ export default function GroupsPage() {
                   onClick={async () => {
                     if (!CURRENT_USER_ID) return;
                     try {
-                      const res = await fetch(`/api/invites/${invite.invite_id}/respond`, {
+                      const res = await apiRequest(`/api/invites/${invite.invite_id}/respond`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ action: "accept", userId: CURRENT_USER_ID })
@@ -358,7 +487,7 @@ export default function GroupsPage() {
                   onClick={async () => {
                     if (!CURRENT_USER_ID) return;
                     try {
-                      const res = await fetch(`/api/invites/${invite.invite_id}/respond`, {
+                      const res = await apiRequest(`/api/invites/${invite.invite_id}/respond`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ action: "decline", userId: CURRENT_USER_ID })
@@ -386,160 +515,257 @@ export default function GroupsPage() {
         </div>
       )}
 
+      {/* Join requests banner for group owners */}
+      {CURRENT_USER_ID && joinRequests.length > 0 && (
+        <div style={{ marginBottom: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+          {joinRequests.map((req) => (
+            <div key={req.request_id} style={joinRequestBanner}>
+              <span>
+                <strong>{req.requester_name || "Someone"}</strong> requested to join group{" "}
+                <strong>{req.group_name}</strong>
+              </span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  style={inviteAcceptBtn}
+                  onClick={() => handleRespondToJoinRequest(req.request_id, "accept")}
+                >
+                  Accept
+                </button>
+                <button
+                  style={inviteDeclineBtn}
+                  onClick={() => handleRespondToJoinRequest(req.request_id, "decline")}
+                >
+                  Decline
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {error && (
         <div style={errorBanner}>
           {error}
         </div>
       )}
 
-      {/* Owned Groups Section with frame */}
-      <div style={sectionFrame}>
-        <h2 style={sectionTitle}>Owned Groups</h2>
-        {ownedGroups.length === 0 ? (
-          <p style={emptyMessage}>
-            You haven't created any groups yet. Click "Create Group" to make one!
-          </p>
-        ) : (
-          <div style={cardsContainer}>
-            {ownedGroups.map((g) => {
-              const isAlsoMember = memberships.includes(Number(g.group_id));
-              return (
-                <div key={g.group_id} style={card}>
-                  <div style={cardHeader}>
-                    <h3 style={cardTitle}>{g.name}</h3>
-                    <button
-                      style={outlineBtn}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/groups/${g.group_id}/edit`);
-                      }}
-                    >
-                      Edit
-                    </button>
-                  </div>
-                  <p style={cardDescription}>
-                    {g.description}
-                  </p>
-                  <div style={tagsContainer}>
-                    <span style={getPillStyle(g.category)}>{g.category}</span>
-                    <span style={getPillStyle(g.is_private ? 'private' : 'open')}>
-                      {!g.is_private ? "Open" : "Private"}
-                    </span>
-                    {g.max_members && (
-                      <span style={greyPill}>Max {g.max_members}</span>
-                    )}
-                    <span style={{...pill, background: "#fff3e0", color: "#ed6c02"}}>
-                      Owner
-                    </span>
-                    {isAlsoMember && (
-                      <span style={{...pill, background: "#e3f2fd", color: "#1976d2"}}>
-                        Member
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* My Groups Section with frame */}
-      <div style={sectionFrame}>
-        <h2 style={sectionTitle}>My Groups</h2>
-
-        {myGroups.length === 0 ? (
-          <p style={emptyMessage}>
-            You're not in any groups yet. Join one below!
-          </p>
-        ) : (
-          <div style={cardsContainer}>
-            {myGroups.map((g) => (
-              <GroupCard
-                key={g.group_id}
-                group={g}
-                isMember={true}
-                currentUserId={CURRENT_USER_ID}
-                onJoin={handleJoin}
-                onLeave={handleLeave}
-                onOpen={() => navigate(`/groups/${g.group_id}`)}
-              />
+      {/* Search and filter - between header and tabs */}
+      <div style={searchFilterBar}>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by group name..."
+          style={searchInput}
+        />
+        <div style={filterContainer}>
+          <label style={filterLabel}>Category:</label>
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            style={selectInput}
+            disabled={loadingTags}
+          >
+            <option value="Any">All Categories</option>
+            {tagOptions.map((tag) => (
+              <option key={tag.tag_id} value={tag.tag_name}>
+                {tag.tag_name}
+              </option>
             ))}
-          </div>
-        )}
+          </select>
+        </div>
+      </div>
+      {tagsError && (
+        <div style={{ ...errorBanner, marginTop: 8, marginBottom: 8 }}>
+          {tagsError}
+        </div>
+      )}
+
+      {/* Tab Navigation Bar */}
+      <div style={toggleContainer}>
+        <button
+          style={activeTab === "general" ? toggleButtonActive : toggleButton}
+          onClick={() => setActiveTab("general")}
+        >
+          General
+        </button>
+        <button
+          style={activeTab === "discover" ? toggleButtonActive : toggleButton}
+          onClick={() => setActiveTab("discover")}
+        >
+          Discover Groups
+        </button>
+        <button
+          style={activeTab === "my" ? toggleButtonActive : toggleButton}
+          onClick={() => setActiveTab("my")}
+        >
+          My Groups
+        </button>
+        <button
+          style={activeTab === "owned" ? toggleButtonActive : toggleButton}
+          onClick={() => setActiveTab("owned")}
+        >
+          Owned Groups
+        </button>
       </div>
 
-      {/* Discover Groups Section with frame */}
+      {/* Tab Content - single content area below nav */}
       <div style={sectionFrame}>
-        <h2 style={sectionTitle}>Discover Groups</h2>
-
-        <div style={toolbarFrame}>
-          {/* Category Filter Dropdown */}
-          <div style={filterContainer}>
-            <label style={filterLabel}>Category:</label>
-            <select
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              style={selectInput}
-              disabled={loadingTags}
-            >
-              <option value="Any">All Categories</option>
-              {tagOptions.map((tag) => (
-                <option key={tag.tag_id} value={tag.tag_name}>
-                  {tag.tag_name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Search Input */}
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search groups..."
-            style={searchInput}
-          />
-        </div>
-
-        {tagsError && (
-          <div style={{ ...errorBanner, marginTop: 8, marginBottom: 8 }}>
-            {tagsError}
+        {activeTab === "general" && (
+          <div style={postsContainer}>
+            {loadingPosts ? (
+              <p style={emptyMessage}>Loading posts...</p>
+            ) : generalPosts.length === 0 ? (
+              <p style={emptyMessage}>
+                {(search.trim() || filter !== "Any")
+                  ? "No posts match your search/filter."
+                  : "No posts in any groups yet."}
+              </p>
+            ) : (
+              generalPosts.map((post) => (
+                <PostCard
+                  key={post.post_id}
+                  post={post}
+                  onLikePost={handleLikePost}
+                  onTagFilter={() => {}}
+                />
+              ))
+            )}
           </div>
         )}
 
-        <div style={cardsContainer}>
-          {discoverGroups.length === 0 ? (
-            <p style={emptyMessage}>No groups match your filter/search.</p>
-          ) : (
-            discoverGroups.map((g) => {
-              const isMember = memberships.includes(Number(g.group_id));
-              return (
+        {activeTab === "discover" && (
+            <div style={cardsContainer}>
+              {discoverGroups.length === 0 ? (
+                <p style={emptyMessage}>
+                  {(search.trim() || filter !== "Any")
+                    ? "No groups match your search/filter."
+                    : "No groups available to discover. You may already be in all groups."}
+                </p>
+              ) : (
+                discoverGroups.map((g) => {
+                  const isMember = memberships.includes(Number(g.group_id));
+                  return (
+                    <GroupCard
+                      key={g.group_id}
+                      group={g}
+                      isMember={isMember}
+                      currentUserId={CURRENT_USER_ID}
+                      onJoin={handleJoin}
+                      onLeave={handleLeave}
+                      onOpen={() => navigate(`/groups/${g.group_id}`)}
+                      onRequestAccess={handleRequestAccess}
+                    />
+                  );
+                })
+              )}
+            </div>
+        )}
+
+        {activeTab === "my" && (
+          <div style={cardsContainer}>
+            {myGroups.length === 0 ? (
+              <p style={emptyMessage}>
+                {(search.trim() || filter !== "Any")
+                  ? "No groups match your search/filter."
+                  : "You're not in any groups yet. Switch to Discover Groups to join one!"}
+              </p>
+            ) : (
+              myGroups.map((g) => (
                 <GroupCard
                   key={g.group_id}
                   group={g}
-                  isMember={isMember}
+                  isMember={true}
                   currentUserId={CURRENT_USER_ID}
                   onJoin={handleJoin}
                   onLeave={handleLeave}
                   onOpen={() => navigate(`/groups/${g.group_id}`)}
+                  onRequestAccess={handleRequestAccess}
                 />
-              );
-            })
-          )}
-        </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {activeTab === "owned" && (
+          <div style={cardsContainer}>
+            {ownedGroups.length === 0 ? (
+              <p style={emptyMessage}>
+                {(search.trim() || filter !== "Any")
+                  ? "No groups match your search/filter."
+                  : "You haven't created any groups yet. Click \"Create Group\" to make one!"}
+              </p>
+            ) : (
+              ownedGroups.map((g) => {
+                const isAlsoMember = memberships.includes(Number(g.group_id));
+                return (
+                  <div
+                    key={g.group_id}
+                    style={card}
+                    onClick={() => navigate(`/groups/${g.group_id}`)}
+                  >
+                    <div style={cardHeader}>
+                      <h3 style={cardTitle}>{g.name}</h3>
+                      <button
+                        style={outlineBtn}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/groups/${g.group_id}/edit`);
+                        }}
+                      >
+                        Edit
+                      </button>
+                    </div>
+                    <p style={cardDescription}>
+                      {g.description}
+                    </p>
+                    <div style={tagsContainer}>
+                      <span style={getPillStyle(g.category)}>{g.category}</span>
+                      <span style={getPillStyle(g.is_private ? 'private' : 'open')}>
+                        {!g.is_private ? "Open" : "Private"}
+                      </span>
+                      {g.max_members && (
+                        <span style={greyPill}>Max {g.max_members}</span>
+                      )}
+                      <span style={{...pill, background: "#fff3e0", color: "#ed6c02"}}>
+                        Owner
+                      </span>
+                      {isAlsoMember && (
+                        <span style={{...pill, background: "#e3f2fd", color: "#1976d2"}}>
+                          Member
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 /** Group Card Component */
-function GroupCard({ group, isMember, currentUserId, onJoin, onLeave, onOpen }) {
-  console.log(`Rendering GroupCard for ${group.name} (ID: ${group.group_id}), isMember: ${isMember}`);
+function GroupCard({ group, isMember, currentUserId, onJoin, onLeave, onOpen, onRequestAccess }) {
+  const [privateModalOpen, setPrivateModalOpen] = React.useState(false);
   
   const isOwner = currentUserId && Number(group.creator_id) === currentUserId;
   // Check if group is full
   const isFull = group.max_members && group.member_count >= group.max_members;
   
+  // For private groups, non-members see Join but get invite-only popup
+  const isPrivateInviteOnly = group.is_private && !isMember && !isOwner;
+
+  function handleJoinClick(e) {
+    e.stopPropagation();
+    if (isPrivateInviteOnly) {
+      setPrivateModalOpen(true);
+    } else {
+      onJoin(group.group_id);
+    }
+  }
+
   return (
     <div onClick={onOpen} style={card}>
       <div style={cardHeader}>
@@ -550,7 +776,6 @@ function GroupCard({ group, isMember, currentUserId, onJoin, onLeave, onOpen }) 
               style={outlineBtn}
               onClick={(e) => {
                 e.stopPropagation();
-                console.log("Leave button clicked for group:", group.group_id);
                 onLeave(group.group_id);
               }}
             >
@@ -559,12 +784,8 @@ function GroupCard({ group, isMember, currentUserId, onJoin, onLeave, onOpen }) 
           ) : (
             <button
               style={solidBtn}
-              disabled={(group.is_private && !isOwner) || isFull}
-              onClick={(e) => {
-                e.stopPropagation();
-                console.log("Join button clicked for group:", group.group_id);
-                onJoin(group.group_id);
-              }}
+              disabled={isFull}
+              onClick={handleJoinClick}
               title={
                 group.is_private 
                   ? (isOwner
@@ -580,6 +801,42 @@ function GroupCard({ group, isMember, currentUserId, onJoin, onLeave, onOpen }) 
           )}
         </div>
       </div>
+
+      {/* Private group invite-only modal */}
+      {privateModalOpen && (
+        <div
+          style={modalOverlay}
+          onClick={(e) => {
+            e.stopPropagation();
+            setPrivateModalOpen(false);
+          }}
+        >
+          <div style={privateModalCard} onClick={(e) => e.stopPropagation()}>
+            <p style={privateModalText}>This group is Invite-only.</p>
+            <div style={privateModalActions}>
+              <button
+                style={privateModalRequestBtn}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPrivateModalOpen(false);
+                  onRequestAccess?.(group.group_id);
+                }}
+              >
+                Request Access
+              </button>
+              <button
+                style={privateModalCancelBtn}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPrivateModalOpen(false);
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <p style={cardDescription}>{group.description}</p>
       <div style={tagsContainer}>
         <span style={getPillStyle(group.category)}>{group.category}</span>
@@ -623,18 +880,20 @@ function getPillStyle(type) {
 
 /* ---------------- styles ---------------- */
 const pageContainer = {
-  maxWidth: "1000px",
-  margin: "0 auto",
-  padding: "20px",
   width: "100%",
+  maxWidth: "1040px",  
+  margin: "0 auto", 
+  padding: "40px 32px",
   boxSizing: "border-box",
 };
 
 const pageTitle = {
-  margin: 0,
   fontSize: "2.5rem",
-  fontWeight: 700,
-  color: "#17292B",
+  fontWeight: 750,
+  lineHeight: 1.08,
+  letterSpacing: "-0.04em",
+  color: "#FDFDF6",
+  margin: 0,
 };
 
 const notifBadge = {
@@ -650,31 +909,145 @@ const notifBadge = {
   justifyContent: "center",
 };
 
-const headerFrame = {
-  background: "#FFFFFF",
-  padding: "20px 30px",
-  borderRadius: "20px",
-  border: "1px solid #D6DFE2",
-  boxShadow: "0 4px 12px rgba(93,108,92,0.1)",
-  borderLeft: "6px solid #5D6C5C",
+const banner = {
+  padding: "38px 34px",
+  borderRadius: "28px",
+  marginBottom: "24px",
+  background: "linear-gradient(135deg, rgba(93,108,92,1) 0%, rgba(23,41,43,1) 100%)",
+  boxShadow: "0 24px 60px rgba(23,41,43,0.18)",
+  position: "relative",
+  overflow: "hidden",
+  minHeight: "220px"
+};
+
+const bannerLeft = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "6px",
+};
+
+const uwConnect = {
+  fontSize: "13px",
+  fontWeight: 700,
+  letterSpacing: "0.6px",
+  padding: "4px 10px",
+  borderRadius: "999px",
+  border: "1px solid rgba(255,255,255,0.6)",
+  color: "#FDFDF6",
+  display: "inline-block",
+  width: "fit-content",
+  background: "rgba(255,255,255,0.05)",
+  marginBottom: 10
+};
+
+const bannerSubtitle = {
+  fontSize: 16,
+  lineHeight: 1.65,
+  color: "rgba(253,253,246,0.86)",
+  margin: "14px 0 0",
+  maxWidth: 560,
+};
+
+const searchFilterBar = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  gap: "12px",
-  marginBottom: "24px",
+  gap: "16px",
+  flexWrap: "wrap",
+  padding: "16px 20px",
+  marginTop: "16px",
+  marginBottom: "0",
+  background: "#FFFFFF",
+  borderRadius: "12px",
+  border: "1px solid #D6DFE2",
+  boxShadow: "0 2px 8px rgba(93,108,92,0.06)",
   width: "100%",
   boxSizing: "border-box",
+  position: "relative", 
+  zIndex: 10,
+};
+
+// const tabNavBar = {
+//   display: "flex",
+//   gap: "8px",
+//   marginTop: "0",
+//   marginBottom: "0",
+//   padding: "8px 0",
+//   borderBottom: "2px solid #D6DFE2",
+//   width: "100%",
+// };
+
+const toggleContainer = {
+  display: 'flex',
+  width: '100%',
+  background: '#F0F3F0',
+  border: '1px solid #D6DFE2',
+  borderRadius: '800px',
+  padding: '4px',
+  gap: '4px',
+  marginTop: '24px', 
+  marginBottom: '24px',
+  boxSizing: 'border-box',
+};
+
+const toggleButton = {
+  flex: 1,
+  borderRadius: '800px',
+  padding: '10px 20px',
+  fontSize: '13px',
+  fontWeight: 400,
+  textTransform: 'none',
+  border: 'none',
+  cursor: 'pointer',
+  background: 'transparent',
+  color: '#686967',
+  transition: 'all 0.2s ease',
+};
+
+const toggleButtonActive = {
+  ...toggleButton,
+  fontWeight: 600,
+  background: '#5D6C5C',
+  color: '#FDFDF6',
+  boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
 };
 
 const sectionFrame = {
   background: "#FFFFFF",
-  borderRadius: "24px",
+  borderRadius: "24px", 
   padding: "24px",
-  marginTop: "32px",
   border: "1px solid #D6DFE2",
   boxShadow: "0 4px 12px rgba(93,108,92,0.08)",
   width: "100%",
   boxSizing: "border-box",
+};
+
+const tabButton = {
+  padding: "12px 24px",
+  borderRadius: "12px 12px 0 0",
+  border: "1px solid #D6DFE2",
+  borderBottom: "none",
+  background: "#F5F7F6",
+  color: "#5D6C5C",
+  fontWeight: 600,
+  fontSize: "15px",
+  cursor: "pointer",
+  transition: "all 0.2s",
+};
+
+const tabButtonActive = {
+  ...tabButton,
+  background: "#FFFFFF",
+  color: "#17292B",
+  borderColor: "#D6DFE2",
+  boxShadow: "0 -2px 8px rgba(0,0,0,0.04)",
+};
+
+const postsContainer = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "16px",
+  width: "100%",
 };
 
 const sectionTitle = {
@@ -885,6 +1258,13 @@ const inviteBanner = {
   color: "#0d47a1",
 };
 
+const joinRequestBanner = {
+  ...inviteBanner,
+  backgroundColor: "#fff8e1",
+  border: "1px solid #ffca28",
+  color: "#e65100",
+};
+
 const inviteAcceptBtn = {
   padding: "6px 12px",
   borderRadius: 16,
@@ -907,6 +1287,65 @@ const inviteDeclineBtn = {
   fontSize: 13,
 };
 
+// Private group invite-only modal
+const modalOverlay = {
+  position: "fixed",
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  background: "rgba(0,0,0,0.5)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 1400,
+};
+
+const privateModalCard = {
+  background: "#fff",
+  borderRadius: 16,
+  padding: 28,
+  maxWidth: 380,
+  width: "90%",
+  boxShadow: "0 4px 24px rgba(0,0,0,0.15)",
+  border: "1px solid #D6DFE2",
+};
+
+const privateModalText = {
+  margin: "0 0 24px 0",
+  fontSize: 18,
+  fontWeight: 600,
+  color: "#17292B",
+};
+
+const privateModalActions = {
+  display: "flex",
+  gap: 12,
+  justifyContent: "flex-end",
+};
+
+const privateModalRequestBtn = {
+  padding: "12px 24px",
+  borderRadius: 30,
+  border: "none",
+  background: "#17292B",
+  color: "#FDFDF6",
+  fontWeight: 700,
+  fontSize: 14,
+  cursor: "pointer",
+};
+
+const privateModalCancelBtn = {
+  padding: "12px 24px",
+  borderRadius: 30,
+  border: "2px solid #D6DFE2",
+  background: "transparent",
+  color: "#17292B",
+  fontWeight: 700,
+  fontSize: 14,
+  cursor: "pointer",
+};
+
 const emptyMessage = {
   color: "#686967",
   padding: "20px",
@@ -915,18 +1354,20 @@ const emptyMessage = {
 };
 
 const createBtn = {
-  padding: "14px 28px", // Increased vertical padding
-  borderRadius: "30px",
+  position: "absolute",
+  bottom: "16px",
+  right: "16px",
+  fontSize: "14px",
+  height: 44,
+  borderRadius: 999,
   border: "none",
-  background: "#17292B",
-  color: "#FDFDF6",
+  background: "#FDFDF6",
+  color: "#17292B",
   fontWeight: 700,
   cursor: "pointer",
-  fontSize: "15px", // Slightly larger font
-  transition: "all 0.2s",
-  boxShadow: "0 4px 10px rgba(23,41,43,0.2)",
-  minWidth: "160px",
-  lineHeight: "1.2",
+  padding: "0 18px",
+  boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
+  transition: "all 0.2s ease",
 };
 
 // Solid button for Join - TALLER VERTICAL HEIGHT
@@ -967,4 +1408,46 @@ const buttonWrapper = {
   justifyContent: "flex-end",
   alignItems: "center",
   height: "56px", // Increased from 48px to 56px for taller buttons
+};
+
+const bannerOverlay = {
+  position: "absolute",
+  inset: 0,
+  background: "linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.00) 100%)",
+  pointerEvents: "none",
+};
+
+const bannerGlowOne = {
+  position: "absolute",
+  top: -80,
+  right: -50,
+  width: 260,
+  height: 260,
+  borderRadius: "50%",
+  background: "rgba(255,255,255,0.10)",
+  filter: "blur(20px)",
+  pointerEvents: "none",
+};
+
+const bannerGlowTwo = {
+  position: "absolute",
+  bottom: -70,
+  left: -30,
+  width: 220,
+  height: 220,
+  borderRadius: "50%",
+  background: "rgba(244,238,229,0.10)",
+  filter: "blur(18px)",
+  pointerEvents: "none",
+};
+
+const bannerContent = {
+  position: "relative",
+  zIndex: 2,
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-end", // This aligns the "Create" button to the bottom right like Events
+  gap: 20,
+  flexWrap: "wrap",
+  width: "100%"
 };

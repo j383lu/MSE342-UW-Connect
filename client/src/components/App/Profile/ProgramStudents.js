@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import {
   Box,
   Typography,
@@ -10,10 +10,16 @@ import {
   Chip,
 } from "@mui/material";
 import { useNavigate, useParams } from "react-router-dom";
+import { FirebaseContext } from "../../Firebase";
+import ProfilePageStyle, {
+  profileActionButtonSx,
+  profileCardSx,
+} from "./ProfilePageStyle";
 
 function ProgramStudents() {
   const navigate = useNavigate();
   const { programId } = useParams();
+  const firebase = useContext(FirebaseContext);
 
   const [students, setStudents] = useState([]);
   const [programName, setProgramName] = useState("");
@@ -23,7 +29,17 @@ function ProgramStudents() {
   useEffect(() => {
     const fetchProgramStudents = async () => {
       try {
-        const res = await fetch(`/api/profile/programs/${programId}/students`);
+        const user = firebase?.auth?.currentUser;
+        if (!user) {
+          throw new Error("No authenticated user found.");
+        }
+        const token = await user.getIdToken();
+
+        const res = await fetch(`/api/profile/programs/${programId}/students`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
         if (!res.ok) {
           throw new Error("Failed to fetch students in this program.");
@@ -48,152 +64,112 @@ function ProgramStudents() {
       }
     };
 
-    fetchProgramStudents();
-  }, [programId]);
+    if (firebase?.auth) {
+      fetchProgramStudents();
+    }
+  }, [firebase, programId]);
 
-  if (loading) {
-    return (
-      <Box
-        sx={{
-          p: 3,
-          display: "flex",
-          justifyContent: "center",
-          bgcolor: "background.default",
-        }}
-      >
+  return (
+    <ProfilePageStyle
+      title="Program Students"
+      subtitle={programName || "Browse students who are in this program."}
+      actions={[
+        <Button
+          key="back"
+          variant="contained"
+          onClick={() => navigate("/profile")}
+          sx={{
+            ...profileActionButtonSx,
+            backgroundColor: "#FDFDF6",
+            color: "#17292B",
+            "&:hover": { backgroundColor: "#f3f3ec" },
+          }}
+        >
+          Back to Profile
+        </Button>,
+      ]}
+    >
+      {loading ? (
         <Typography variant="body1" color="text.secondary">
           Loading...
         </Typography>
-      </Box>
-    );
-  }
+      ) : loadError ? (
+        <Alert severity="error" variant="outlined">
+          {loadError}
+        </Alert>
+      ) : students.length === 0 ? (
+        <Box
+          sx={{
+            py: 6,
+            textAlign: "center",
+            border: "1px dashed",
+            borderColor: "divider",
+            borderRadius: 3,
+          }}
+        >
+          <Typography variant="body1" color="text.secondary">
+            No students found in this program.
+          </Typography>
+        </Box>
+      ) : (
+        <Stack spacing={2}>
+          {students.map((student) => (
+            <Card key={student.user_id || student.profile_id || student.id} sx={profileCardSx}>
+              <CardContent>
+                <Stack spacing={1}>
+                  <Typography variant="h2" sx={{ color: "text.primary" }}>
+                    {student.display_name || student.name || "Unnamed User"}
+                  </Typography>
 
-  if (loadError) {
-    return (
-      <Box
-        sx={{
-          p: 3,
-          display: "flex",
-          justifyContent: "center",
-          bgcolor: "background.default",
-        }}
-      >
-        <Card sx={{ width: 900 }}>
-          <CardContent>
-            <Alert severity="error" variant="outlined">
-              {loadError}
-            </Alert>
+                  {student.role && (
+                    <Typography variant="body1" color="text.secondary">
+                      {student.role}
+                    </Typography>
+                  )}
 
-            <Button
-              variant="contained"
-              sx={{ mt: 2 }}
-              onClick={() => navigate("/profile")}
-            >
-              Back to Profile
-            </Button>
-          </CardContent>
-        </Card>
-      </Box>
-    );
-  }
+                  {(student.program_name || student.program) && (
+                    <Chip
+                      label={student.program_name || student.program}
+                      color="primary"
+                      sx={{ width: "fit-content", fontWeight: 600 }}
+                    />
+                  )}
 
-  return (
-    <Box
-      sx={{
-        p: 3,
-        display: "flex",
-        justifyContent: "center",
-        bgcolor: "background.default",
-      }}
-    >
-      <Card sx={{ width: 900 }}>
-        <CardContent>
-          <Stack
-            direction="row"
-            justifyContent="space-between"
-            alignItems="flex-start"
-            sx={{ mb: 3 }}
-          >
-            <Box>
-              <Typography variant="h1" sx={{ mb: 1 }}>
-                Program Students
-              </Typography>
+                  {student.bio && (
+                    <Typography variant="body1" color="text.secondary">
+                      {student.bio}
+                    </Typography>
+                  )}
 
-              <Typography variant="body1" color="text.secondary">
-                {programName || "Students in this program"}
-              </Typography>
-            </Box>
+                  <Box sx={{ mt: 1 }}>
+                    <Typography variant="body1" sx={{ color: "text.primary", fontWeight: 600, mb: 1 }}>
+                      Current Courses
+                    </Typography>
 
-            <Button variant="contained" onClick={() => navigate("/profile")}>
-              Back to Profile
-            </Button>
-          </Stack>
-
-          {students.length === 0 ? (
-            <Typography variant="body1" color="text.secondary">
-              No students found in this program.
-            </Typography>
-          ) : (
-            <Stack spacing={2}>
-              {students.map((student) => (
-                <Card key={student.user_id || student.profile_id || student.id}>
-                  <CardContent>
-                    <Stack spacing={1}>
-                      <Typography variant="h2" sx={{ color: "text.primary" }}>
-                        {student.display_name || student.name || "Unnamed User"}
+                    {student.courses && student.courses.length > 0 ? (
+                      <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
+                        {student.courses.map((course) => (
+                          <Chip
+                            key={course.course_id}
+                            label={course.course_code}
+                            color="primary"
+                            sx={{ fontWeight: 600 }}
+                          />
+                        ))}
+                      </Stack>
+                    ) : (
+                      <Typography variant="body1" color="text.secondary">
+                        No courses listed.
                       </Typography>
-
-                      {student.role && (
-                        <Typography variant="body1" color="text.secondary">
-                          {student.role}
-                        </Typography>
-                      )}
-
-                      {(student.program_name || student.program) && (
-                        <Chip
-                          label={student.program_name || student.program}
-                          color="primary"
-                          sx={{ width: "fit-content", fontWeight: 600 }}
-                        />
-                      )}
-
-                      {student.bio && (
-                        <Typography variant="body1" color="text.secondary">
-                          {student.bio}
-                        </Typography>
-                      )}
-
-                      <Box sx={{ mt: 1 }}>
-                        <Typography variant="body1" sx={{ color: "text.primary", fontWeight: 600, mb: 1 }}>
-                          Current Courses
-                        </Typography>
-
-                        {student.courses && student.courses.length > 0 ? (
-                          <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
-                            {student.courses.map((course) => (
-                              <Chip
-                                key={course.course_id}
-                                label={course.course_code}
-                                color="primary"
-                                sx={{ fontWeight: 600 }}
-                              />
-                            ))}
-                          </Stack>
-                        ) : (
-                          <Typography variant="body1" color="text.secondary">
-                            No courses listed.
-                          </Typography>
-                        )}
-                      </Box>
-                    </Stack>
-                  </CardContent>
-                </Card>
-              ))}
-            </Stack>
-          )}
-        </CardContent>
-      </Card>
-    </Box>
+                    )}
+                  </Box>
+                </Stack>
+              </CardContent>
+            </Card>
+          ))}
+        </Stack>
+      )}
+    </ProfilePageStyle>
   );
 }
 

@@ -4,6 +4,22 @@ import "@testing-library/jest-dom";
 import Profile from "./Profile";
 import EditProfile from "./EditProfile";
 import { Routes, Route, MemoryRouter } from "react-router-dom";
+import { FirebaseContext } from "../../Firebase";
+
+const mockFirebase = {
+  auth: {
+    currentUser: {
+      getIdToken: jest.fn().mockResolvedValue("mock-token"),
+    },
+  },
+};
+
+const renderWithFirebase = (ui) =>
+  render(
+    <FirebaseContext.Provider value={mockFirebase}>
+      {ui}
+    </FirebaseContext.Provider>
+  );
 
 describe("Update Display Name ", () => {
   beforeEach(() => {
@@ -53,10 +69,11 @@ describe("Update Display Name ", () => {
   });
 
   test("1. Empty name shows 'Name cannot be empty.'", async () => {
-    render(
-    <MemoryRouter>
-      <EditProfile />
-    </MemoryRouter>);
+    renderWithFirebase(
+      <MemoryRouter>
+        <EditProfile />
+      </MemoryRouter>
+    );
 
     const input = await screen.findByTestId("display-name-input");
     fireEvent.change(input, { target: { value: "" } });
@@ -65,10 +82,11 @@ describe("Update Display Name ", () => {
     expect(await screen.findByText("Name cannot be empty.")).toBeInTheDocument();
   });
    test("2. Special characters show correct error message", async () => {
-    render(
-    <MemoryRouter>
-      <EditProfile />
-    </MemoryRouter>);
+    renderWithFirebase(
+      <MemoryRouter>
+        <EditProfile />
+      </MemoryRouter>
+    );
 
     const input = await screen.findByTestId("display-name-input");
     fireEvent.change(input, { target: { value: "Bad#Name%" } });
@@ -80,10 +98,11 @@ describe("Update Display Name ", () => {
   });
 
   test("3. Name longer than 30 characters shows length error", async () => {
-    render(
-    <MemoryRouter>
-      <EditProfile />
-    </MemoryRouter>);
+    renderWithFirebase(
+      <MemoryRouter>
+        <EditProfile />
+      </MemoryRouter>
+    );
 
     const input = await screen.findByTestId("display-name-input");
     fireEvent.change(input, { target: { value: "a".repeat(31) } });
@@ -95,10 +114,11 @@ describe("Update Display Name ", () => {
   });
 
   test("4. Valid name shows no validation error", async () => {
-    render(
-    <MemoryRouter>
-      <EditProfile />
-    </MemoryRouter>);
+    renderWithFirebase(
+      <MemoryRouter>
+        <EditProfile />
+      </MemoryRouter>
+    );
 
     const input = await screen.findByTestId("display-name-input");
     fireEvent.change(input, { target: { value: "NewName" } });
@@ -114,10 +134,11 @@ describe("Update Display Name ", () => {
   });
 
   test("5. Leading/trailing spaces are allowed (no validation error)", async () => {
-    render(
-    <MemoryRouter>
-      <EditProfile />
-    </MemoryRouter>);
+    renderWithFirebase(
+      <MemoryRouter>
+        <EditProfile />
+      </MemoryRouter>
+    );
 
     const input = await screen.findByTestId("display-name-input");
     fireEvent.change(input, { target: { value: "  Name  " } });
@@ -130,6 +151,110 @@ describe("Update Display Name ", () => {
     expect(
       screen.queryByText("Only alphanumeric characters and spaces are allowed.")
     ).not.toBeInTheDocument();
+  });
+
+  test("5b. Missing program shows 'Please select a program.'", async () => {
+    global.fetch = jest.fn((url, opts) => {
+      if (opts && opts.method && opts.method.toUpperCase() === "PUT") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ message: "ok" }),
+        });
+      }
+
+      switch (url) {
+        case "/api/profile":
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              name: "OriginalName",
+              bio: "",
+              program_id: "",
+              courses: [],
+            }),
+          });
+        case "/api/profile/programs":
+          return Promise.resolve({
+            ok: true,
+            json: async () => [
+              { program_id: 1, program_name: "Management Engineering" },
+            ],
+          });
+        case "/api/profile/courses":
+          return Promise.resolve({
+            ok: true,
+            json: async () => [
+              { course_id: 1, course_code: "MATH101" },
+            ],
+          });
+        default:
+          return Promise.resolve({ ok: true, json: async () => ({}) });
+      }
+    });
+
+    renderWithFirebase(
+      <MemoryRouter>
+        <EditProfile />
+      </MemoryRouter>
+    );
+
+    const input = await screen.findByTestId("display-name-input");
+    fireEvent.change(input, { target: { value: "NewName" } });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(await screen.findByText("Please select a program.")).toBeInTheDocument();
+  });
+
+  test("5c. Failed save shows backend error message", async () => {
+    global.fetch = jest.fn((url, opts) => {
+      if (opts && opts.method && opts.method.toUpperCase() === "PUT") {
+        return Promise.resolve({
+          ok: false,
+          json: async () => ({ error: "Server could not save profile." }),
+        });
+      }
+
+      switch (url) {
+        case "/api/profile":
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              name: "OriginalName",
+              bio: "",
+              program_id: 1,
+              courses: [],
+            }),
+          });
+        case "/api/profile/programs":
+          return Promise.resolve({
+            ok: true,
+            json: async () => [
+              { program_id: 1, program_name: "Management Engineering" },
+            ],
+          });
+        case "/api/profile/courses":
+          return Promise.resolve({
+            ok: true,
+            json: async () => [
+              { course_id: 1, course_code: "MATH101" },
+            ],
+          });
+        default:
+          return Promise.resolve({ ok: true, json: async () => ({}) });
+      }
+    });
+
+    renderWithFirebase(
+      <MemoryRouter>
+        <EditProfile />
+      </MemoryRouter>
+    );
+
+    const input = await screen.findByTestId("display-name-input");
+    fireEvent.change(input, { target: { value: "NewName" } });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(await screen.findByText("Server could not save profile.")).toBeInTheDocument();
   });
   
   test("6. Saving a valid new name shows updated name on Profile page", async () => {
@@ -156,7 +281,7 @@ describe("Update Display Name ", () => {
       return originalFetch(url, opts);
     });
 
-    render(
+    renderWithFirebase(
       <MemoryRouter initialEntries={["/edit-profile"]}>
         <Routes>
           <Route path="/edit-profile" element={<EditProfile />} />
@@ -184,7 +309,7 @@ describe("Update Display Name ", () => {
     );
 
     // finally render profile page to verify name updated
-    render(
+    renderWithFirebase(
       <MemoryRouter>
         <Profile />
       </MemoryRouter>
