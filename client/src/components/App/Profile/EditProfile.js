@@ -16,6 +16,7 @@ import {
   Select,
   MenuItem,
   Avatar,
+  Dialog,
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import { FirebaseContext } from "../../Firebase";
@@ -49,6 +50,38 @@ function EditProfile() {
   const [nameError, setNameError] = useState("");
   const [successOpen, setSuccessOpen] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
+  const handleDeleteProfile = async () => {
+    try {
+      const user = firebase?.auth?.currentUser;
+      if (!user) throw new Error("No authenticated user found.");
+      
+      const token = await user.getIdToken();
+
+      // 1. Call your backend to delete the SQL data
+      const res = await fetch("/api/profile", {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to delete profile.");
+      }
+
+      await firebase.auth.signOut();
+
+      localStorage.clear(); 
+
+      navigate("/"); 
+
+    } catch (err) {
+      console.error("Delete error:", err);
+      setSaveError(err.message);
+      setDeleteDialogOpen(false);
+    }
+  };
 
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -434,6 +467,59 @@ function EditProfile() {
                   </Select>
                 </FormControl>
               </Box>
+
+              <Box sx={{ mt: 6, textAlign: "center" }}>
+                <Divider sx={{ mb: 3, opacity: 0.1 }} />
+                <Button 
+                  color="error" 
+                  onClick={() => setDeleteDialogOpen(true)}
+                  sx={{
+                    ...profileActionButtonSx,
+                    backgroundColor: "#d32f2f", // Professional Red
+                    color: "#FFFFFF",           // White text
+                    "&:hover": {
+                      backgroundColor: "#b71c1c", // Darker red on hover
+                    },
+                  }}
+                >
+                  Delete my UW Connect profile
+                </Button>
+              </Box>
+
+              <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+                <Box sx={{ p: 3 }}>
+                  <Typography variant="h5" gutterBottom>Delete Profile?</Typography>
+                  <Typography variant="body1" sx={{ mb: 3 }}>
+                    Are you sure you want to delete your UW Connect profile? This action is permanent and will remove all your course and group data.
+                  </Typography>
+                  <Stack direction="row" spacing={2} justifyContent="flex-end">
+                    <Button 
+                      onClick={() => setDeleteDialogOpen(false)}
+                      sx={{ 
+                        ...profileActionButtonSx,
+                        borderRadius: "50px", 
+                        textTransform: "none",
+                        px: 3 
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button 
+                      variant="contained" 
+                      color="error"
+                      onClick={handleDeleteProfile}
+                      sx={{ 
+                        ...profileActionButtonSx,
+                        borderRadius: "50px", 
+                        textTransform: "none",
+                        px: 3 
+                      }}
+                    >
+                      Yes, Delete Everything
+                    </Button>
+                  </Stack>
+                </Box>
+              </Dialog>
 
               {saveError && (
                 <Alert severity="error" variant="outlined">
