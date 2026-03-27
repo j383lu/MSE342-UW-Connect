@@ -718,7 +718,7 @@ export default function CalendarPage() {
     const capacityLabel =
       !isPrivateListing(ev) && Number.isFinite(capNum) && capNum > 0 ? `${capNum} spots` : null;
     const hideCreatorRow = false;
-    const isPeerOwned = visibleContactIds.has(Number(ev.created_by));
+    const isPeerOwned = Number(ev.created_by) !== Number(myId);
 
     return (
       <Paper
@@ -925,7 +925,7 @@ export default function CalendarPage() {
         !isPrivateListing(ev) && Number.isFinite(capBlock) && capBlock > 0
           ? `${capBlock} spots`
           : null;
-      const isPeerOwned = visibleContactIds.has(Number(ev.created_by));
+      const isPeerOwned = Number(ev.created_by) !== Number(myId);
       const continuesNextDay = segEnd < fullEnd;
       const continuedFromPrior = segStart > fullStart;
       const singleCalendarDayEvent = sameDay(fullStart, fullEnd);
@@ -1213,7 +1213,7 @@ export default function CalendarPage() {
                 dayEvts.map((ev) => {
                   const { start: s } = eventDateRange(ev);
                   const hex = colorHexForKey(extractCalendarColor(ev.tags));
-                  const isPeerOwned = visibleContactIds.has(Number(ev.created_by));
+                  const isPeerOwned = Number(ev.created_by) !== Number(myId);
                   return (
                     <Box
                       key={ev.id}
